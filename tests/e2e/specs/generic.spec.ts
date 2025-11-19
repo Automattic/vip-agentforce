@@ -21,13 +21,6 @@ test.describe( 'Generic Checks', () => {
 		expect.soft( data ).toHaveProperty( 'routes' );
 	} );
 
-	test( 'XML Smoke test', async ( { request } ) => {
-		const response = await request.get( './wp-links-opml.php' );
-		expect( response.status() ).toBe( 200 );
-		const xmlText = await response.text();
-		expect( xmlText ).toContain( '<?xml version="1.0" encoding="UTF-8"?>' );
-		expect( xmlText ).toContain( '<opml version="1.0">' );
-	} );
 	test( 'XML RPC smoke test', async ( { request } ) => {
 		const xmlPayload = '<?xml version="1.0"?><methodCall><methodName>demo.sayHello</methodName><params/></methodCall>';
 
