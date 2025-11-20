@@ -1,0 +1,70 @@
+<?php
+
+namespace Automattic\VIP\Salesforce\Agentforce\Utils;
+
+class Configs {
+	/**
+	 * Cached config
+	 *
+	 * @var array<string, mixed>|null
+	 */
+	private static $cached_config = null;
+
+
+	/**
+	 * Get the config
+	 * @return array<string, mixed> The module configs. Returns an empty array if configs are not found,
+	 * not defined, or if JSON parsing fails.
+	 */
+	public static function get_config(): array {
+		if ( null === self::$cached_config ) {
+			self::init();
+		}
+
+		$current_config = [];
+
+		if ( isset( self::$cached_config ) ) {
+			$current_config = self::$cached_config;
+		}
+
+		if ( ! is_array( $current_config ) ) {
+			return [];
+		}
+
+		return $current_config;
+	}
+
+	private static function init(): void {
+		self::$cached_config = self::get_actual_config();
+	}
+
+	/**
+	 * Retrieve the actual configuration from the defined constant.
+	 *
+	 * @return array<string, mixed> The configuration array.
+	 */
+	private static function get_actual_config(): array {
+		if ( ! defined( 'VIP_AGENTFORCE_CONFIGS' ) ) {
+			Logger::warning_log_if_user_logged_in( 'sb_configs', 'VIP_AGENTFORCE_CONFIGS is not defined.' );
+			return [];
+		}
+
+		$configs = constant( 'VIP_AGENTFORCE_CONFIGS' );
+		if ( is_string( $configs ) ) {
+			$configs = json_decode( $configs, true );
+		}
+		if ( ! is_array( $configs ) ) {
+			return [];
+		}
+
+		return $configs;
+	}
+
+	public static function is_local_env(): bool {
+		return ! defined( 'VIP_GO_APP_ENVIRONMENT' ) || 'local' === constant( 'VIP_GO_APP_ENVIRONMENT' );
+	}
+
+	public static function is_production_env(): bool {
+		return defined( 'VIP_GO_APP_ENVIRONMENT' ) && 'production' === constant( 'VIP_GO_APP_ENVIRONMENT' );
+	}
+}
