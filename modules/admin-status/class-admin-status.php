@@ -34,7 +34,7 @@ class Admin_Status {
 			esc_html( $salesforce_instance_url )
 		);
 		do_action( 'vip_agentforce_track_event', 'admin_status_page_viewed', [] );
-		do_action( 'vip_agentforce_track_stat', 'admin_status_page_viewed', [] );
+		do_action( 'vip_agentforce_track_stat', 'admin_status_page_viewed' );
 	}
 }
 
