@@ -1,0 +1,19 @@
+{
+  "packageDirectories": [
+    {
+      "versionName": "ver 0.1",
+      "versionNumber": "0.1.0.NEXT",
+      "path": "force-app",
+      "default": true,
+      "package": "vip-agents",
+      "versionDescription": ""
+    }
+  ],
+  "name": "vip-agents",
+  "namespace": "",
+  "sfdcLoginUrl": "https://login.salesforce.com",
+  "sourceApiVersion": "64.0",
+  "packageAliases": {
+    "vip-agents": "0HoUU00000001Ab0AI"
+  }
+}
