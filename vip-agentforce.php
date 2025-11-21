@@ -53,4 +53,11 @@ if ( class_exists( 'Automattic\\VIP\\Prometheus\\Plugin' ) ) {
 
 
 // Load the modules
+require_once __DIR__ . '/modules/salesforce/class-credentials.php';
+require_once __DIR__ . '/modules/ingest/class-ingest-client.php';
+require_once __DIR__ . '/modules/ingest/class-datakit-deployment.php';
+require_once __DIR__ . '/modules/ingest/class-data-sync.php';
 require_once __DIR__ . '/modules/admin-status/class-admin-status.php';
+
+// Initialize Sync
+\Automattic\VIP\Salesforce\Agentforce\Ingest\Data_Sync::init();
