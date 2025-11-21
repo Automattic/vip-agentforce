@@ -11,6 +11,9 @@ class DataKit_Deployment {
 	private const DATAKIT_BUNDLE_NAME    = 'WordPress_Posts_DataKit';
 	private const DATAKIT_CONNECTOR_NAME = 'wordpress_posts';
 
+	/**
+	 * @return array<string, mixed>
+	 */
 	public static function check_package_installation(): array {
 		$credentials = Credentials::get_credentials();
 		if ( ! $credentials['access_token'] || ! $credentials['instance_url'] ) {
@@ -84,6 +87,9 @@ class DataKit_Deployment {
 		return ( $body['totalSize'] ?? 0 ) > 0;
 	}
 
+	/**
+	 * @return array<string, mixed>
+	 */
 	public static function deploy_datakit( ?string $site_id = null, ?string $blog_id = null ): array {
 		$credentials = Credentials::get_credentials();
 		if ( ! $credentials['access_token'] || ! $credentials['instance_url'] ) {

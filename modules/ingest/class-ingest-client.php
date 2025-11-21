@@ -56,6 +56,10 @@ class Ingest_Client {
 		return $access_token;
 	}
 
+	/**
+	 * @param array<int, array<string, mixed>> $data
+	 * @return array<string, mixed>
+	 */
 	public static function ingest_data( array $data, ?string $site_id = null, ?string $blog_id = null ): array {
 		$data_cloud_token = self::get_data_cloud_token();
 		$credentials      = Credentials::get_credentials();

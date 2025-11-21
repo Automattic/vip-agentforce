@@ -7,6 +7,9 @@ use Automattic\VIP\Salesforce\Agentforce\Utils\Configs;
 class Credentials {
 	private const OPTION_NAME = 'vip_agentforce_salesforce_credentials';
 
+	/**
+	 * @return array<string, string|null>
+	 */
 	public static function get_credentials(): array {
 		$config = Configs::get_config();
 		

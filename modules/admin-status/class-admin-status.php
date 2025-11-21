@@ -8,8 +8,11 @@ use Automattic\VIP\Salesforce\Agentforce\Ingest\Data_Sync;
 
 class Admin_Status {
 
+	/** @var bool */
 	private static $errors_displayed = false;
-	private static $errors_added     = [];
+
+	/** @var array<string> */
+	private static $errors_added = [];
 
 	public static function init(): void {
 		add_action( 'admin_menu', [ __CLASS__, 'add_options_page' ] );

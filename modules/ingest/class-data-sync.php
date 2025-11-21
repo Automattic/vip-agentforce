@@ -32,6 +32,9 @@ class Data_Sync {
 		}
 	}
 
+	/**
+	 * @return array<int, WP_Post>
+	 */
 	private static function get_posts_to_sync(): array {
 		// For now, just get latest 50 published posts.
 		// In a real scenario, we'd track sync status/timestamps.
@@ -46,10 +49,13 @@ class Data_Sync {
 		] );
 	}
 
+	/**
+	 * @return array<string, mixed>
+	 */
 	private static function transform_post( WP_Post $post ): array {
 		$categories  = wp_get_post_categories( $post->ID, [ 'fields' => 'names' ] );
 		$tags        = wp_get_post_tags( $post->ID, [ 'fields' => 'names' ] );
-		$author_name = get_the_author_meta( 'display_name', $post->post_author );
+		$author_name = get_the_author_meta( 'display_name', (int) $post->post_author );
 
 		return [
 			'id'             => (string) $post->ID,
