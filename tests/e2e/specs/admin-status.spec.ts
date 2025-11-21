@@ -8,7 +8,7 @@ const agentForceConfig = getAgentForceConfig();
 test.describe( 'Admin Status Page', () => {
 	test( 'displays Salesforce instance details from the integration config', async ( { page } ) => {
 		const adminStatusPage = new AdminStatusPage( page );
-		const expectedSalesforceUrl = agentForceConfig.salesforce_instance_url ?? 'Not configured';
+		const expectedSalesforceUrl = agentForceConfig.salesforce_instance_url ?? '';
 
 		await test.step( 'Visit the admin status settings page', () => {
 			return adminStatusPage.visit();
@@ -16,13 +16,16 @@ test.describe( 'Admin Status Page', () => {
 
 		await test.step( 'Verify the page heading and layout elements render', async () => {
 			await expect( adminStatusPage.wrapper ).toBeVisible();
-			await expect( adminStatusPage.heading ).toHaveText( 'VIP Agentforce Integration Status' );
-			await expect( adminStatusPage.statusCard ).toBeVisible();
+			await expect( adminStatusPage.heading ).toHaveText( 'VIP Agentforce Settings' );
+			await expect( adminStatusPage.salesforceInstanceUrlInput ).toBeVisible();
+			await expect( adminStatusPage.actionsStatusTable ).toBeVisible();
 		} );
 
-		await test.step( 'Verify Salesforce instance configuration is shown', async () => {
-			await expect( adminStatusPage.salesforceLabel ).toHaveText( 'Salesforce Instance URL:' );
-			await expect( adminStatusPage.salesforceValue ).toHaveText( expectedSalesforceUrl );
+		await test.step( 'Verify Salesforce instance configuration form is shown', async () => {
+			await expect( adminStatusPage.salesforceLabel.filter( { hasText: 'Salesforce Instance URL' } ) ).toBeVisible();
+			if ( expectedSalesforceUrl ) {
+				await expect( adminStatusPage.salesforceInstanceUrlInput ).toHaveValue( expectedSalesforceUrl );
+			}
 		} );
 	} );
 } );

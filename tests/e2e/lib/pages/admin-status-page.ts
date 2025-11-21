@@ -1,20 +1,22 @@
 import type { Locator, Page } from '@playwright/test';
 
 const selectors = {
-	wrapper: '#vip-agentforce-integration-status-wrapper',
-	heading: '#vip-agentforce-integration-status-wrapper h1',
-	statusCard: '#vip-agentforce-integration-status',
-	salesforceLabel: '#vip-agentforce-integration-status strong',
-	salesforceValue: '#vip-agentforce-integration-status pre',
+	wrapper: '.wrap',
+	heading: '.wrap h1',
+	salesforceInstanceUrlInput: 'input[name="salesforce_instance_url"]',
+	salesforceAccessTokenInput: 'input[name="salesforce_access_token"]',
+	salesforceLabel: 'th[scope="row"]',
+	actionsStatusTable: '.widefat',
 };
 
 export class AdminStatusPage {
 	private readonly page: Page;
 	public readonly wrapper: Locator;
 	public readonly heading: Locator;
-	public readonly statusCard: Locator;
+	public readonly salesforceInstanceUrlInput: Locator;
+	public readonly salesforceAccessTokenInput: Locator;
 	public readonly salesforceLabel: Locator;
-	public readonly salesforceValue: Locator;
+	public readonly actionsStatusTable: Locator;
 
 	/**
 	 * Constructs an instance of the Admin Status page.
@@ -25,9 +27,10 @@ export class AdminStatusPage {
 		this.page = page;
 		this.wrapper = page.locator( selectors.wrapper );
 		this.heading = page.locator( selectors.heading );
-		this.statusCard = page.locator( selectors.statusCard );
+		this.salesforceInstanceUrlInput = page.locator( selectors.salesforceInstanceUrlInput );
+		this.salesforceAccessTokenInput = page.locator( selectors.salesforceAccessTokenInput );
 		this.salesforceLabel = page.locator( selectors.salesforceLabel );
-		this.salesforceValue = page.locator( selectors.salesforceValue );
+		this.actionsStatusTable = page.locator( selectors.actionsStatusTable );
 	}
 
 	/**
@@ -36,5 +39,6 @@ export class AdminStatusPage {
 	public async visit(): Promise<void> {
 		await this.page.goto( '/wp-admin/options-general.php?page=vip-agentforce-integration-status' );
 		await this.wrapper.waitFor();
+		await this.heading.waitFor();
 	}
 }
