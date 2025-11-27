@@ -55,7 +55,7 @@ class Tracking {
 	 * @param string $event_name Event name.
 	 * @param array<string, mixed> $event_data Event data.
 	 */
-	private static function record_event( string $event_name, array $event_data = [] ): void {
+	public static function record_event( string $event_name, array $event_data = [] ): void {
 		$telemetry = self::get_telemetry();
 		if ( $telemetry ) {
 			$telemetry->record_event( $event_name, $event_data );
@@ -81,7 +81,7 @@ class Tracking {
 	 *
 	 * @param string $stat_name Stat name.
 	 */
-	private static function record_stats( $stat_name ): void {
+	public static function record_stats( $stat_name ): void {
 		$env_prefix = self::maybe_get_non_production_prefix( false );
 		$stat_code  = self::PREFIX;
 		if ( ! empty( $env_prefix ) ) {
