@@ -10,34 +10,29 @@ namespace Automattic\VIP\Salesforce\Agentforce\Ingestion;
 use Automattic\VIP\Salesforce\Agentforce\Utils\Logger;
 
 /**
- * Handles ingestion filtering for records to be sent to Salesforce.
- *
- * @phpstan-import-type Post_Ingestion_Record from Ingestion_Record
+ * Handles ingestion filtering for posts to be sent to Salesforce.
  */
 class Ingestion {
 	/**
 	 * Initialize the module.
 	 */
 	public static function init(): void {
-		add_action( 'save_post', [ __CLASS__, 'on_save_post' ], 10, 2 );
+		add_action( 'save_post', [ __CLASS__, 'ingest_post' ], 10, 2 );
 	}
 
 	/**
-	 * Hook: Fires when a post is saved.
-	 * Checks if the post should be ingested and logs the decision.
+	 * Attempts to ingest a post if it passes the filter.
 	 *
 	 * @param int      $post_id Post ID.
 	 * @param \WP_Post $post    Post object.
 	 */
-	public static function on_save_post( int $post_id, \WP_Post $post ): void {
-		$ingestion_record = new Ingestion_Record( Ingestion_Record::TYPE_POST, $post );
-		$should_ingest    = self::should_ingest_record( $ingestion_record );
+	public static function ingest_post( int $post_id, \WP_Post $post ): void {
+		$should_ingest = self::should_ingest_post( $post );
 
 		Logger::info(
 			'ingestion',
-			$should_ingest ? 'Record will be ingested' : 'Record will not be ingested',
+			$should_ingest ? 'Post will be ingested' : 'Post will not be ingested',
 			[
-				'type'        => $ingestion_record->type,
 				'post_id'     => $post_id,
 				'post_status' => $post->post_status,
 				'post_type'   => $post->post_type,
@@ -47,35 +42,33 @@ class Ingestion {
 	}
 
 	/**
-	 * Determine if a record should be ingested.
+	 * Determine if a post should be ingested.
 	 *
 	 * Returns false by default unless a filter explicitly opts in.
 	 * This prevents accidental mass ingestion on sites with millions of posts.
 	 *
-	 * @param Ingestion_Record<'post'|'comment'|'user', \WP_Post|\WP_Comment|\WP_User> $ingestion_record The record to evaluate.
-	 * @return bool Whether the record should be ingested.
+	 * @param \WP_Post $post The post to evaluate.
+	 * @return bool Whether the post should be ingested.
 	 */
-	public static function should_ingest_record( Ingestion_Record $ingestion_record ): bool {
+	public static function should_ingest_post( \WP_Post $post ): bool {
 		// Safety: No filters = no ingestion.
-		if ( ! has_filter( 'vip_agentforce_should_ingest_record' ) ) {
+		if ( ! has_filter( 'vip_agentforce_should_ingest_post' ) ) {
 			return false;
 		}
 
-		// Post-specific: Only 'publish' status allowed.
-		if ( Ingestion_Record::TYPE_POST === $ingestion_record->type && $ingestion_record->record instanceof \WP_Post ) {
-			if ( 'publish' !== $ingestion_record->record->post_status ) {
-				return false;
-			}
+		// Only 'publish' status allowed.
+		if ( 'publish' !== $post->post_status ) {
+			return false;
 		}
 
 		/**
-		 * Filter whether a record should be ingested into Salesforce.
+		 * Filter whether a post should be ingested into Salesforce.
 		 *
-		 * @param bool             $should_ingest    Default false - must explicitly return true to ingest.
-		 * @param Ingestion_Record $ingestion_record Contains type and record.
-		 * @return bool Whether to ingest the record.
+		 * @param bool     $should_ingest Default false - must explicitly return true to ingest.
+		 * @param \WP_Post $post          The post being evaluated.
+		 * @return bool Whether to ingest the post.
 		 */
-		return (bool) apply_filters( 'vip_agentforce_should_ingest_record', false, $ingestion_record );
+		return (bool) apply_filters( 'vip_agentforce_should_ingest_post', false, $post );
 	}
 }
 
