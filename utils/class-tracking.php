@@ -81,7 +81,7 @@ class Tracking {
 	 *
 	 * @param string $stat_name Stat name.
 	 */
-	public static function record_stats( $stat_name ): void {
+	public static function record_stats( string $stat_name ): void {
 		$env_prefix = self::maybe_get_non_production_prefix( false );
 		$stat_code  = self::PREFIX;
 		if ( ! empty( $env_prefix ) ) {
