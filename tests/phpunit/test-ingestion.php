@@ -1,6 +1,7 @@
 <?php
 
 use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion;
+use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_Post_Record;
 
 class Ingestion_Test extends WP_UnitTestCase {
 
@@ -12,6 +13,7 @@ class Ingestion_Test extends WP_UnitTestCase {
 	public function tearDown(): void {
 		parent::tearDown();
 		remove_all_filters( 'vip_agentforce_should_ingest_post' );
+		remove_all_filters( 'vip_agentforce_transform_post' );
 	}
 
 	public function test_save_post_hook_is_registered(): void {
@@ -130,5 +132,118 @@ class Ingestion_Test extends WP_UnitTestCase {
 		Ingestion::should_ingest_post( $post );
 
 		$this->assertFalse( $filter_called );
+	}
+
+	public function test_transform_post_returns_null_without_filter(): void {
+		remove_all_filters( 'vip_agentforce_transform_post' );
+
+		$post   = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
+		$result = Ingestion::transform_post( $post );
+
+		$this->assertNull( $result );
+	}
+
+	public function test_transform_post_returns_record_with_valid_filter(): void {
+		$post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
+
+		add_filter(
+			'vip_agentforce_transform_post',
+			function ( $record, $filter_post ) {
+				return new Ingestion_Post_Record(
+					[
+						'site_id'                 => '1',
+						'blog_id'                 => '1',
+						'post_id'                 => (string) $filter_post->ID,
+						'site_id_blog_id'         => '1_1',
+						'site_id_blog_id_post_id' => '1_1_' . $filter_post->ID,
+						'published'               => true,
+						'last_published_at'       => '2025-01-01T00:00:00+00:00',
+						'last_modified_at'        => '2025-01-01T00:00:00+00:00',
+						'title'                   => $filter_post->post_title,
+						'content'                 => $filter_post->post_content,
+						'excerpt'                 => $filter_post->post_excerpt,
+						'categories'              => '',
+						'tags'                    => '',
+						'author'                  => '',
+						'url'                     => 'https://example.com',
+						'post_type'               => $filter_post->post_type,
+						'post_status'             => $filter_post->post_status,
+					]
+				);
+			},
+			10,
+			2
+		);
+
+		$result = Ingestion::transform_post( $post );
+
+		$this->assertInstanceOf( Ingestion_Post_Record::class, $result );
+		$this->assertSame( (string) $post->ID, $result->post_id );
+	}
+
+	public function test_transform_post_returns_null_when_filter_returns_wrong_type(): void {
+		$post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
+
+		add_filter(
+			'vip_agentforce_transform_post',
+			// phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed -- Testing wrong return type.
+			function ( $record, $filter_post ) {
+				return [ 'not' => 'a record object' ];
+			},
+			10,
+			2
+		);
+
+		$result = Ingestion::transform_post( $post );
+
+		$this->assertNull( $result );
+	}
+
+	public function test_transform_post_filter_receives_post(): void {
+		$post = $this->factory()->post->create_and_get(
+			[
+				'post_title'  => 'Test Title for Filter',
+				'post_status' => 'publish',
+			]
+		);
+		/** @var \WP_Post|null $received_post */
+		$received_post = null;
+
+		add_filter(
+			'vip_agentforce_transform_post',
+			function ( $record, $filter_post ) use ( &$received_post ) {
+				$received_post = $filter_post;
+				return new Ingestion_Post_Record(
+					[
+						'site_id'                 => '1',
+						'blog_id'                 => '1',
+						'post_id'                 => '1',
+						'site_id_blog_id'         => '1_1',
+						'site_id_blog_id_post_id' => '1_1_1',
+						'published'               => true,
+						'last_published_at'       => '2025-01-01T00:00:00+00:00',
+						'last_modified_at'        => '2025-01-01T00:00:00+00:00',
+						'title'                   => 'Title',
+						'content'                 => 'Content',
+						'excerpt'                 => 'Excerpt',
+						'categories'              => '',
+						'tags'                    => '',
+						'author'                  => '',
+						'url'                     => 'https://example.com',
+						'post_type'               => 'post',
+						'post_status'             => 'publish',
+					]
+				);
+			},
+			10,
+			2
+		);
+
+		Ingestion::transform_post( $post );
+
+		$this->assertNotNull( $received_post );
+		$this->assertInstanceOf( WP_Post::class, $received_post );
+		$this->assertEquals( $post->ID, $received_post->ID );
+		$this->assertSame( 'Test Title for Filter', $received_post->post_title );
 	}
 }
