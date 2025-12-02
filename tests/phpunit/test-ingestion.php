@@ -1,6 +1,7 @@
 <?php
 
 use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion;
+use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_Failure;
 use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_Post_Record;
 
 class Ingestion_Test extends WP_UnitTestCase {
@@ -14,6 +15,7 @@ class Ingestion_Test extends WP_UnitTestCase {
 		parent::tearDown();
 		remove_all_filters( 'vip_agentforce_should_ingest_post' );
 		remove_all_filters( 'vip_agentforce_transform_post' );
+		remove_all_actions( 'vip_agentforce_post_ingestion_failed' );
 	}
 
 	public function test_save_post_hook_is_registered(): void {
@@ -245,5 +247,203 @@ class Ingestion_Test extends WP_UnitTestCase {
 		$this->assertInstanceOf( WP_Post::class, $received_post );
 		$this->assertEquals( $post->ID, $received_post->ID );
 		$this->assertSame( 'Test Title for Filter', $received_post->post_title );
+	}
+
+	// =========================================================================
+	// Tests for vip_agentforce_post_ingestion_failed action
+	// =========================================================================
+
+	public function test_failure_action_does_not_fire_on_filter_rejection(): void {
+		$post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
+
+		// Filter opts out of ingestion - this is NOT a failure.
+		add_filter( 'vip_agentforce_should_ingest_post', '__return_false' );
+
+		$action_fired = false;
+
+		add_action(
+			'vip_agentforce_post_ingestion_failed',
+			function () use ( &$action_fired ) {
+				$action_fired = true;
+			}
+		);
+
+		Ingestion::ingest_post( $post->ID, $post );
+
+		$this->assertFalse( $action_fired, 'Action should NOT fire when filter rejects post (skip is not a failure).' );
+	}
+
+	public function test_failure_action_does_not_fire_on_no_filter_registered(): void {
+		remove_all_filters( 'vip_agentforce_should_ingest_post' );
+
+		$post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
+
+		$action_fired = false;
+
+		add_action(
+			'vip_agentforce_post_ingestion_failed',
+			function () use ( &$action_fired ) {
+				$action_fired = true;
+			}
+		);
+
+		Ingestion::ingest_post( $post->ID, $post );
+
+		$this->assertFalse( $action_fired, 'Action should NOT fire when no filter is registered (skip is not a failure).' );
+	}
+
+	public function test_failure_action_fires_on_transform_failure(): void {
+		$post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
+
+		// Filter opts in but transform returns null.
+		add_filter( 'vip_agentforce_should_ingest_post', '__return_true' );
+		add_filter( 'vip_agentforce_transform_post', '__return_null' );
+
+		$action_fired = false;
+		/** @var Ingestion_Failure|null $received_failure */
+		$received_failure = null;
+
+		add_action(
+			'vip_agentforce_post_ingestion_failed',
+			function ( $failure ) use ( &$action_fired, &$received_failure ) {
+				$action_fired     = true;
+				$received_failure = $failure;
+			}
+		);
+
+		Ingestion::ingest_post( $post->ID, $post );
+
+		$this->assertTrue( $action_fired, 'Action should fire when transform fails.' );
+		$this->assertInstanceOf( Ingestion_Failure::class, $received_failure );
+		$this->assertSame( Ingestion_Failure::CODE_TRANSFORM_FAILED, $received_failure->failure_code );
+		$this->assertTrue( $received_failure->is_transform_failure() );
+		$this->assertFalse( $received_failure->is_api_error() );
+		$this->assertSame( $post->ID, $received_failure->post->ID );
+		$this->assertInstanceOf( WP_Error::class, $received_failure->error );
+		$this->assertSame( 'vip_agentforce_transform_failed', $received_failure->error->get_error_code() );
+	}
+
+	public function test_failure_action_does_not_fire_on_success(): void {
+		$post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
+
+		add_filter( 'vip_agentforce_should_ingest_post', '__return_true' );
+		add_filter(
+			'vip_agentforce_transform_post',
+			function ( $record, $filter_post ) {
+				return new Ingestion_Post_Record(
+					[
+						'site_id'                 => '1',
+						'blog_id'                 => '1',
+						'post_id'                 => (string) $filter_post->ID,
+						'site_id_blog_id'         => '1_1',
+						'site_id_blog_id_post_id' => '1_1_' . $filter_post->ID,
+						'published'               => true,
+						'last_published_at'       => '2025-01-01T00:00:00+00:00',
+						'last_modified_at'        => '2025-01-01T00:00:00+00:00',
+						'title'                   => $filter_post->post_title,
+						'content'                 => $filter_post->post_content,
+						'excerpt'                 => $filter_post->post_excerpt,
+						'categories'              => '',
+						'tags'                    => '',
+						'author'                  => '',
+						'url'                     => 'https://example.com',
+						'post_type'               => $filter_post->post_type,
+						'post_status'             => $filter_post->post_status,
+					]
+				);
+			},
+			10,
+			2
+		);
+
+		$action_fired = false;
+
+		add_action(
+			'vip_agentforce_post_ingestion_failed',
+			function () use ( &$action_fired ) {
+				$action_fired = true;
+			}
+		);
+
+		Ingestion::ingest_post( $post->ID, $post );
+
+		$this->assertFalse( $action_fired, 'Action should NOT fire on successful ingestion.' );
+	}
+
+	public function test_failure_error_contains_backtrace(): void {
+		$post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
+
+		add_filter( 'vip_agentforce_should_ingest_post', '__return_true' );
+		add_filter( 'vip_agentforce_transform_post', '__return_null' );
+
+		/** @var Ingestion_Failure|null $received_failure */
+		$received_failure = null;
+
+		add_action(
+			'vip_agentforce_post_ingestion_failed',
+			function ( $failure ) use ( &$received_failure ) {
+				$received_failure = $failure;
+			}
+		);
+
+		Ingestion::ingest_post( $post->ID, $post );
+
+		$this->assertInstanceOf( Ingestion_Failure::class, $received_failure );
+		$error_data = $received_failure->error->get_error_data();
+		$this->assertIsArray( $error_data );
+		$this->assertArrayHasKey( 'backtrace', $error_data );
+		$this->assertIsArray( $error_data['backtrace'] );
+		$this->assertNotEmpty( $error_data['backtrace'] );
+	}
+
+	public function test_failure_error_contains_post_id(): void {
+		$post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
+
+		add_filter( 'vip_agentforce_should_ingest_post', '__return_true' );
+		add_filter( 'vip_agentforce_transform_post', '__return_null' );
+
+		/** @var Ingestion_Failure|null $received_failure */
+		$received_failure = null;
+
+		add_action(
+			'vip_agentforce_post_ingestion_failed',
+			function ( $failure ) use ( &$received_failure ) {
+				$received_failure = $failure;
+			}
+		);
+
+		Ingestion::ingest_post( $post->ID, $post );
+
+		$this->assertInstanceOf( Ingestion_Failure::class, $received_failure );
+		$error_data = $received_failure->error->get_error_data();
+		$this->assertIsArray( $error_data );
+		$this->assertArrayHasKey( 'post_id', $error_data );
+		$this->assertSame( $post->ID, $error_data['post_id'] );
+	}
+
+	public function test_failure_to_array(): void {
+		$post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
+
+		add_filter( 'vip_agentforce_should_ingest_post', '__return_true' );
+		add_filter( 'vip_agentforce_transform_post', '__return_null' );
+
+		/** @var Ingestion_Failure|null $received_failure */
+		$received_failure = null;
+
+		add_action(
+			'vip_agentforce_post_ingestion_failed',
+			function ( $failure ) use ( &$received_failure ) {
+				$received_failure = $failure;
+			}
+		);
+
+		Ingestion::ingest_post( $post->ID, $post );
+
+		$this->assertInstanceOf( Ingestion_Failure::class, $received_failure );
+		$array = $received_failure->to_array();
+		$this->assertSame( Ingestion_Failure::CODE_TRANSFORM_FAILED, $array['failure_code'] );
+		$this->assertSame( $post->ID, $array['post_id'] );
+		$this->assertSame( 'vip_agentforce_transform_failed', $array['error_code'] );
+		$this->assertNotEmpty( $array['error_message'] );
 	}
 }
