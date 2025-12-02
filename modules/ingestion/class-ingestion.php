@@ -75,7 +75,38 @@ class Ingestion {
 			return;
 		}
 
-		self::send_to_api( $record );
+		$response = static::send_to_api( $record );
+
+		if ( ! $response['success'] ) {
+			Logger::info(
+				'ingestion',
+				'API call failed',
+				[
+					'post_id'  => $post_id,
+					'response' => $response,
+				]
+			);
+
+			self::fire_ingestion_failure(
+				new Ingestion_Failure(
+					[
+						'failure_code' => Ingestion_Failure::CODE_API_ERROR,
+						'post'         => $post,
+						'error'        => new \WP_Error(
+							'vip_agentforce_api_error',
+							$response['error_message'] ?? 'API call failed',
+							[
+								'post_id'   => $post_id,
+								'response'  => $response,
+								// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_debug_backtrace -- Intentional for error tracing.
+								'backtrace' => debug_backtrace( DEBUG_BACKTRACE_IGNORE_ARGS, 5 ),
+							]
+						),
+					]
+				)
+			);
+			return;
+		}
 
 		Logger::info(
 			'ingestion',
@@ -115,9 +146,9 @@ class Ingestion {
 	 * Send record to Salesforce API.
 	 *
 	 * @param Ingestion_Post_Record $record The record to send.
-	 * @return array<string, mixed> Mock response (placeholder for future Salesforce integration).
+	 * @return array<string, mixed> Response with 'success' key (true/false) and error details if failed.
 	 */
-	private static function send_to_api( Ingestion_Post_Record $record ): array {
+	public static function send_to_api( Ingestion_Post_Record $record ): array {
 		// TODO: Implement actual Salesforce API call.
 		return [
 			'success'   => true,
