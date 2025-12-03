@@ -180,8 +180,10 @@ class Ingestion {
 	public static function transform_post( \WP_Post $post ): ?Ingestion_Post_Record {
 		/**
 		 * Filter to transform a WP_Post into an Ingestion_Post_Record for Salesforce.
+		 * 
+		 * NOTE: The first transformer is the Default_Transformer, which provides a basic mapping.
 		 *
-		 * @param Ingestion_Post_Record|null $record The transformed record (null if not yet transformed).
+		 * @param Ingestion_Post_Record|null $record The transformed record (null if not yet transformed by Default_Transformer).
 		 * @param \WP_Post                   $post   The post being transformed.
 		 * @return Ingestion_Post_Record|null The transformed record, or null to skip ingestion.
 		 */
