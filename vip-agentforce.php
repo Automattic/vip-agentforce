@@ -57,3 +57,4 @@ require_once __DIR__ . '/modules/admin-status/class-admin-status.php';
 require_once __DIR__ . '/modules/ingestion/class-ingestion-post-record.php';
 require_once __DIR__ . '/modules/ingestion/class-default-transformer.php';
 require_once __DIR__ . '/modules/ingestion/class-ingestion.php';
+require_once __DIR__ . '/modules/ingestion/class-ingestion-failure.php';
