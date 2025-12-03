@@ -343,7 +343,8 @@ class Ingestion_Deletion_Test extends WP_UnitTestCase {
 
 		Ingestion_With_Failing_Delete_Api::init();
 
-		$action_fired     = false;
+		$action_fired = false;
+		/** @var Deletion_Failure|null $received_failure */
 		$received_failure = null;
 
 		add_action(
@@ -368,6 +369,7 @@ class Ingestion_Deletion_Test extends WP_UnitTestCase {
 
 		Ingestion_With_Failing_Delete_Api::init();
 
+		/** @var Deletion_Failure|null $received_failure */
 		$received_failure = null;
 
 		add_action(
@@ -391,6 +393,7 @@ class Ingestion_Deletion_Test extends WP_UnitTestCase {
 
 		Ingestion_With_Failing_Delete_Api::init();
 
+		/** @var Deletion_Failure|null $received_failure */
 		$received_failure = null;
 
 		add_action(
@@ -413,6 +416,7 @@ class Ingestion_Deletion_Test extends WP_UnitTestCase {
 
 		Ingestion_With_Failing_Delete_Api::init();
 
+		/** @var Deletion_Failure|null $received_failure */
 		$received_failure = null;
 
 		add_action(
@@ -438,6 +442,7 @@ class Ingestion_Deletion_Test extends WP_UnitTestCase {
 
 		Ingestion_With_Failing_Delete_Api::init();
 
+		/** @var Deletion_Failure|null $received_failure */
 		$received_failure = null;
 
 		add_action(
