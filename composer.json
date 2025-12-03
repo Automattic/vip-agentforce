@@ -10,6 +10,7 @@
 		"automattic/vipwpcs": "^3",
 		"guzzlehttp/guzzle": "^7.9",
 		"php-stubs/wordpress-tests-stubs": "^6.8",
+		"php-stubs/wp-cli-stubs": "^2.12",
 		"phpcompatibility/phpcompatibility-wp": "^2",
 		"phpstan/phpstan": "^2.0",
 		"phpunit/phpunit": "^9",
