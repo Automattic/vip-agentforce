@@ -14,6 +14,14 @@ use Automattic\VIP\Salesforce\Agentforce\Utils\Logger;
  */
 class Ingestion {
 	/**
+	 * Post meta key to track ingestion attempts.
+	 *
+	 * This meta is set when we attempt to ingest a post (after passing should_ingest_post filter).
+	 * It allows us to track which posts were sent to Salesforce even if the filter changes later.
+	 */
+	public const META_KEY_INGESTION_ATTEMPTED = 'vip_agentforce_ingestion_attempted';
+
+	/**
 	 * Initialize the module.
 	 */
 	public static function init(): void {
@@ -44,6 +52,10 @@ class Ingestion {
 			);
 			return;
 		}
+
+		// Mark that we're attempting to ingest this post.
+		// This allows us to track posts for deletion even if the filter changes later.
+		update_post_meta( $post_id, self::META_KEY_INGESTION_ATTEMPTED, time() );
 
 		$record = self::transform_post( $post );
 		if ( null === $record ) {
@@ -241,11 +253,11 @@ class Ingestion {
 			return;
 		}
 
-		// Check if the post was ingestible (would have been sent to Salesforce).
+		// Check if the post was previously ingested (has tracking meta).
 		if ( ! self::was_post_ingestible( $post ) ) {
 			Logger::info(
 				'ingestion',
-				'Post was not previously ingestible, skipping deletion',
+				'Post was not previously ingested, skipping deletion',
 				[
 					'post_id'    => $post->ID,
 					'old_status' => $old_status,
@@ -286,11 +298,11 @@ class Ingestion {
 			return;
 		}
 
-		// Check if the post was ingestible.
+		// Check if the post was previously ingested (has tracking meta).
 		if ( ! self::was_post_ingestible( $post ) ) {
 			Logger::info(
 				'ingestion',
-				'Deleted post was not ingestible, skipping deletion',
+				'Deleted post was not previously ingested, skipping deletion',
 				[ 'post_id' => $post_id ]
 			);
 			return;
@@ -300,32 +312,24 @@ class Ingestion {
 	}
 
 	/**
-	 * Check if a post was previously ingestible (would have been ingested when published).
+	 * Check if a post was previously ingested (or ingestion was attempted).
 	 *
-	 * This is used to determine if we should delete from Salesforce.
-	 * A post is considered "was ingestible" if the filter is registered AND would return true.
+	 * This checks for the ingestion meta first - if it exists, we know we attempted
+	 * to ingest this post. This is more reliable than checking the filter, as filters
+	 * can change over time.
 	 *
 	 * @param \WP_Post $post The post to check.
-	 * @return bool Whether the post was previously ingestible.
+	 * @return bool Whether the post was previously ingested.
 	 */
 	private static function was_post_ingestible( \WP_Post $post ): bool {
-		// Safety: No filters = no ingestion ever happened.
-		if ( ! has_filter( 'vip_agentforce_should_ingest_post' ) ) {
-			return false;
+		// Check if we have a record of attempting to ingest this post.
+		$ingestion_attempted = get_post_meta( $post->ID, self::META_KEY_INGESTION_ATTEMPTED, true );
+
+		if ( ! empty( $ingestion_attempted ) ) {
+			return true;
 		}
 
-		// Temporarily set post status to 'publish' to check filter
-		// (in case the post status has already changed).
-		$current_status    = $post->post_status;
-		$post->post_status = 'publish';
-
-		/** This filter is documented in class-ingestion.php */
-		$would_ingest = (bool) apply_filters( 'vip_agentforce_should_ingest_post', false, $post );
-
-		// Restore original status.
-		$post->post_status = $current_status;
-
-		return $would_ingest;
+		return false;
 	}
 
 	/**
@@ -382,6 +386,9 @@ class Ingestion {
 			);
 			return;
 		}
+
+		// Clear the ingestion tracking meta since the post is no longer in Salesforce.
+		delete_post_meta( $post->ID, self::META_KEY_INGESTION_ATTEMPTED );
 
 		Logger::info(
 			'ingestion',
