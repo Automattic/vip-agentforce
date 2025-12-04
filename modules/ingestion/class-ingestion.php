@@ -29,16 +29,76 @@ class Ingestion {
 	public static function ingest_post( int $post_id, \WP_Post $post ): void {
 		$should_ingest = self::should_ingest_post( $post );
 
+		if ( ! $should_ingest ) {
+			Logger::info(
+				'ingestion',
+				'Post will not be ingested',
+				[
+					'post_id'     => $post_id,
+					'post_status' => $post->post_status,
+					'post_type'   => $post->post_type,
+					'result'      => false,
+				]
+			);
+			return;
+		}
+
+		$record = self::transform_post( $post );
+		if ( null === $record ) {
+			Logger::info(
+				'ingestion',
+				'Post transformation failed, skipping ingestion',
+				[
+					'post_id'     => $post_id,
+					'post_status' => $post->post_status,
+					'post_type'   => $post->post_type,
+				]
+			);
+			return;
+		}
+
 		Logger::info(
 			'ingestion',
-			$should_ingest ? 'Post will be ingested' : 'Post will not be ingested',
+			'Post will be ingested',
 			[
-				'post_id'     => $post_id,
-				'post_status' => $post->post_status,
-				'post_type'   => $post->post_type,
-				'result'      => $should_ingest,
+				'post_id'        => $post_id,
+				'post_status'    => $post->post_status,
+				'post_type'      => $post->post_type,
+				'post_processed' => $record->to_array(),
+				'result'         => true,
 			]
 		);
+	}
+
+	/**
+	 * Transform a post into an Ingestion_Post_Record.
+	 *
+	 * @param \WP_Post $post The post to transform.
+	 * @return Ingestion_Post_Record|null The transformed record, or null if transformation failed.
+	 */
+	public static function transform_post( \WP_Post $post ): ?Ingestion_Post_Record {
+		/**
+		 * Filter to transform a WP_Post into an Ingestion_Post_Record for Salesforce.
+		 *
+		 * @param Ingestion_Post_Record|null $record The transformed record (null if not yet transformed).
+		 * @param \WP_Post                   $post   The post being transformed.
+		 * @return Ingestion_Post_Record|null The transformed record, or null to skip ingestion.
+		 */
+		$record = apply_filters( 'vip_agentforce_transform_post', null, $post );
+
+		if ( ! $record instanceof Ingestion_Post_Record ) {
+			Logger::warning(
+				'ingestion',
+				'vip_agentforce_transform_post filter must return an Ingestion_Post_Record instance',
+				[
+					'post_id'       => $post->ID,
+					'returned_type' => is_object( $record ) ? get_class( $record ) : gettype( $record ),
+				]
+			);
+			return null;
+		}
+
+		return $record;
 	}
 
 	/**
