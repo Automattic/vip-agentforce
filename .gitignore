@@ -51,3 +51,5 @@ phpcs.xml
 !.vscode/launch.json
 
 .claude
+
+/assets/build/
