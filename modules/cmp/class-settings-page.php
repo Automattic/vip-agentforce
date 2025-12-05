@@ -37,7 +37,7 @@ class Settings_Page {
 	/**
 	 * Handle settings saved message.
 	 */
-	public function handle_settings_saved() {
+	public function handle_settings_saved(): void {
 		$screen = get_current_screen();
 		if ( $screen && 'toplevel_page_agentforce-settings' === $screen->id &&
 			isset( $_GET['settings-updated'] ) && sanitize_text_field( $_GET['settings-updated'] ) ) { //phpcs:ignore WordPress.Security.NonceVerification.Recommended
@@ -165,13 +165,13 @@ class Settings_Page {
 	}
 
 	/** Render: Enable log checkbox */
-	public function render_oplog_field() {
+	public function render_oplog_field(): void {
 		$value = (int) get_option( 'agentforce_enable_oplog', 1 );
 		echo '<label><input type="checkbox" name="agentforce_enable_oplog" value="1" ' . checked( 1, $value, false ) . '> ' . esc_html__( 'Enable log', 'vip-agentforce' ) . '</label>';
 	}
 
 	/** Render: Alignment radio buttons */
-	public function render_alignment_field() {
+	public function render_alignment_field(): void {
 		$value   = get_option( 'agentforce_alignment', 'bottom-right' );
 		$options = array(
 			'bottom-right' => __( 'Bottom right', 'vip-agentforce' ),
@@ -187,7 +187,7 @@ class Settings_Page {
 	}
 
 	/** Render: Custom CSS textarea */
-	public function render_custom_css_field() {
+	public function render_custom_css_field(): void {
 		$value = get_option( 'agentforce_custom_css', '' );
 		echo '<textarea name="agentforce_custom_css" rows="3" class="large-text code" placeholder="/* Paste CSS to override agentforce styles */">' . esc_textarea( $value ) . '</textarea>';
 	}
@@ -195,7 +195,7 @@ class Settings_Page {
 	/**
 	 * Add settings page to the admin menu.
 	 */
-	public function add_settings_page() {
+	public function add_settings_page(): void {
 		add_menu_page(
 			__( 'AgentForce Settings', 'vip-agentforce' ),
 			__( 'AgentForce', 'vip-agentforce' ),
@@ -209,7 +209,7 @@ class Settings_Page {
 	/**
 	 * Register settings, sections, and fields.
 	 */
-	public function register_settings() {
+	public function register_settings(): void {
 		register_setting(
 			'agentforce_settings_group',
 			'agentforce_enable_sdk',
@@ -362,7 +362,7 @@ class Settings_Page {
 	/**
 	 * Render the Enable SDK checkbox.
 	 */
-	public function render_enable_sdk_field() {
+	public function render_enable_sdk_field(): void {
 		$value = (int) get_option( 'agentforce_enable_sdk', 1 );
 		echo '<label><input type="checkbox" name="agentforce_enable_sdk" value="1" ' . checked( 1, $value, false ) . '> ' . esc_html__( 'Enable Salesforce SDK', 'vip-agentforce' ) . '</label>';
 	}
@@ -370,7 +370,7 @@ class Settings_Page {
 	/**
 	 * Render the Salesforce SDK URL text field.
 	 */
-	public function render_sdk_url_field() {
+	public function render_sdk_url_field(): void {
 		$value = esc_attr( get_option( 'agentforce_salesforce_sdk_url', '' ) );
 		printf(
 			'<input type="text" name="agentforce_salesforce_sdk_url" value="%s" class="regular-text" />',
@@ -381,7 +381,7 @@ class Settings_Page {
 	/**
 	 * Render the consent type dropdown.
 	 */
-	public function render_consent_type_field() {
+	public function render_consent_type_field(): void {
 		$value = get_option( 'agentforce_consent_type', 'CookieYes' );
 		?>
 		<select name="agentforce_consent_type">
@@ -407,7 +407,7 @@ class Settings_Page {
 	/**
 	 * Render the OneTrust Group ID text field.
 	 */
-	public function render_onetrust_group_id_field() {
+	public function render_onetrust_group_id_field(): void {
 		// Use the constant from Assets class.
 		$value = get_option( 'agentforce_onetrust_group_id', Assets::DEFAULT_ONETRUST_GROUP_ID );
 		printf(
@@ -419,7 +419,7 @@ class Settings_Page {
 	/**
 	 * Render the Cookiebot category text field.
 	 */
-	public function render_cookiebot_category_field() {
+	public function render_cookiebot_category_field(): void {
 		$value = get_option( 'agentforce_cookiebot_category', Assets::DEFAULT_COOKIEBOT_CATEGORY );
 		printf(
 			'<input type="text" name="agentforce_cookiebot_category" value="%s" class="regular-text" />',
@@ -435,7 +435,7 @@ class Settings_Page {
 	/**
 	 * Render the iubenda Purpose ID text field.
 	 */
-	public function render_iubenda_category_field() {
+	public function render_iubenda_category_field(): void {
 		$value = get_option( 'agentforce_iubenda_category', Assets::DEFAULT_IUBENDA_PURPOSE_ID );
 		printf(
 			'<input type="number" name="agentforce_iubenda_category" value="%s" class="small-text" min="1" max="5" />',
@@ -453,7 +453,7 @@ class Settings_Page {
 	/**
 	 * Render the settings page.
 	 */
-	public function render_settings_page() {
+	public function render_settings_page(): void {
 		$php_version = PHP_VERSION;
 
 		do_action( 'vip_agentforce_track_event', 'cmp_page_viewed', [] );
