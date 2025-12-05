@@ -39,13 +39,13 @@ class Settings_Page {
 	 */
 	public function handle_settings_saved(): void {
 		$screen = get_current_screen();
-		if ( $screen && 'toplevel_page_agentforce-settings' === $screen->id &&
+		if ( $screen && 'toplevel_page_vip-agentforce-settings' === $screen->id &&
 			isset( $_GET['settings-updated'] ) && sanitize_text_field( $_GET['settings-updated'] ) ) { //phpcs:ignore WordPress.Security.NonceVerification.Recommended
 
-			if ( ! get_settings_errors( 'agentforce_messages' ) ) {
+			if ( ! get_settings_errors( 'vip_agentforce_messages' ) ) {
 				add_settings_error(
-					'agentforce_messages',
-					'agentforce_message',
+					'vip_agentforce_messages',
+					'vip_agentforce_message',
 					__( 'Settings Saved', 'vip-agentforce' ),
 					'success'
 				);
@@ -66,8 +66,8 @@ class Settings_Page {
 
 		if ( empty( $url ) ) {
 			add_settings_error(
-				'agentforce_messages',
-				'agentforce_salesforce_sdk_url_error',
+				'vip_agentforce_messages',
+				'vip_agentforce_salesforce_sdk_url_error',
 				__( 'Salesforce SDK URL cannot be empty.', 'vip-agentforce' ),
 				'error'
 			);
@@ -77,8 +77,8 @@ class Settings_Page {
 
 		if ( ! filter_var( $url, FILTER_VALIDATE_URL ) ) {
 			add_settings_error(
-				'agentforce_messages',
-				'agentforce_salesforce_sdk_url_error',
+				'vip_agentforce_messages',
+				'vip_agentforce_salesforce_sdk_url_error',
 				__( 'Please enter a valid URL for the Salesforce SDK.', 'vip-agentforce' ),
 				'error'
 			);
@@ -102,8 +102,8 @@ class Settings_Page {
 
 		if ( empty( $purpose_id ) ) {
 			add_settings_error(
-				'agentforce_messages',
-				'agentforce_iubenda_category_error',
+				'vip_agentforce_messages',
+				'vip_agentforce_iubenda_category_error',
 				__( 'iubenda Purpose ID cannot be empty.', 'vip-agentforce' ),
 				'error'
 			);
@@ -114,8 +114,8 @@ class Settings_Page {
 		$purpose_id = intval( $purpose_id );
 		if ( $purpose_id < 1 || $purpose_id > 5 ) {
 			add_settings_error(
-				'agentforce_messages',
-				'agentforce_iubenda_category_error',
+				'vip_agentforce_messages',
+				'vip_agentforce_iubenda_category_error',
 				__( 'iubenda Purpose ID must be between 1 and 5.', 'vip-agentforce' ),
 				'error'
 			);
@@ -200,7 +200,7 @@ class Settings_Page {
 			__( 'AgentForce Settings', 'vip-agentforce' ),
 			__( 'AgentForce', 'vip-agentforce' ),
 			'manage_options',
-			'agentforce-settings',
+			'vip-agentforce-settings',
 			array( $this, 'render_settings_page' ),
 			$this->get_integration_url() . '/assets/images/agentforce-icon.svg',
 		);
@@ -269,14 +269,14 @@ class Settings_Page {
 			'agentforce_settings_section',
 			__( 'General Settings', 'vip-agentforce' ),
 			'__return_false',
-			'agentforce-settings'
+			'vip-agentforce-settings'
 		);
 
 		add_settings_field(
 			'agentforce_enable_sdk',
 			__( 'Enable SDK', 'vip-agentforce' ),
 			array( $this, 'render_enable_sdk_field' ),
-			'agentforce-settings',
+			'vip-agentforce-settings',
 			'agentforce_settings_section'
 		);
 
@@ -284,7 +284,7 @@ class Settings_Page {
 			'agentforce_salesforce_sdk_url',
 			__( 'Salesforce SDK URL', 'vip-agentforce' ),
 			array( $this, 'render_sdk_url_field' ),
-			'agentforce-settings',
+			'vip-agentforce-settings',
 			'agentforce_settings_section'
 		);
 
@@ -292,7 +292,7 @@ class Settings_Page {
 			'agentforce_consent_type',
 			__( 'Consent Type', 'vip-agentforce' ),
 			array( $this, 'render_consent_type_field' ),
-			'agentforce-settings',
+			'vip-agentforce-settings',
 			'agentforce_settings_section'
 		);
 
@@ -300,7 +300,7 @@ class Settings_Page {
 			'agentforce_onetrust_group_id',
 			__( 'OneTrust Group ID', 'vip-agentforce' ),
 			array( $this, 'render_onetrust_group_id_field' ),
-			'agentforce-settings',
+			'vip-agentforce-settings',
 			'agentforce_settings_section'
 		);
 
@@ -308,7 +308,7 @@ class Settings_Page {
 			'agentforce_cookiebot_category',
 			__( 'Cookiebot Category', 'vip-agentforce' ),
 			array( $this, 'render_cookiebot_category_field' ),
-			'agentforce-settings',
+			'vip-agentforce-settings',
 			'agentforce_settings_section'
 		);
 
@@ -316,7 +316,7 @@ class Settings_Page {
 			'agentforce_iubenda_category',
 			__( 'iubenda Purpose ID', 'vip-agentforce' ),
 			array( $this, 'render_iubenda_category_field' ),
-			'agentforce-settings',
+			'vip-agentforce-settings',
 			'agentforce_settings_section'
 		);
 
@@ -324,14 +324,14 @@ class Settings_Page {
 			'agentforce_bot_ui_section',
 			__( 'Agent UI', 'vip-agentforce' ),
 			'__return_false',
-			'agentforce-settings'
+			'vip-agentforce-settings'
 		);
 
 		add_settings_field(
 			'agentforce_alignment',
 			__( 'Alignment', 'vip-agentforce' ),
 			array( $this, 'render_alignment_field' ),
-			'agentforce-settings',
+			'vip-agentforce-settings',
 			'agentforce_bot_ui_section'
 		);
 
@@ -339,7 +339,7 @@ class Settings_Page {
 			'agentforce_custom_css',
 			__( 'Custom CSS (optional)', 'vip-agentforce' ),
 			array( $this, 'render_custom_css_field' ),
-			'agentforce-settings',
+			'vip-agentforce-settings',
 			'agentforce_bot_ui_section'
 		);
 
@@ -347,14 +347,14 @@ class Settings_Page {
 			'agentforce_debug_section',
 			__( 'Debug', 'vip-agentforce' ),
 			'__return_false',
-			'agentforce-settings'
+			'vip-agentforce-settings'
 		);
 
 		add_settings_field(
 			'agentforce_enable_oplog',
 			__( 'Enable log', 'vip-agentforce' ),
 			array( $this, 'render_oplog_field' ),
-			'agentforce-settings',
+			'vip-agentforce-settings',
 			'agentforce_debug_section'
 		);
 	}
@@ -463,7 +463,7 @@ class Settings_Page {
 		?>
 		<div class="wrap agentforce-wrap">
 			<h1><?php esc_html_e( 'AgentForce Settings', 'vip-agentforce' ); ?></h1>
-			<?php settings_errors( 'agentforce_messages' ); ?>
+			<?php settings_errors( 'vip_agentforce_messages' ); ?>
 			<form method="post" action="options.php">
 				<?php settings_fields( 'agentforce_settings_group' ); ?>
 
