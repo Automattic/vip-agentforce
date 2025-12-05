@@ -370,32 +370,6 @@ class Ingestion_Test extends WP_UnitTestCase {
 		$this->assertFalse( $action_fired, 'Action should NOT fire on successful ingestion.' );
 	}
 
-	public function test_failure_error_contains_backtrace(): void {
-		$post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
-
-		add_filter( 'vip_agentforce_should_ingest_post', '__return_true' );
-		add_filter( 'vip_agentforce_transform_post', '__return_null' );
-
-		/** @var Ingestion_Failure|null $received_failure */
-		$received_failure = null;
-
-		add_action(
-			'vip_agentforce_post_ingestion_failed',
-			function ( $failure ) use ( &$received_failure ) {
-				$received_failure = $failure;
-			}
-		);
-
-		Ingestion::ingest_post( $post->ID, $post );
-
-		$this->assertInstanceOf( Ingestion_Failure::class, $received_failure );
-		$error_data = $received_failure->error->get_error_data();
-		$this->assertIsArray( $error_data );
-		$this->assertArrayHasKey( 'backtrace', $error_data );
-		$this->assertIsArray( $error_data['backtrace'] );
-		$this->assertNotEmpty( $error_data['backtrace'] );
-	}
-
 	public function test_failure_error_contains_post_id(): void {
 		$post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
 

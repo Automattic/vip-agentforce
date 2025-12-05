@@ -55,23 +55,7 @@ class Ingestion {
 				]
 			);
 
-			self::fire_ingestion_failure(
-				new Ingestion_Failure(
-					[
-						'failure_code' => Ingestion_Failure::CODE_TRANSFORM_FAILED,
-						'post'         => $post,
-						'error'        => new \WP_Error(
-							'vip_agentforce_transform_failed',
-							'Post transformation returned null',
-							[
-								'post_id'   => $post_id,
-								// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_debug_backtrace -- Intentional for error tracing.
-								'backtrace' => debug_backtrace( DEBUG_BACKTRACE_IGNORE_ARGS, 5 ),
-							]
-						),
-					]
-				)
-			);
+			self::fire_ingestion_failure( $post_id, Ingestion_Failure::CODE_TRANSFORM_FAILED );
 			return;
 		}
 
@@ -87,24 +71,7 @@ class Ingestion {
 				]
 			);
 
-			self::fire_ingestion_failure(
-				new Ingestion_Failure(
-					[
-						'failure_code' => Ingestion_Failure::CODE_API_ERROR,
-						'post'         => $post,
-						'error'        => new \WP_Error(
-							'vip_agentforce_api_error',
-							$response['error_message'] ?? 'API call failed',
-							[
-								'post_id'   => $post_id,
-								'response'  => $response,
-								// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_debug_backtrace -- Intentional for error tracing.
-								'backtrace' => debug_backtrace( DEBUG_BACKTRACE_IGNORE_ARGS, 5 ),
-							]
-						),
-					]
-				)
-			);
+			self::fire_ingestion_failure( $post_id, Ingestion_Failure::CODE_API_ERROR, [ 'response' => $response ] );
 			return;
 		}
 
@@ -123,9 +90,37 @@ class Ingestion {
 	/**
 	 * Fire the ingestion failure action.
 	 *
-	 * @param Ingestion_Failure $failure The ingestion failure.
+	 * @param int                  $post_id      The post ID that failed ingestion.
+	 * @param string               $failure_code One of the Ingestion_Failure::CODE_* constants.
+	 * @param array<string, mixed> $details      Optional additional details about the failure.
 	 */
-	private static function fire_ingestion_failure( Ingestion_Failure $failure ): void {
+	private static function fire_ingestion_failure( int $post_id, string $failure_code, array $details = [] ): void {
+		$post = get_post( $post_id );
+
+		$error_codes = [
+			Ingestion_Failure::CODE_TRANSFORM_FAILED => 'vip_agentforce_transform_failed',
+			Ingestion_Failure::CODE_API_ERROR        => 'vip_agentforce_api_error',
+		];
+
+		$error_messages = [
+			Ingestion_Failure::CODE_TRANSFORM_FAILED => 'Post transformation failed',
+			Ingestion_Failure::CODE_API_ERROR        => 'API call failed',
+		];
+
+		$error_data = array_merge( [ 'post_id' => $post_id ], $details );
+
+		$failure = new Ingestion_Failure(
+			[
+				'failure_code' => $failure_code,
+				'post'         => $post,
+				'error'        => new \WP_Error(
+					$error_codes[ $failure_code ] ?? 'vip_agentforce_ingestion_failed',
+					$error_messages[ $failure_code ] ?? 'Ingestion failed',
+					$error_data
+				),
+			]
+		);
+
 		/**
 		 * Fires when a post ingestion fails.
 		 *
