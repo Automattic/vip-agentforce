@@ -54,20 +54,102 @@ class Ingestion {
 					'post_type'   => $post->post_type,
 				]
 			);
+
+			self::fire_ingestion_failure( $post_id, Ingestion_Failure::CODE_TRANSFORM_FAILED );
+			return;
+		}
+
+		$response = static::send_to_api( $record );
+
+		if ( ! $response['success'] ) {
+			Logger::info(
+				'ingestion',
+				'API call failed',
+				[
+					'post_id'  => $post_id,
+					'response' => $response,
+				]
+			);
+
+			self::fire_ingestion_failure( $post_id, Ingestion_Failure::CODE_API_ERROR, [ 'response' => $response ] );
 			return;
 		}
 
 		Logger::info(
 			'ingestion',
-			'Post will be ingested',
+			'Post ingested successfully',
 			[
 				'post_id'        => $post_id,
 				'post_status'    => $post->post_status,
 				'post_type'      => $post->post_type,
 				'post_processed' => $record->to_array(),
-				'result'         => true,
 			]
 		);
+	}
+
+	/**
+	 * Fire the ingestion failure action.
+	 *
+	 * @param int                  $post_id      The post ID that failed ingestion.
+	 * @param string               $failure_code One of the Ingestion_Failure::CODE_* constants.
+	 * @param array<string, mixed> $details      Optional additional details about the failure.
+	 */
+	private static function fire_ingestion_failure( int $post_id, string $failure_code, array $details = [] ): void {
+		$post = get_post( $post_id );
+
+		$error_codes = [
+			Ingestion_Failure::CODE_TRANSFORM_FAILED => 'vip_agentforce_transform_failed',
+			Ingestion_Failure::CODE_API_ERROR        => 'vip_agentforce_api_error',
+		];
+
+		$error_messages = [
+			Ingestion_Failure::CODE_TRANSFORM_FAILED => 'Post transformation failed',
+			Ingestion_Failure::CODE_API_ERROR        => 'API call failed',
+		];
+
+		$error_data = array_merge( [ 'post_id' => $post_id ], $details );
+
+		$failure = new Ingestion_Failure(
+			[
+				'failure_code' => $failure_code,
+				'post'         => $post,
+				'error'        => new \WP_Error(
+					$error_codes[ $failure_code ] ?? 'vip_agentforce_ingestion_failed',
+					$error_messages[ $failure_code ] ?? 'Ingestion failed',
+					$error_data
+				),
+			]
+		);
+
+		/**
+		 * Fires when a post ingestion fails.
+		 *
+		 * This action only fires on actual failures (transform or API errors),
+		 * not when ingestion is skipped by filters.
+		 *
+		 * @since 1.0.0
+		 *
+		 * @param Ingestion_Failure $failure The failure object containing:
+		 *                                   - failure_code: One of the Ingestion_Failure::CODE_* constants
+		 *                                   - post: The original WP_Post object
+		 *                                   - error: WP_Error with failure details
+		 */
+		do_action( 'vip_agentforce_post_ingestion_failed', $failure );
+	}
+
+	/**
+	 * Send record to Salesforce API.
+	 *
+	 * @param Ingestion_Post_Record $record The record to send.
+	 * @return array<string, mixed> Response with 'success' key (true/false) and error details if failed.
+	 */
+	public static function send_to_api( Ingestion_Post_Record $record ): array {
+		// TODO: Implement actual Salesforce API call.
+		return [
+			'success'   => true,
+			'record_id' => $record->to_array()['site_id_blog_id_post_id'],
+			'timestamp' => gmdate( 'c' ),
+		];
 	}
 
 	/**
