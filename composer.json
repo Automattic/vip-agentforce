@@ -33,6 +33,7 @@
 		}
 	},
 	"scripts": {
+		"start-dev": "npm run build:dev && vip dev-env start",
 		"lint": "./vendor/bin/phpcs --standard=.phpcs.xml.dist",
 		"analyze": "./vendor/bin/phpstan analyse --memory-limit=1024M",
 		"format": "./vendor/bin/phpcbf --standard=.phpcs.xml.dist",
