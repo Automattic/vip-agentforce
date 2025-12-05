@@ -46,7 +46,7 @@ class Settings_Page {
 				add_settings_error(
 					'agentforce_messages',
 					'agentforce_message',
-					__( 'Settings Saved', 'wp-agentforce-features' ),
+					__( 'Settings Saved', 'vip-agentforce' ),
 					'success'
 				);
 			}
@@ -68,7 +68,7 @@ class Settings_Page {
 			add_settings_error(
 				'agentforce_messages',
 				'agentforce_salesforce_sdk_url_error',
-				__( 'Salesforce SDK URL cannot be empty.', 'wp-agentforce-features' ),
+				__( 'Salesforce SDK URL cannot be empty.', 'vip-agentforce' ),
 				'error'
 			);
 
@@ -79,7 +79,7 @@ class Settings_Page {
 			add_settings_error(
 				'agentforce_messages',
 				'agentforce_salesforce_sdk_url_error',
-				__( 'Please enter a valid URL for the Salesforce SDK.', 'wp-agentforce-features' ),
+				__( 'Please enter a valid URL for the Salesforce SDK.', 'vip-agentforce' ),
 				'error'
 			);
 
@@ -104,7 +104,7 @@ class Settings_Page {
 			add_settings_error(
 				'agentforce_messages',
 				'agentforce_iubenda_category_error',
-				__( 'iubenda Purpose ID cannot be empty.', 'wp-agentforce-features' ),
+				__( 'iubenda Purpose ID cannot be empty.', 'vip-agentforce' ),
 				'error'
 			);
 
@@ -116,7 +116,7 @@ class Settings_Page {
 			add_settings_error(
 				'agentforce_messages',
 				'agentforce_iubenda_category_error',
-				__( 'iubenda Purpose ID must be between 1 and 5.', 'wp-agentforce-features' ),
+				__( 'iubenda Purpose ID must be between 1 and 5.', 'vip-agentforce' ),
 				'error'
 			);
 
@@ -167,15 +167,15 @@ class Settings_Page {
 	/** Render: Enable log checkbox */
 	public function render_oplog_field() {
 		$value = (int) get_option( 'agentforce_enable_oplog', 1 );
-		echo '<label><input type="checkbox" name="agentforce_enable_oplog" value="1" ' . checked( 1, $value, false ) . '> ' . esc_html__( 'Enable log', 'wp-agentforce-features' ) . '</label>';
+		echo '<label><input type="checkbox" name="agentforce_enable_oplog" value="1" ' . checked( 1, $value, false ) . '> ' . esc_html__( 'Enable log', 'vip-agentforce' ) . '</label>';
 	}
 
 	/** Render: Alignment radio buttons */
 	public function render_alignment_field() {
 		$value   = get_option( 'agentforce_alignment', 'bottom-right' );
 		$options = array(
-			'bottom-right' => __( 'Bottom right', 'wp-agentforce-features' ),
-			'bottom-left'  => __( 'Bottom left', 'wp-agentforce-features' ),
+			'bottom-right' => __( 'Bottom right', 'vip-agentforce' ),
+			'bottom-left'  => __( 'Bottom left', 'vip-agentforce' ),
 		);
 		echo '<fieldset class="agentforce-radios">';
 		foreach ( $options as $k => $label ) {
@@ -197,8 +197,8 @@ class Settings_Page {
 	 */
 	public function add_settings_page() {
 		add_menu_page(
-			__( 'AgentForce Settings', 'wp-agentforce-features' ),
-			__( 'AgentForce', 'wp-agentforce-features' ),
+			__( 'AgentForce Settings', 'vip-agentforce' ),
+			__( 'AgentForce', 'vip-agentforce' ),
 			'manage_options',
 			'agentforce-settings',
 			array( $this, 'render_settings_page' ),
@@ -267,14 +267,14 @@ class Settings_Page {
 
 		add_settings_section(
 			'agentforce_settings_section',
-			__( 'General Settings', 'wp-agentforce-features' ),
+			__( 'General Settings', 'vip-agentforce' ),
 			'__return_false',
 			'agentforce-settings'
 		);
 
 		add_settings_field(
 			'agentforce_enable_sdk',
-			__( 'Enable SDK', 'wp-agentforce-features' ),
+			__( 'Enable SDK', 'vip-agentforce' ),
 			array( $this, 'render_enable_sdk_field' ),
 			'agentforce-settings',
 			'agentforce_settings_section'
@@ -282,7 +282,7 @@ class Settings_Page {
 
 		add_settings_field(
 			'agentforce_salesforce_sdk_url',
-			__( 'Salesforce SDK URL', 'wp-agentforce-features' ),
+			__( 'Salesforce SDK URL', 'vip-agentforce' ),
 			array( $this, 'render_sdk_url_field' ),
 			'agentforce-settings',
 			'agentforce_settings_section'
@@ -290,7 +290,7 @@ class Settings_Page {
 
 		add_settings_field(
 			'agentforce_consent_type',
-			__( 'Consent Type', 'wp-agentforce-features' ),
+			__( 'Consent Type', 'vip-agentforce' ),
 			array( $this, 'render_consent_type_field' ),
 			'agentforce-settings',
 			'agentforce_settings_section'
@@ -298,7 +298,7 @@ class Settings_Page {
 
 		add_settings_field(
 			'agentforce_onetrust_group_id',
-			__( 'OneTrust Group ID', 'wp-agentforce-features' ),
+			__( 'OneTrust Group ID', 'vip-agentforce' ),
 			array( $this, 'render_onetrust_group_id_field' ),
 			'agentforce-settings',
 			'agentforce_settings_section'
@@ -306,7 +306,7 @@ class Settings_Page {
 
 		add_settings_field(
 			'agentforce_cookiebot_category',
-			__( 'Cookiebot Category', 'wp-agentforce-features' ),
+			__( 'Cookiebot Category', 'vip-agentforce' ),
 			array( $this, 'render_cookiebot_category_field' ),
 			'agentforce-settings',
 			'agentforce_settings_section'
@@ -314,7 +314,7 @@ class Settings_Page {
 
 		add_settings_field(
 			'agentforce_iubenda_category',
-			__( 'iubenda Purpose ID', 'wp-agentforce-features' ),
+			__( 'iubenda Purpose ID', 'vip-agentforce' ),
 			array( $this, 'render_iubenda_category_field' ),
 			'agentforce-settings',
 			'agentforce_settings_section'
@@ -322,14 +322,14 @@ class Settings_Page {
 
 		add_settings_section(
 			'agentforce_bot_ui_section',
-			__( 'Agent UI', 'wp-agentforce-features' ),
+			__( 'Agent UI', 'vip-agentforce' ),
 			'__return_false',
 			'agentforce-settings'
 		);
 
 		add_settings_field(
 			'agentforce_alignment',
-			__( 'Alignment', 'wp-agentforce-features' ),
+			__( 'Alignment', 'vip-agentforce' ),
 			array( $this, 'render_alignment_field' ),
 			'agentforce-settings',
 			'agentforce_bot_ui_section'
@@ -337,7 +337,7 @@ class Settings_Page {
 
 		add_settings_field(
 			'agentforce_custom_css',
-			__( 'Custom CSS (optional)', 'wp-agentforce-features' ),
+			__( 'Custom CSS (optional)', 'vip-agentforce' ),
 			array( $this, 'render_custom_css_field' ),
 			'agentforce-settings',
 			'agentforce_bot_ui_section'
@@ -345,14 +345,14 @@ class Settings_Page {
 
 		add_settings_section(
 			'agentforce_debug_section',
-			__( 'Debug', 'wp-agentforce-features' ),
+			__( 'Debug', 'vip-agentforce' ),
 			'__return_false',
 			'agentforce-settings'
 		);
 
 		add_settings_field(
 			'agentforce_enable_oplog',
-			__( 'Enable log', 'wp-agentforce-features' ),
+			__( 'Enable log', 'vip-agentforce' ),
 			array( $this, 'render_oplog_field' ),
 			'agentforce-settings',
 			'agentforce_debug_section'
@@ -364,7 +364,7 @@ class Settings_Page {
 	 */
 	public function render_enable_sdk_field() {
 		$value = (int) get_option( 'agentforce_enable_sdk', 1 );
-		echo '<label><input type="checkbox" name="agentforce_enable_sdk" value="1" ' . checked( 1, $value, false ) . '> ' . esc_html__( 'Enable Salesforce SDK', 'wp-agentforce-features' ) . '</label>';
+		echo '<label><input type="checkbox" name="agentforce_enable_sdk" value="1" ' . checked( 1, $value, false ) . '> ' . esc_html__( 'Enable Salesforce SDK', 'vip-agentforce' ) . '</label>';
 	}
 
 	/**
@@ -386,19 +386,19 @@ class Settings_Page {
 		?>
 		<select name="agentforce_consent_type">
 			<option
-				value="CookieYes" <?php selected( $value, 'CookieYes' ); ?>><?php esc_html_e( 'CookieYes', 'wp-agentforce-features' ); ?>
+				value="CookieYes" <?php selected( $value, 'CookieYes' ); ?>><?php esc_html_e( 'CookieYes', 'vip-agentforce' ); ?>
 			</option>
 			<option
-				value="CookieBot" <?php selected( $value, 'CookieBot' ); ?>><?php esc_html_e( 'CookieBot', 'wp-agentforce-features' ); ?>
+				value="CookieBot" <?php selected( $value, 'CookieBot' ); ?>><?php esc_html_e( 'CookieBot', 'vip-agentforce' ); ?>
 			</option>
 			<option
-				value="OneTrust" <?php selected( $value, 'OneTrust' ); ?>><?php esc_html_e( 'OneTrust', 'wp-agentforce-features' ); ?>
+				value="OneTrust" <?php selected( $value, 'OneTrust' ); ?>><?php esc_html_e( 'OneTrust', 'vip-agentforce' ); ?>
 			</option>
 			<option
-				value="iubenda" <?php selected( $value, 'iubenda' ); ?>><?php esc_html_e( 'iubenda', 'wp-agentforce-features' ); ?>
+				value="iubenda" <?php selected( $value, 'iubenda' ); ?>><?php esc_html_e( 'iubenda', 'vip-agentforce' ); ?>
 			</option>
 			<option
-				value="Custom" <?php selected( $value, 'Custom' ); ?>><?php esc_html_e( 'Custom', 'wp-agentforce-features' ); ?>
+				value="Custom" <?php selected( $value, 'Custom' ); ?>><?php esc_html_e( 'Custom', 'vip-agentforce' ); ?>
 			</option>
 		</select>
 		<?php
@@ -427,8 +427,8 @@ class Settings_Page {
 		);
 		printf(
 			'<p class="description">%s<br>%s<br><code>window.Cookiebot.consent</code></p>',
-			esc_html__( 'Enter the Cookiebot category (e.g., necessary, preferences, statistics, marketing).', 'wp-agentforce-features' ),
-			esc_html__( 'To see all available categories for your site, open browser console and run:', 'wp-agentforce-features' )
+			esc_html__( 'Enter the Cookiebot category (e.g., necessary, preferences, statistics, marketing).', 'vip-agentforce' ),
+			esc_html__( 'To see all available categories for your site, open browser console and run:', 'vip-agentforce' )
 		);
 	}
 
@@ -443,10 +443,10 @@ class Settings_Page {
 		);
 		printf(
 			'<p class="description">%s %s <a href="https://www.iubenda.com/en/help/1205-how-to-configure-your-cookie-solution-advanced-guide#per-category-consent" target="_blank">%s</a><br>%s<br><code>_iub.cs.api.getPreferences().purposes</code></p>',
-			esc_html__( 'Enter the iubenda Purpose ID (1-5).', 'wp-agentforce-features' ),
-			esc_html__( 'See the', 'wp-agentforce-features' ),
-			esc_html__( 'iubenda documentation', 'wp-agentforce-features' ),
-			esc_html__( 'To see all available purpose IDs for your site, open browser console and run:', 'wp-agentforce-features' )
+			esc_html__( 'Enter the iubenda Purpose ID (1-5).', 'vip-agentforce' ),
+			esc_html__( 'See the', 'vip-agentforce' ),
+			esc_html__( 'iubenda documentation', 'vip-agentforce' ),
+			esc_html__( 'To see all available purpose IDs for your site, open browser console and run:', 'vip-agentforce' )
 		);
 	}
 
@@ -455,11 +455,11 @@ class Settings_Page {
 	 */
 	public function render_settings_page() {
 		$php_version = PHP_VERSION;
-		$xdebug      = extension_loaded( 'xdebug' ) ? __( 'Enabled', 'wp-agentforce-features' ) : __( 'Disabled', 'wp-agentforce-features' );
+		$xdebug      = extension_loaded( 'xdebug' ) ? __( 'Enabled', 'vip-agentforce' ) : __( 'Disabled', 'vip-agentforce' );
 		$site_url    = home_url();
 		?>
 		<div class="wrap agentforce-wrap">
-			<h1><?php esc_html_e( 'AgentForce Settings', 'wp-agentforce-features' ); ?></h1>
+			<h1><?php esc_html_e( 'AgentForce Settings', 'vip-agentforce' ); ?></h1>
 			<?php settings_errors( 'agentforce_messages' ); ?>
 			<form method="post" action="options.php">
 				<?php settings_fields( 'agentforce_settings_group' ); ?>
@@ -467,59 +467,59 @@ class Settings_Page {
 				<div class="af-grid">
 					<div class="af-col">
 						<div class="af-card">
-							<h2><?php esc_html_e( 'General', 'wp-agentforce-features' ); ?></h2>
+							<h2><?php esc_html_e( 'General', 'vip-agentforce' ); ?></h2>
 							<table class="form-table" role="presentation">
 								<tr id="row_enable_sdk">
-									<th scope="row"><?php esc_html_e( 'Enable SDK', 'wp-agentforce-features' ); ?></th>
+									<th scope="row"><?php esc_html_e( 'Enable SDK', 'vip-agentforce' ); ?></th>
 									<td><?php $this->render_enable_sdk_field(); ?></td>
 								</tr>
 								<tr id="row_sdk">
-									<th scope="row"><?php esc_html_e( 'Salesforce SDK URL', 'wp-agentforce-features' ); ?></th>
+									<th scope="row"><?php esc_html_e( 'Salesforce SDK URL', 'vip-agentforce' ); ?></th>
 									<td><?php $this->render_sdk_url_field(); ?><p
-											class="description"><?php esc_html_e( 'Must be HTTPS. The SDK will be enqueued on the frontend.', 'wp-agentforce-features' ); ?></p>
+											class="description"><?php esc_html_e( 'Must be HTTPS. The SDK will be enqueued on the frontend.', 'vip-agentforce' ); ?></p>
 									</td>
 								</tr>
 								<tr id="row_consent">
-									<th scope="row"><?php esc_html_e( 'Consent Type', 'wp-agentforce-features' ); ?></th>
+									<th scope="row"><?php esc_html_e( 'Consent Type', 'vip-agentforce' ); ?></th>
 									<td>
 										<?php $this->render_consent_type_field(); ?>
 									</td>
 								</tr>
 								<tr id="row_onetrust">
-									<th scope="row"><?php esc_html_e( 'OneTrust Group ID', 'wp-agentforce-features' ); ?></th>
+									<th scope="row"><?php esc_html_e( 'OneTrust Group ID', 'vip-agentforce' ); ?></th>
 									<td><?php $this->render_onetrust_group_id_field(); ?></td>
 								</tr>
 								<tr id="row_cookiebot">
-									<th scope="row"><?php esc_html_e( 'Cookiebot Category', 'wp-agentforce-features' ); ?></th>
+									<th scope="row"><?php esc_html_e( 'Cookiebot Category', 'vip-agentforce' ); ?></th>
 									<td><?php $this->render_cookiebot_category_field(); ?></td>
 								</tr>
 								<tr id="row_iubenda">
-									<th scope="row"><?php esc_html_e( 'iubenda Purpose ID', 'wp-agentforce-features' ); ?></th>
+									<th scope="row"><?php esc_html_e( 'iubenda Purpose ID', 'vip-agentforce' ); ?></th>
 									<td><?php $this->render_iubenda_category_field(); ?></td>
 								</tr>
 							</table>
 						</div>
 
 						<div class="af-card">
-							<h2><?php esc_html_e( 'Agent UI', 'wp-agentforce-features' ); ?></h2>
-							<p><?php esc_html_e( 'Alignment and custom styles for the launcher/widget.', 'wp-agentforce-features' ); ?></p>
+							<h2><?php esc_html_e( 'Agent UI', 'vip-agentforce' ); ?></h2>
+							<p><?php esc_html_e( 'Alignment and custom styles for the launcher/widget.', 'vip-agentforce' ); ?></p>
 							<table class="form-table" role="presentation">
 								<tr id="row_alignment">
-									<th scope="row"><?php esc_html_e( 'Alignment', 'wp-agentforce-features' ); ?></th>
+									<th scope="row"><?php esc_html_e( 'Alignment', 'vip-agentforce' ); ?></th>
 									<td><?php $this->render_alignment_field(); ?></td>
 								</tr>
 								<tr id="row_custom_css">
-									<th scope="row"><?php esc_html_e( 'Custom CSS (optional)', 'wp-agentforce-features' ); ?></th>
+									<th scope="row"><?php esc_html_e( 'Custom CSS (optional)', 'vip-agentforce' ); ?></th>
 									<td><?php $this->render_custom_css_field(); ?></td>
 								</tr>
 							</table>
 						</div>
 
 						<div class="af-card">
-							<h2><?php esc_html_e( 'Debug', 'wp-agentforce-features' ); ?></h2>
+							<h2><?php esc_html_e( 'Debug', 'vip-agentforce' ); ?></h2>
 							<table class="form-table" role="presentation">
 								<tr id="row_oplog">
-									<th scope="row"><?php esc_html_e( 'Enable log', 'wp-agentforce-features' ); ?></th>
+									<th scope="row"><?php esc_html_e( 'Enable log', 'vip-agentforce' ); ?></th>
 									<td><?php $this->render_oplog_field(); ?></td>
 								</tr>
 							</table>
@@ -527,15 +527,15 @@ class Settings_Page {
 
 						<p class="submit">
 							<button type="submit"
-									class="button button-primary button-hero"><?php esc_html_e( 'Save Changes', 'wp-agentforce-features' ); ?></button>
+									class="button button-primary button-hero"><?php esc_html_e( 'Save Changes', 'vip-agentforce' ); ?></button>
 							<span
-								class="af-note"><?php esc_html_e( 'Changes apply on next page load.', 'wp-agentforce-features' ); ?></span>
+								class="af-note"><?php esc_html_e( 'Changes apply on next page load.', 'vip-agentforce' ); ?></span>
 						</p>
 					</div>
 
 					<aside class="af-col af-sidebar">
 						<div class="af-card">
-							<h2><?php esc_html_e( 'Documentation', 'wp-agentforce-features' ); ?></h2>
+							<h2><?php esc_html_e( 'Documentation', 'vip-agentforce' ); ?></h2>
 							<ul class="af-docs">
 								<li><span class="dashicons dashicons-info-outline" aria-hidden="true"></span><a href="#"
 																												target="_blank"
@@ -557,18 +557,18 @@ class Settings_Page {
 						</div>
 
 						<div class="af-card">
-							<h2><?php esc_html_e( 'Status', 'wp-agentforce-features' ); ?></h2>
+							<h2><?php esc_html_e( 'Status', 'vip-agentforce' ); ?></h2>
 							<table class="af-status">
 								<tr>
-									<th><?php esc_html_e( 'PHP version', 'wp-agentforce-features' ); ?></th>
+									<th><?php esc_html_e( 'PHP version', 'vip-agentforce' ); ?></th>
 									<td><?php echo esc_html( $php_version ); ?></td>
 								</tr>
 								<tr>
-									<th><?php esc_html_e( 'Xdebug', 'wp-agentforce-features' ); ?></th>
+									<th><?php esc_html_e( 'Xdebug', 'vip-agentforce' ); ?></th>
 									<td><?php echo esc_html( $xdebug ); ?></td>
 								</tr>
 								<tr>
-									<th><?php esc_html_e( 'Site URL', 'wp-agentforce-features' ); ?></th>
+									<th><?php esc_html_e( 'Site URL', 'vip-agentforce' ); ?></th>
 									<td><a href="<?php echo esc_html( $site_url ); ?>"><?php echo esc_html( $site_url ); ?></a></td>
 								</tr>
 							</table>

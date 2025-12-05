@@ -46,7 +46,7 @@ class Assets {
 	public function enqueue_scripts() {
 
 		wp_register_script(
-			'wp-agentforce-features-script',
+			'vip-agentforce-script',
 			$this->get_integration_url() . '/assets/build/js/main.js',
 			array(),
 			filemtime( $this->get_integration_path() . '/assets/build/js/main.js' ),
@@ -54,14 +54,14 @@ class Assets {
 		);
 
 		wp_register_style(
-			'wp-agentforce-features-style',
+			'vip-agentforce-style',
 			$this->get_integration_url() . '/assets/build/css/main.css',
 			array(),
 			filemtime( $this->get_integration_path() . '/assets/build/css/main.css' )
 		);
 
-		wp_enqueue_script( 'wp-agentforce-features-script' );
-		wp_enqueue_style( 'wp-agentforce-features-style' );
+		wp_enqueue_script( 'vip-agentforce-script' );
+		wp_enqueue_style( 'vip-agentforce-style' );
 	}
 
 	/**
@@ -72,7 +72,7 @@ class Assets {
 	public function admin_enqueue_scripts() {
 
 		wp_register_script(
-			'wp-agentforce-features-script',
+			'vip-agentforce-script',
 			$this->get_integration_url() . '/assets/build/js/admin.js',
 			array(),
 			filemtime( $this->get_integration_path() . '/assets/build/js/admin.js' ),
@@ -80,14 +80,14 @@ class Assets {
 		);
 
 		wp_register_style(
-			'wp-agentforce-features-style',
+			'vip-agentforce-style',
 			$this->get_integration_url() . '/assets/build/css/admin.css',
 			array(),
 			filemtime( $this->get_integration_path() . '/assets/build/css/admin.css' )
 		);
 
-		wp_enqueue_script( 'wp-agentforce-features-script' );
-		wp_enqueue_style( 'wp-agentforce-features-style' );
+		wp_enqueue_script( 'vip-agentforce-script' );
+		wp_enqueue_style( 'vip-agentforce-style' );
 	}
 
 	/**
