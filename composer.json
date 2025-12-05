@@ -15,11 +15,13 @@
 		"phpunit/phpunit": "^9",
 		"szepeviktor/phpstan-wordpress": "^2.0",
 		"wp-phpunit/wp-phpunit": "^6.5",
-		"yoast/phpunit-polyfills": "3.0.0"
+		"yoast/phpunit-polyfills": "3.0.0",
+		"wp-cli/i18n-command": "^2.6"
 	},
 	"autoload-dev": {
 		"classmap": [
-			"./modules/"
+			"./modules/",
+			"./utils/"
 		]
 	},
 	"config": {
@@ -43,6 +45,6 @@
 		"test-ci": "./bin/test.sh ",
 		"test:multisite": "./bin/test.sh --php 8.1 --wp 6.8 --multisite 1",
 		"test:integration": "./vendor/bin/phpunit --bootstrap tests/integration/bootstrap.php tests/integration/",
-		"build-mjml": "./scripts/build-mjml.sh"
+		"pot": "wp i18n make-pot . ./languages/vip-agentforce.pot --domain=vip-agentforce --include=\"modules,utils,assets/js\""
 	}
 }
