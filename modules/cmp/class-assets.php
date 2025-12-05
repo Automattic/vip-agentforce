@@ -71,9 +71,9 @@ class Assets {
 
 		wp_register_script(
 			'wp-agentforce-features-script',
-			VIP_AGENTFORCE_INTEGRATION_URL . '/assets/js/admin.js',
+			VIP_AGENTFORCE_INTEGRATION_URL . '/assets/build/js/admin.js',
 			array(),
-			filemtime( VIP_AGENTFORCE_INTEGRATION_PATH . '/assets/js/admin.js' ),
+			filemtime( VIP_AGENTFORCE_INTEGRATION_PATH . '/assets/build/js/admin.js' ),
 			true
 		);
 
