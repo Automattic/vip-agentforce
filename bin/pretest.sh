@@ -7,6 +7,6 @@ if php -r 'exit((int)(PHP_VERSION_ID < 80100));'; then
 	sed -i "s@define( 'WP_DEBUG', true );@// define( 'WP_DEBUG', true );@" /tmp/wordpress-tests-lib/wp-tests-config.php
 fi
 npm ci
-npm run build
+npm run build:production
 # Install PHPUnit Polyfills
 composer global require --dev yoast/phpunit-polyfills
