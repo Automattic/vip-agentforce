@@ -7,7 +7,7 @@ namespace Automattic\VIP\Salesforce\Agentforce\Utils;
 
 use Automattic\VIP\Salesforce\Agentforce\Constants;
 use Automattic\VIP\Telemetry\Telemetry;
-
+use Automattic\VIP\Salesforce\Agentforce\Utils\Configs;
 class Tracking {
 
 	/**
@@ -67,10 +67,10 @@ class Tracking {
 	 */
 	private static function maybe_get_non_production_prefix( bool $trailing_underscore = true ): string {
 		$trailing_underscore = $trailing_underscore ? '_' : '';
-		if ( is_local_env() ) {
+		if ( Configs::is_local_env() ) {
 			return 'local' . $trailing_underscore;
 		}
-		if ( ! is_production_env() ) {
+		if ( ! Configs::is_production_env() ) {
 			return 'nonprod' . $trailing_underscore;
 		}
 		return '';
@@ -88,7 +88,7 @@ class Tracking {
 			$stat_code = self::PREFIX . '_' . $env_prefix;
 		}
 		// We're tracking the stats in production only
-		if ( is_local_env() ) {
+		if ( Configs::is_local_env() ) {
 			Logger::info( 'vip-agentforce', 'Bumping stats for /s/' . $stat_code . '/' . $stat_name, [
 				'stat_name' => $stat_name,
 			] );

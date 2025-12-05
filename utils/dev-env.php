@@ -56,12 +56,3 @@ function load_integration_configs_from_headers(): void {
 		define( 'VIP_AGENTFORCE_CONFIGS', $configs );
 	}
 }
-
-
-function is_local_env(): bool {
-	return ! defined( 'VIP_GO_APP_ENVIRONMENT' ) || 'local' === constant( 'VIP_GO_APP_ENVIRONMENT' );
-}
-
-function is_production_env(): bool {
-	return defined( 'VIP_GO_APP_ENVIRONMENT' ) && 'production' === constant( 'VIP_GO_APP_ENVIRONMENT' );
-}
