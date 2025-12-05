@@ -54,7 +54,7 @@ trait Singleton {
 		/**
 		 * Collection of instance.
 		 *
-		 * @var array
+		 * @var array<string, object>
 		 */
 		static $instance = [];
 
@@ -73,9 +73,9 @@ trait Singleton {
 			$instance[ $called_class ] = new $called_class();
 
 			/**
-			 * Dependent items can use the wp_agentforce_features_singleton_init_{$called_class} hook to execute code
+			 * Dependent items can use the vip_agentforce_features_singleton_init_{$called_class} hook to execute code
 			 */
-			do_action( sprintf( 'wp_agentforce_features_singleton_init_%s', $called_class ) ); // phpcs:ignore WordPress.NamingConventions.ValidHookName.UseUnderscores
+			do_action( sprintf( 'vip_agentforce_singleton_init_%s', $called_class ) ); // phpcs:ignore WordPress.NamingConventions.ValidHookName.UseUnderscores
 
 		}
 

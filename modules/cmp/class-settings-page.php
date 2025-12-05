@@ -6,6 +6,7 @@
 namespace Automattic\VIP\Salesforce\Agentforce\Cmp;
 
 use Automattic\VIP\Salesforce\Agentforce\Utils\Traits\Singleton;
+use Automattic\VIP\Salesforce\Agentforce\Utils\Traits\WithPluginPaths;
 
 /**
  * Class Settings_Page
@@ -13,6 +14,7 @@ use Automattic\VIP\Salesforce\Agentforce\Utils\Traits\Singleton;
 class Settings_Page {
 
 	use Singleton;
+	use WithPluginPaths;
 
 	/**
 	 * Construct method.
@@ -200,7 +202,7 @@ class Settings_Page {
 			'manage_options',
 			'agentforce-settings',
 			array( $this, 'render_settings_page' ),
-			VIP_AGENTFORCE_INTEGRATION_URL . '/assets/images/agentforce-icon.svg',
+			$this->get_integration_url() . '/assets/images/agentforce-icon.svg',
 		);
 	}
 

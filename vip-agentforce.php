@@ -14,16 +14,14 @@
  */
 
 declare(strict_types = 1);
-
-define( 'VIP_AGENTFORCE_INTEGRATION_PATH', untrailingslashit( plugin_dir_path( __FILE__ ) ) );
-define( 'VIP_AGENTFORCE_INTEGRATION_URL', untrailingslashit( plugin_dir_url( __FILE__ ) ) );
-
+const VIP_AGENTFORCE_FILE = __FILE__;
 
 require_once __DIR__ . '/utils/class-configs.php';
 require_once __DIR__ . '/utils/class-constants.php';
 require_once __DIR__ . '/utils/class-logger.php';
 require_once __DIR__ . '/utils/class-tracking.php';
 require_once __DIR__ . '/utils/traits/trait-singleton.php';
+require_once __DIR__ . '/utils/traits/trait-with-plugin-paths.php';
 
 use function Automattic\VIP\Salesforce\Agentforce\Utils\load_integration_configs_from_headers;
 use function Automattic\VIP\Salesforce\Agentforce\Utils\load_integration_configs_from_url;
@@ -68,4 +66,5 @@ require_once __DIR__ . '/modules/cmp/class-assets.php';
 require_once __DIR__ . '/modules/cmp/class-settings-page.php';
 require_once __DIR__ . '/modules/cmp/class-agentforce.php';
 require_once __DIR__ . '/modules/cmp/class-cmp.php';
+// initialize CMP module
 \Automattic\VIP\Salesforce\Agentforce\Cmp\Cmp::get_instance();

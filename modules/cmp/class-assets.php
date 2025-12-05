@@ -6,6 +6,7 @@
 namespace Automattic\VIP\Salesforce\Agentforce\Cmp;
 
 use Automattic\VIP\Salesforce\Agentforce\Utils\Traits\Singleton;
+use Automattic\VIP\Salesforce\Agentforce\Utils\Traits\WithPluginPaths;
 
 /**
  * Class Assets
@@ -13,6 +14,7 @@ use Automattic\VIP\Salesforce\Agentforce\Utils\Traits\Singleton;
 class Assets {
 
 	use Singleton;
+	use WithPluginPaths;
 
 	/**
 	 * Construct method.
@@ -45,17 +47,17 @@ class Assets {
 
 		wp_register_script(
 			'wp-agentforce-features-script',
-			VIP_AGENTFORCE_INTEGRATION_URL . '/assets/build/js/main.js',
+			$this->get_integration_url() . '/assets/build/js/main.js',
 			array(),
-			filemtime( VIP_AGENTFORCE_INTEGRATION_PATH . '/assets/build/js/main.js' ),
+			filemtime( $this->get_integration_path() . '/assets/build/js/main.js' ),
 			true
 		);
 
 		wp_register_style(
 			'wp-agentforce-features-style',
-			VIP_AGENTFORCE_INTEGRATION_URL . '/assets/build/css/main.css',
+			$this->get_integration_url() . '/assets/build/css/main.css',
 			array(),
-			filemtime( VIP_AGENTFORCE_INTEGRATION_PATH . '/assets/build/css/main.css' )
+			filemtime( $this->get_integration_path() . '/assets/build/css/main.css' )
 		);
 
 		wp_enqueue_script( 'wp-agentforce-features-script' );
@@ -71,17 +73,17 @@ class Assets {
 
 		wp_register_script(
 			'wp-agentforce-features-script',
-			VIP_AGENTFORCE_INTEGRATION_URL . '/assets/build/js/admin.js',
+			$this->get_integration_url() . '/assets/build/js/admin.js',
 			array(),
-			filemtime( VIP_AGENTFORCE_INTEGRATION_PATH . '/assets/build/js/admin.js' ),
+			filemtime( $this->get_integration_path() . '/assets/build/js/admin.js' ),
 			true
 		);
 
 		wp_register_style(
 			'wp-agentforce-features-style',
-			VIP_AGENTFORCE_INTEGRATION_URL . '/assets/build/css/admin.css',
+			$this->get_integration_url() . '/assets/build/css/admin.css',
 			array(),
-			filemtime( VIP_AGENTFORCE_INTEGRATION_PATH . '/assets/build/css/admin.css' )
+			filemtime( $this->get_integration_path() . '/assets/build/css/admin.css' )
 		);
 
 		wp_enqueue_script( 'wp-agentforce-features-script' );
@@ -140,13 +142,13 @@ class Assets {
 		$script_file        = $consent_scripts[ $consent_type ] . '.js';
 		$library_asset_file = include sprintf(
 			'%s/assets/build/js/%s.asset.php',
-			VIP_AGENTFORCE_INTEGRATION_PATH,
+			$this->get_integration_path(),
 			$consent_scripts[ $consent_type ]
 		);
 
 		wp_register_script(
 			$script_handle,
-			VIP_AGENTFORCE_INTEGRATION_URL . '/assets/build/js/' . $script_file,
+			$this->get_integration_url() . '/assets/build/js/' . $script_file,
 			$library_asset_file['dependencies'],
 			$library_asset_file['version'],
 			true

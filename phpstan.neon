@@ -3,10 +3,10 @@ includes:
 parameters:
   level: 6
   paths:
-    - vip-agentforce.php
     - modules
     - utils
     - tests
+    - vip-agentforce.php
   excludePaths:
     - %rootDir%/../../../tests/e2e
   scanDirectories:
