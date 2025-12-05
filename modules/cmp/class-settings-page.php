@@ -455,8 +455,11 @@ class Settings_Page {
 	 */
 	public function render_settings_page() {
 		$php_version = PHP_VERSION;
-		$xdebug      = extension_loaded( 'xdebug' ) ? __( 'Enabled', 'vip-agentforce' ) : __( 'Disabled', 'vip-agentforce' );
-		$site_url    = home_url();
+
+		do_action( 'vip_agentforce_track_event', 'cmp_page_viewed', [] );
+		do_action( 'vip_agentforce_track_stat', 'cmp_page_viewed' );
+		$xdebug   = extension_loaded( 'xdebug' ) ? __( 'Enabled', 'vip-agentforce' ) : __( 'Disabled', 'vip-agentforce' );
+		$site_url = home_url();
 		?>
 		<div class="wrap agentforce-wrap">
 			<h1><?php esc_html_e( 'AgentForce Settings', 'vip-agentforce' ); ?></h1>
