@@ -572,7 +572,7 @@ class Settings_Page {
 								</tr>
 								<tr>
 									<th><?php esc_html_e( 'Site URL', 'vip-agentforce' ); ?></th>
-									<td><a href="<?php echo esc_html( $site_url ); ?>"><?php echo esc_html( $site_url ); ?></a></td>
+									<td><a href="<?php echo esc_url( $site_url ); ?>"><?php echo esc_html( $site_url ); ?></a></td>
 								</tr>
 							</table>
 						</div>
