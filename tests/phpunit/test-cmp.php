@@ -47,7 +47,12 @@ class Cmp_Tests extends WP_UnitTestCase {
 
 		$localized_data = wp_scripts()->get_data( 'af-cookieyes-consent', 'data' );
 
-		$this->assertStringContainsString( '"sdkUrl":"https:\/\/example.local"', $localized_data );
+		// WP Version 6.9 changed how the data is returned.
+		if ( version_compare( get_bloginfo( 'version' ), '6.9', '<' ) ) {
+			$this->assertStringContainsString( '"sdkUrl":"https:\/\/example.local"', $localized_data );
+		} else {
+			$this->assertStringContainsString( '"sdkUrl":"https://example.local"', $localized_data );
+		}
 	}
 
 	public function test_onetrust_localization_uses_default_group(): void {
