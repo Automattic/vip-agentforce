@@ -1,0 +1,45 @@
+{
+	"name": "vip-agentforce",
+	"version": "1.0.0",
+	"description": "Features plugin skeleton for internal use.",
+	"private": true,
+	"author": "VIP",
+	"license": "GPL-2.0-or-later",
+	"dependencies": {
+		"@wordpress/scripts": "30.19.0"
+	},
+	"devDependencies": {
+		"@babel/core": "7.21.8",
+		"@wordpress/babel-preset-default": "7.16.0",
+		"@wordpress/browserslist-config": "5.15.0",
+		"@wordpress/env": "6.0.0",
+		"@wordpress/eslint-plugin": "14.7.0",
+		"browserslist": "4.21.5",
+		"cross-env": "7.0.3",
+		"css-minimizer-webpack-plugin": "5.0.0",
+		"eslint": "8.40.0",
+		"eslint-plugin-eslint-comments": "3.2.0",
+		"eslint-plugin-import": "2.27.5",
+		"lint-staged": "13.2.2",
+		"npm-run-all": "4.1.5",
+		"webpack-remove-empty-scripts": "1.0.3"
+	},
+	"scripts": {
+		"build:dev": "cross-env NODE_ENV=development npm-run-all 'build:!(dev|prod)'",
+		"build:prod": "cross-env NODE_ENV=production npm-run-all 'build:!(dev|prod)'",
+		"build:js": "wp-scripts build --experimental-modules --config ./webpack.config.js",
+		"lint": "npm-run-all --parallel lint:*",
+		"lint:css": "wp-scripts lint-style ./assets/src",
+		"lint:css:fix": "npm run lint:css -- --fix ./assets/src",
+		"lint:js": "wp-scripts lint-js ./assets/src",
+		"lint:js:fix": "npm run lint:js -- --fix ./assets/src",
+		"lint:js:report": "npm run lint:js -- --output-file lint-js-report.json --format json .",
+		"lint:php": "vendor/bin/phpcs",
+		"lint:php:fix": "./bin/phpcbf.sh",
+		"lint:package-json": "wp-scripts lint-pkg-json --ignorePath .gitignore",
+		"lint:staged": "lint-staged",
+		"start:js": "wp-scripts start --experimental-modules --config ./webpack.config.js",
+		"start": "npm-run-all --parallel start:*",
+		"pot": "composer run pot"
+	}
+}
