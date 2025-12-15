@@ -462,7 +462,7 @@ class Settings_Page {
 		$site_url = home_url();
 		?>
 		<div class="wrap agentforce-wrap">
-			<h1><?php esc_html_e( 'AgentForce Settings', 'vip-agentforce' ); ?></h1>
+			<h1><?php esc_html_e( 'Agentforce Settings', 'vip-agentforce' ); ?></h1>
 			<?php settings_errors( 'vip_agentforce_messages' ); ?>
 			<form method="post" action="options.php">
 				<?php settings_fields( 'agentforce_settings_group' ); ?>
