@@ -197,8 +197,8 @@ class Settings_Page {
 	 */
 	public function add_settings_page(): void {
 		add_menu_page(
-			__( 'AgentForce Settings', 'vip-agentforce' ),
-			__( 'AgentForce', 'vip-agentforce' ),
+			__( 'Agentforce Settings', 'vip-agentforce' ),
+			__( 'Agentforce', 'vip-agentforce' ),
 			'manage_options',
 			'vip-agentforce-settings',
 			array( $this, 'render_settings_page' ),

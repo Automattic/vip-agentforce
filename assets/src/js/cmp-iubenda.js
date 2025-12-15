@@ -1,18 +1,18 @@
 /**
  * iubenda CMP integration for Agentforce SDK
- * 
+ *
  * REQUIRED CONFIGURATION:
- * For this plugin to work correctly with iubenda, you must add the following 
+ * For this plugin to work correctly with iubenda, you must add the following
  * callback to your existing iubenda configuration:
- * 
+ *
  * Add this to your existing _iub.csConfiguration object:
- * 
+ *
  * "callback": {
  *   "onPreferenceExpressed": function(preference) {
  *     document.dispatchEvent(new CustomEvent('iubendaPreferenceUpdate', { detail: preference }));
  *   }
  * }
- * 
+ *
  * Example - if your existing config looks like this:
  * var _iub = _iub || [];
  * _iub.csConfiguration = {
@@ -21,7 +21,7 @@
  *   "lang": "en",
  *   "storage": {"useSiteId": true}
  * };
- * 
+ *
  * Update it to include the callback:
  * var _iub = _iub || [];
  * _iub.csConfiguration = {
@@ -35,9 +35,9 @@
  *     }
  *   }
  * };
- * 
- * The callback dispatches a custom event 'iubendaPreferenceUpdate' that this 
- * plugin listens for to determine when to load/unload the AgentForce SDK 
+ *
+ * The callback dispatches a custom event 'iubendaPreferenceUpdate' that this
+ * plugin listens for to determine when to load/unload the Agentforce SDK
  * based on the configured purpose ID consent status.
  */
 

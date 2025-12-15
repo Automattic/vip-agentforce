@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2025-12-05T12:01:48+00:00\n"
+"POT-Creation-Date: 2025-12-15T14:13:19+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: vip-agentforce\n"
@@ -36,6 +36,7 @@ msgstr ""
 
 #: modules/admin-status/class-admin-status.php:14
 #: modules/admin-status/class-admin-status.php:15
+#: modules/cmp/class-settings-page.php:201
 msgid "Agentforce"
 msgstr ""
 
@@ -69,7 +70,7 @@ msgstr ""
 
 #: modules/cmp/class-settings-page.php:170
 #: modules/cmp/class-settings-page.php:355
-#: modules/cmp/class-settings-page.php:522
+#: modules/cmp/class-settings-page.php:525
 msgid "Enable log"
 msgstr ""
 
@@ -82,12 +83,8 @@ msgid "Bottom left"
 msgstr ""
 
 #: modules/cmp/class-settings-page.php:200
-#: modules/cmp/class-settings-page.php:462
-msgid "AgentForce Settings"
-msgstr ""
-
-#: modules/cmp/class-settings-page.php:201
-msgid "AgentForce"
+#: modules/cmp/class-settings-page.php:465
+msgid "Agentforce Settings"
 msgstr ""
 
 #: modules/cmp/class-settings-page.php:270
@@ -95,52 +92,52 @@ msgid "General Settings"
 msgstr ""
 
 #: modules/cmp/class-settings-page.php:277
-#: modules/cmp/class-settings-page.php:473
+#: modules/cmp/class-settings-page.php:476
 msgid "Enable SDK"
 msgstr ""
 
 #: modules/cmp/class-settings-page.php:285
-#: modules/cmp/class-settings-page.php:477
+#: modules/cmp/class-settings-page.php:480
 msgid "Salesforce SDK URL"
 msgstr ""
 
 #: modules/cmp/class-settings-page.php:293
-#: modules/cmp/class-settings-page.php:483
+#: modules/cmp/class-settings-page.php:486
 msgid "Consent Type"
 msgstr ""
 
 #: modules/cmp/class-settings-page.php:301
-#: modules/cmp/class-settings-page.php:489
+#: modules/cmp/class-settings-page.php:492
 msgid "OneTrust Group ID"
 msgstr ""
 
 #: modules/cmp/class-settings-page.php:309
-#: modules/cmp/class-settings-page.php:493
+#: modules/cmp/class-settings-page.php:496
 msgid "Cookiebot Category"
 msgstr ""
 
 #: modules/cmp/class-settings-page.php:317
-#: modules/cmp/class-settings-page.php:497
+#: modules/cmp/class-settings-page.php:500
 msgid "iubenda Purpose ID"
 msgstr ""
 
 #: modules/cmp/class-settings-page.php:325
-#: modules/cmp/class-settings-page.php:504
+#: modules/cmp/class-settings-page.php:507
 msgid "Agent UI"
 msgstr ""
 
 #: modules/cmp/class-settings-page.php:332
-#: modules/cmp/class-settings-page.php:508
+#: modules/cmp/class-settings-page.php:511
 msgid "Alignment"
 msgstr ""
 
 #: modules/cmp/class-settings-page.php:340
-#: modules/cmp/class-settings-page.php:512
+#: modules/cmp/class-settings-page.php:515
 msgid "Custom CSS (optional)"
 msgstr ""
 
 #: modules/cmp/class-settings-page.php:348
-#: modules/cmp/class-settings-page.php:519
+#: modules/cmp/class-settings-page.php:522
 msgid "Debug"
 msgstr ""
 
@@ -192,50 +189,50 @@ msgstr ""
 msgid "To see all available purpose IDs for your site, open browser console and run:"
 msgstr ""
 
-#: modules/cmp/class-settings-page.php:458
+#: modules/cmp/class-settings-page.php:461
 msgid "Enabled"
 msgstr ""
 
-#: modules/cmp/class-settings-page.php:458
+#: modules/cmp/class-settings-page.php:461
 msgid "Disabled"
 msgstr ""
 
-#: modules/cmp/class-settings-page.php:470
+#: modules/cmp/class-settings-page.php:473
 msgid "General"
 msgstr ""
 
-#: modules/cmp/class-settings-page.php:479
+#: modules/cmp/class-settings-page.php:482
 msgid "Must be HTTPS. The SDK will be enqueued on the frontend."
 msgstr ""
 
-#: modules/cmp/class-settings-page.php:505
+#: modules/cmp/class-settings-page.php:508
 msgid "Alignment and custom styles for the launcher/widget."
 msgstr ""
 
-#: modules/cmp/class-settings-page.php:530
+#: modules/cmp/class-settings-page.php:533
 msgid "Save Changes"
 msgstr ""
 
-#: modules/cmp/class-settings-page.php:532
+#: modules/cmp/class-settings-page.php:535
 msgid "Changes apply on next page load."
 msgstr ""
 
-#: modules/cmp/class-settings-page.php:538
+#: modules/cmp/class-settings-page.php:541
 msgid "Documentation"
 msgstr ""
 
-#: modules/cmp/class-settings-page.php:560
+#: modules/cmp/class-settings-page.php:563
 msgid "Status"
 msgstr ""
 
-#: modules/cmp/class-settings-page.php:563
+#: modules/cmp/class-settings-page.php:566
 msgid "PHP version"
 msgstr ""
 
-#: modules/cmp/class-settings-page.php:567
+#: modules/cmp/class-settings-page.php:570
 msgid "Xdebug"
 msgstr ""
 
-#: modules/cmp/class-settings-page.php:571
+#: modules/cmp/class-settings-page.php:574
 msgid "Site URL"
 msgstr ""

@@ -18,7 +18,7 @@ test.describe( 'CMP Settings', () => {
 
 		await test.step( 'Visit CMP settings page', async () => {
 			await cmpSettings.visit();
-			await expect( cmpSettings.heading ).toHaveText( 'AgentForce Settings' );
+			await expect( cmpSettings.heading ).toHaveText( 'Agentforce Settings' );
 		} );
 
 		await test.step( 'Configure Cookiebot consent and SDK URL', async () => {
