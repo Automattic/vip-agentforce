@@ -2,7 +2,6 @@
 
 # be sure we're testing against the latest code.
 composer dump-autoload
-npm ci
 npm run build:prod
 
 while [ $# -gt 0 ]; do
