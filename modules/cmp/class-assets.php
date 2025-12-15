@@ -138,8 +138,10 @@ class Assets {
 			return;
 		}
 
-		$script_handle      = 'af-' . strtolower( $consent_type ) . '-consent';
-		$script_file        = $consent_scripts[ $consent_type ] . '.js';
+		$script_handle = 'af-' . strtolower( $consent_type ) . '-consent';
+		$script_file   = $consent_scripts[ $consent_type ] . '.js';
+		// TODO: improve dynamic inclusion
+		// phpcs:ignore WordPressVIPMinimum.Files.IncludingFile.UsingCustomFunction
 		$library_asset_file = include sprintf(
 			'%s/assets/build/js/%s.asset.php',
 			$this->get_integration_path(),
