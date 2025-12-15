@@ -10,6 +10,28 @@ class Configs {
 	 */
 	private static $cached_config = null;
 
+	/**
+	 * Flush the cached config.
+	 *
+	 * Primarily useful for tests where configs may be overridden via filters.
+	 */
+	public static function flush_cache(): void {
+		self::$cached_config = null;
+	}
+
+	/**
+	 * Returns whether the Agentforce JS SDK is activated in integration config.
+	 */
+	public static function is_js_sdk_activated(): bool {
+		$config = self::get_config();
+
+		if ( ! array_key_exists( 'agentforce_js_sdk_activated', $config ) ) {
+			return false;
+		}
+
+		$activated = filter_var( $config['agentforce_js_sdk_activated'], FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE );
+		return null === $activated ? false : $activated;
+	}
 
 	/**
 	 * Get the config

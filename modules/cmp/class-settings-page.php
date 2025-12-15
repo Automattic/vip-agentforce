@@ -5,6 +5,7 @@
 
 namespace Automattic\VIP\Salesforce\Agentforce\Cmp;
 
+use Automattic\VIP\Salesforce\Agentforce\Utils\Configs;
 use Automattic\VIP\Salesforce\Agentforce\Utils\Traits\Singleton;
 use Automattic\VIP\Salesforce\Agentforce\Utils\Traits\WithPluginPaths;
 
@@ -212,13 +213,6 @@ class Settings_Page {
 	public function register_settings(): void {
 		register_setting(
 			'agentforce_settings_group',
-			'agentforce_enable_sdk',
-			array(
-				'sanitize_callback' => array( $this, 'sanitize_toggle' ),
-			)
-		);
-		register_setting(
-			'agentforce_settings_group',
 			'agentforce_salesforce_sdk_url',
 			array(
 				'sanitize_callback' => array( $this, 'validate_salesforce_sdk_url' ),
@@ -270,14 +264,6 @@ class Settings_Page {
 			__( 'General Settings', 'vip-agentforce' ),
 			'__return_false',
 			'vip-agentforce-settings'
-		);
-
-		add_settings_field(
-			'agentforce_enable_sdk',
-			__( 'Enable SDK', 'vip-agentforce' ),
-			array( $this, 'render_enable_sdk_field' ),
-			'vip-agentforce-settings',
-			'agentforce_settings_section'
 		);
 
 		add_settings_field(
@@ -363,8 +349,15 @@ class Settings_Page {
 	 * Render the Enable SDK checkbox.
 	 */
 	public function render_enable_sdk_field(): void {
-		$value = (int) get_option( 'agentforce_enable_sdk', 1 );
-		echo '<label><input type="checkbox" name="agentforce_enable_sdk" value="1" ' . checked( 1, $value, false ) . '> ' . esc_html__( 'Enable Salesforce SDK', 'vip-agentforce' ) . '</label>';
+		$is_activated = Configs::is_js_sdk_activated();
+		$status       = $is_activated ? 'active' : 'inactive';
+		$status_label = $is_activated ? __( 'Activated', 'vip-agentforce' ) : __( 'Not activated', 'vip-agentforce' );
+
+		printf(
+			'<span id="agentforce-sdk-activation-status" data-status="%s">%s</span>',
+			esc_attr( $status ),
+			esc_html( $status_label )
+		);
 	}
 
 	/**
@@ -473,7 +466,7 @@ class Settings_Page {
 							<h2><?php esc_html_e( 'General', 'vip-agentforce' ); ?></h2>
 							<table class="form-table" role="presentation">
 								<tr id="row_enable_sdk">
-									<th scope="row"><?php esc_html_e( 'Enable SDK', 'vip-agentforce' ); ?></th>
+									<th scope="row"><?php esc_html_e( 'SDK activation', 'vip-agentforce' ); ?></th>
 									<td><?php $this->render_enable_sdk_field(); ?></td>
 								</tr>
 								<tr id="row_sdk">

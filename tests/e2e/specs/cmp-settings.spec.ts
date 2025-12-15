@@ -19,10 +19,10 @@ test.describe( 'CMP Settings', () => {
 		await test.step( 'Visit CMP settings page', async () => {
 			await cmpSettings.visit();
 			await expect( cmpSettings.heading ).toHaveText( 'Agentforce Settings' );
+			await expect( cmpSettings.sdkActivationStatus ).toHaveAttribute( 'data-status', 'active' );
 		} );
 
 		await test.step( 'Configure Cookiebot consent and SDK URL', async () => {
-			await cmpSettings.enableSdk.check( { force: true } );
 			await cmpSettings.sdkUrl.fill( 'https://example.local' );
 			await cmpSettings.setConsentType( 'CookieBot' );
 
@@ -47,7 +47,7 @@ test.describe( 'CMP Settings', () => {
 
 		await test.step( 'Configure Custom consent with SDK URL', async () => {
 			await cmpSettings.visit();
-			await cmpSettings.enableSdk.check( { force: true } );
+			await expect( cmpSettings.sdkActivationStatus ).toHaveAttribute( 'data-status', 'active' );
 			await cmpSettings.sdkUrl.fill( dataUrl );
 			await cmpSettings.setConsentType( 'Custom' );
 

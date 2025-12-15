@@ -5,6 +5,7 @@
 
 namespace Automattic\VIP\Salesforce\Agentforce\Cmp;
 
+use Automattic\VIP\Salesforce\Agentforce\Utils\Configs;
 use Automattic\VIP\Salesforce\Agentforce\Utils\Traits\Singleton;
 use Automattic\VIP\Salesforce\Agentforce\Utils\Traits\WithPluginPaths;
 
@@ -116,9 +117,8 @@ class Assets {
 	 * @return void
 	 */
 	public function af_enqueue_cookieyes_consent_script() {
-		$enable_sdk = get_option( 'agentforce_enable_sdk', 1 );
-		if ( ! $enable_sdk ) {
-			return; // Do not load SDK if disabled.
+		if ( ! Configs::is_js_sdk_activated() ) {
+			return;
 		}
 		$salesforce_sdk_url = get_option( 'agentforce_salesforce_sdk_url', '' );
 		$consent_type       = get_option( 'agentforce_consent_type', 'CookieYes' );

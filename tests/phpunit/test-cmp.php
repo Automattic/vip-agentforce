@@ -3,11 +3,23 @@
 use Automattic\VIP\Salesforce\Agentforce\Cmp\Agentforce;
 use Automattic\VIP\Salesforce\Agentforce\Cmp\Assets;
 use Automattic\VIP\Salesforce\Agentforce\Cmp\Settings_Page;
+use Automattic\VIP\Salesforce\Agentforce\Utils\Configs;
 
 class Cmp_Tests extends WP_UnitTestCase {
 
+	/**
+	 * Prime Configs cache for deterministic tests without mutating VIP_AGENTFORCE_CONFIGS.
+	 *
+	 * @param array<string, mixed> $config
+	 */
+	private function prime_configs_cache( array $config ): void {
+		$ref  = new ReflectionClass( Configs::class );
+		$prop = $ref->getProperty( 'cached_config' );
+		$prop->setAccessible( true );
+		$prop->setValue( null, $config );
+	}
+
 	public function tearDown(): void {
-		delete_option( 'agentforce_enable_sdk' );
 		delete_option( 'agentforce_salesforce_sdk_url' );
 		delete_option( 'agentforce_consent_type' );
 		delete_option( 'agentforce_onetrust_group_id' );
@@ -17,11 +29,18 @@ class Cmp_Tests extends WP_UnitTestCase {
 		delete_option( 'agentforce_custom_css' );
 		delete_option( 'agentforce_enable_oplog' );
 
+		Configs::flush_cache();
+
 		parent::tearDown();
 	}
 
 	public function test_consent_script_not_enqueued_when_sdk_disabled(): void {
-		update_option( 'agentforce_enable_sdk', 0 );
+		$this->prime_configs_cache(
+			[
+				'agentforce_js_sdk_activated' => false,
+			]
+		);
+
 		update_option( 'agentforce_salesforce_sdk_url', 'https://example.local' );
 		update_option( 'agentforce_consent_type', 'CookieYes' );
 
@@ -29,12 +48,17 @@ class Cmp_Tests extends WP_UnitTestCase {
 
 		$this->assertFalse(
 			wp_script_is( 'af-cookieyes-consent', 'enqueued' ),
-			'Consent script should not enqueue if SDK is disabled.'
+			'Consent script should not enqueue if SDK is not activated.'
 		);
 	}
 
 	public function test_cookieyes_script_enqueued_with_localized_sdk_url(): void {
-		update_option( 'agentforce_enable_sdk', 1 );
+		$this->prime_configs_cache(
+			[
+				'agentforce_js_sdk_activated' => true,
+			]
+		);
+
 		update_option( 'agentforce_salesforce_sdk_url', 'https://example.local' );
 		update_option( 'agentforce_consent_type', 'CookieYes' );
 
@@ -42,7 +66,7 @@ class Cmp_Tests extends WP_UnitTestCase {
 
 		$this->assertTrue(
 			wp_script_is( 'af-cookieyes-consent', 'enqueued' ),
-			'Consent script should enqueue when SDK is enabled.'
+			'Consent script should enqueue when SDK is activated.'
 		);
 
 		$localized_data = wp_scripts()->get_data( 'af-cookieyes-consent', 'data' );
@@ -56,7 +80,12 @@ class Cmp_Tests extends WP_UnitTestCase {
 	}
 
 	public function test_onetrust_localization_uses_default_group(): void {
-		update_option( 'agentforce_enable_sdk', 1 );
+		$this->prime_configs_cache(
+			[
+				'agentforce_js_sdk_activated' => true,
+			]
+		);
+
 		update_option( 'agentforce_salesforce_sdk_url', 'https://example.local' );
 		update_option( 'agentforce_consent_type', 'OneTrust' );
 		delete_option( 'agentforce_onetrust_group_id' );
@@ -65,6 +94,24 @@ class Cmp_Tests extends WP_UnitTestCase {
 
 		$localized_data = wp_scripts()->get_data( 'af-onetrust-consent', 'data' );
 		$this->assertStringContainsString( '"groupId":"' . Assets::DEFAULT_ONETRUST_GROUP_ID . '"', $localized_data );
+	}
+
+	public function test_sdk_activation_status_is_readonly_and_reflects_config(): void {
+		$settings = Settings_Page::get_instance();
+
+		$this->prime_configs_cache(
+			[
+				'agentforce_js_sdk_activated' => false,
+			]
+		);
+
+		ob_start();
+		$settings->render_enable_sdk_field();
+		$output = ob_get_clean();
+
+		$this->assertStringContainsString( 'id="agentforce-sdk-activation-status"', $output );
+		$this->assertStringContainsString( 'data-status="inactive"', $output );
+		$this->assertStringNotContainsString( '<input', $output );
 	}
 
 	public function test_render_custom_css_includes_alignment_and_sanitizes_css(): void {
