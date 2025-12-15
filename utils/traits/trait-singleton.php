@@ -20,7 +20,7 @@
  * If any method in the class need to "talk" to another or be aware of what
  * another method has done, then you should implement this trait in that class.
  *
- * If you specifically need multiple objects, then use a normal class.  d
+ * If you specifically need multiple objects, then use a normal class.
  */
 
 namespace Automattic\VIP\Salesforce\Agentforce\Utils\Traits;
