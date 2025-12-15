@@ -1,5 +1,9 @@
 export interface AgentforceConfig {
 	salesforce_instance_url: string;
+    ingestion_api_token?: string;
+    ingestion_api_endpoint?: string;
+    agentforce_js_sdk_url?: string ;
+    agentforce_js_sdk_activated?: boolean;
 }
 export const DEFAULT_CONFIG: AgentforceConfig = {
 	salesforce_instance_url: 'https://your-salesforce-instance-url.com',

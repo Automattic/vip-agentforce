@@ -13,8 +13,14 @@ class Configs {
 
 	/**
 	 * Get the config
-	 * @return array<string, mixed> The module configs. Returns an empty array if configs are not found,
-	 * not defined, or if JSON parsing fails.
+	 * @return array{
+	 *     salesforce_instance_url?: string,
+	 *     ingestion_api_token?: string,
+	 *     ingestion_api_endpoint?: string,
+	 *     agentforce_js_sdk_url?: string,
+	 *     agentforce_js_sdk_activated?: bool
+	 * } The module configs. Returns an empty array if configs are not found, not defined, or if JSON parsing fails.
+	 *
 	 */
 	public static function get_config(): array {
 		if ( null === self::$cached_config ) {
