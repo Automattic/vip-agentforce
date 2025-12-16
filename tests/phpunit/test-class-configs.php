@@ -48,4 +48,15 @@ class ClassConfigsTest extends WP_UnitTestCase {
 		$this->prime_configs_cache( [ 'agentforce_js_sdk_url' => 'https://example.local' ] );
 		$this->assertSame( 'https://example.local', Configs::get_js_sdk_url() );
 	}
+
+	public function test_get_js_sdk_url_returns_empty_when_non_string(): void {
+		$this->prime_configs_cache( [ 'agentforce_js_sdk_url' => [ 'https://example.local' ] ] );
+		$this->assertSame( '', Configs::get_js_sdk_url() );
+
+		$this->prime_configs_cache( [ 'agentforce_js_sdk_url' => 123 ] );
+		$this->assertSame( '', Configs::get_js_sdk_url() );
+
+		$this->prime_configs_cache( [ 'agentforce_js_sdk_url' => null ] );
+		$this->assertSame( '', Configs::get_js_sdk_url() );
+	}
 }
