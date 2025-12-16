@@ -44,3 +44,7 @@ if [ "${WPVER}" = 'trunk' ]; then
 fi
 vip dev-env exec --slug e2e-agentforce-test-site --quiet -- wp rewrite structure '/%postname%/'
 vip dev-env exec --slug e2e-agentforce-test-site --quiet -- wp user update vipgo --user_pass=password
+
+cd "${basedir}/../"
+npm ci
+npm run build:prod

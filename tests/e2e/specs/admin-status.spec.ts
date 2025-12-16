@@ -1,9 +1,9 @@
 import { expect, test } from '@playwright/test';
 
-import { getAgentForceConfig } from '../lib/config-helper';
+import { getAgentforceConfig } from '../lib/config-helper';
 import { AdminStatusPage } from '../lib/pages/admin-status-page';
 
-const agentForceConfig = getAgentForceConfig();
+const agentForceConfig = getAgentforceConfig();
 
 test.describe( 'Admin Status Page', () => {
 	test( 'displays Salesforce instance details from the integration config', async ( { page } ) => {

@@ -101,4 +101,8 @@ if ( ! defined( 'VIP_AGENTFORCE_CONFIGS' ) ) {
 	define( 'VIP_AGENTFORCE_CONFIGS', [ 'salesforce_instance_url' => 'https://example.my.salesforce.com' ] );
 }
 
+if ( ! defined( 'VIP_AGENTFORCE_FILE' ) ) {
+	define( 'VIP_AGENTFORCE_FILE', dirname( __DIR__ ) . '/vip-agentforce.php' );
+}
+
 \Automattic\VIP\Salesforce\Agentforce\Utils\Testable_Logger::set_track_logs( true );
