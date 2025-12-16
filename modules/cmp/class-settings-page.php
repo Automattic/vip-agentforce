@@ -303,7 +303,7 @@ class Settings_Page {
 	}
 
 	/**
-	 * Render the Enable SDK checkbox.
+	 * Render the Enable SDK activation status.
 	 */
 	public function render_enable_sdk_field(): void {
 		$is_activated = Configs::is_js_sdk_activated();
@@ -318,7 +318,7 @@ class Settings_Page {
 	}
 
 	/**
-	 * Render the Salesforce SDK URL text field.
+	 * Render the Salesforce SDK URL.
 	 */
 	public function render_sdk_url_field(): void {
 		$value = Configs::get_js_sdk_url();
