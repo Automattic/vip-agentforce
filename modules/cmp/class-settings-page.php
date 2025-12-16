@@ -55,42 +55,6 @@ class Settings_Page {
 	}
 
 	/**
-	 * Validate Salesforce SDK URL.
-	 *
-	 * @param string $url The URL to validate.
-	 *
-	 * @return string|mixed The validated URL or old value if invalid.
-	 */
-	public function validate_salesforce_sdk_url( $url ) {
-		$url       = trim( $url );
-		$old_value = get_option( 'agentforce_salesforce_sdk_url' );
-
-		if ( empty( $url ) ) {
-			add_settings_error(
-				'vip_agentforce_messages',
-				'vip_agentforce_salesforce_sdk_url_error',
-				__( 'Salesforce SDK URL cannot be empty.', 'vip-agentforce' ),
-				'error'
-			);
-
-			return $old_value;
-		}
-
-		if ( ! filter_var( $url, FILTER_VALIDATE_URL ) ) {
-			add_settings_error(
-				'vip_agentforce_messages',
-				'vip_agentforce_salesforce_sdk_url_error',
-				__( 'Please enter a valid URL for the Salesforce SDK.', 'vip-agentforce' ),
-				'error'
-			);
-
-			return $old_value;
-		}
-
-		return esc_url_raw( $url );
-	}
-
-	/**
 	 * Validate iubenda Purpose ID.
 	 *
 	 * @param string $purpose_id The Purpose ID to validate.
@@ -211,13 +175,6 @@ class Settings_Page {
 	 * Register settings, sections, and fields.
 	 */
 	public function register_settings(): void {
-		register_setting(
-			'agentforce_settings_group',
-			'agentforce_salesforce_sdk_url',
-			array(
-				'sanitize_callback' => array( $this, 'validate_salesforce_sdk_url' ),
-			)
-		);
 		register_setting( 'agentforce_settings_group', 'agentforce_consent_type' );
 		register_setting( 'agentforce_settings_group', 'agentforce_onetrust_group_id' );
 		register_setting( 'agentforce_settings_group', 'agentforce_cookiebot_category' );
@@ -267,7 +224,7 @@ class Settings_Page {
 		);
 
 		add_settings_field(
-			'agentforce_salesforce_sdk_url',
+			'agentforce_js_sdk_url',
 			__( 'Salesforce SDK URL', 'vip-agentforce' ),
 			array( $this, 'render_sdk_url_field' ),
 			'vip-agentforce-settings',
@@ -364,11 +321,19 @@ class Settings_Page {
 	 * Render the Salesforce SDK URL text field.
 	 */
 	public function render_sdk_url_field(): void {
-		$value = esc_attr( get_option( 'agentforce_salesforce_sdk_url', '' ) );
-		printf(
-			'<input type="text" name="agentforce_salesforce_sdk_url" value="%s" class="regular-text" />',
-			esc_attr( $value )
-		);
+		$value = Configs::get_js_sdk_url();
+		if ( ! empty( $value ) ) {
+			printf(
+				'<code id="agentforce-sdk-url" data-url="%s">%s</code>',
+				esc_attr( $value ),
+				esc_html( $value )
+			);
+		} else {
+			printf(
+				'<code id="agentforce-sdk-url" data-url="">%s</code>',
+				esc_html__( 'Not configured', 'vip-agentforce' )
+			);
+		}
 	}
 
 	/**
@@ -472,7 +437,7 @@ class Settings_Page {
 								<tr id="row_sdk">
 									<th scope="row"><?php esc_html_e( 'Salesforce SDK URL', 'vip-agentforce' ); ?></th>
 									<td><?php $this->render_sdk_url_field(); ?><p
-											class="description"><?php esc_html_e( 'Must be HTTPS. The SDK will be enqueued on the frontend.', 'vip-agentforce' ); ?></p>
+											class="description"><?php esc_html_e( 'This is read-only and comes from the VIP integration configuration.', 'vip-agentforce' ); ?></p>
 									</td>
 								</tr>
 								<tr id="row_consent">

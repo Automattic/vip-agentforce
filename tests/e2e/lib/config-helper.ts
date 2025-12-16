@@ -8,6 +8,7 @@ export interface AgentforceConfig {
 export const DEFAULT_CONFIG: AgentforceConfig = {
 	salesforce_instance_url: 'https://your-salesforce-instance-url.com',
 	agentforce_js_sdk_activated: true,
+	agentforce_js_sdk_url: 'https://example.local',
 };
 export function getAgentforceConfig(
 	overrides?: Partial<AgentforceConfig>,

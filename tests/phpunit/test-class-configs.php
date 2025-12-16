@@ -38,4 +38,14 @@ class ClassConfigsTest extends WP_UnitTestCase {
 		$this->prime_configs_cache( [ 'agentforce_js_sdk_activated' => '0' ] );
 		$this->assertFalse( Configs::is_js_sdk_activated() );
 	}
+
+	public function test_get_js_sdk_url_returns_empty_when_missing(): void {
+		$this->prime_configs_cache( [] );
+		$this->assertSame( '', Configs::get_js_sdk_url() );
+	}
+
+	public function test_get_js_sdk_url_returns_string_when_present(): void {
+		$this->prime_configs_cache( [ 'agentforce_js_sdk_url' => 'https://example.local' ] );
+		$this->assertSame( 'https://example.local', Configs::get_js_sdk_url() );
+	}
 }

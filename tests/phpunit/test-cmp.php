@@ -20,7 +20,6 @@ class Cmp_Tests extends WP_UnitTestCase {
 	}
 
 	public function tearDown(): void {
-		delete_option( 'agentforce_salesforce_sdk_url' );
 		delete_option( 'agentforce_consent_type' );
 		delete_option( 'agentforce_onetrust_group_id' );
 		delete_option( 'agentforce_cookiebot_category' );
@@ -38,10 +37,10 @@ class Cmp_Tests extends WP_UnitTestCase {
 		$this->prime_configs_cache(
 			[
 				'agentforce_js_sdk_activated' => false,
+				'agentforce_js_sdk_url'       => 'https://example.local',
 			]
 		);
 
-		update_option( 'agentforce_salesforce_sdk_url', 'https://example.local' );
 		update_option( 'agentforce_consent_type', 'CookieYes' );
 
 		Assets::get_instance()->af_enqueue_cookieyes_consent_script();
@@ -56,10 +55,10 @@ class Cmp_Tests extends WP_UnitTestCase {
 		$this->prime_configs_cache(
 			[
 				'agentforce_js_sdk_activated' => true,
+				'agentforce_js_sdk_url'       => 'https://example.local',
 			]
 		);
 
-		update_option( 'agentforce_salesforce_sdk_url', 'https://example.local' );
 		update_option( 'agentforce_consent_type', 'CookieYes' );
 
 		Assets::get_instance()->af_enqueue_cookieyes_consent_script();
@@ -83,10 +82,10 @@ class Cmp_Tests extends WP_UnitTestCase {
 		$this->prime_configs_cache(
 			[
 				'agentforce_js_sdk_activated' => true,
+				'agentforce_js_sdk_url'       => 'https://example.local',
 			]
 		);
 
-		update_option( 'agentforce_salesforce_sdk_url', 'https://example.local' );
 		update_option( 'agentforce_consent_type', 'OneTrust' );
 		delete_option( 'agentforce_onetrust_group_id' );
 
@@ -102,6 +101,7 @@ class Cmp_Tests extends WP_UnitTestCase {
 		$this->prime_configs_cache(
 			[
 				'agentforce_js_sdk_activated' => false,
+				'agentforce_js_sdk_url'       => 'https://example.local',
 			]
 		);
 
@@ -112,6 +112,25 @@ class Cmp_Tests extends WP_UnitTestCase {
 		$this->assertStringContainsString( 'id="agentforce-sdk-activation-status"', $output );
 		$this->assertStringContainsString( 'data-status="inactive"', $output );
 		$this->assertStringNotContainsString( '<input', $output );
+	}
+
+	public function test_sdk_url_is_readonly_and_reflects_config(): void {
+		$settings = Settings_Page::get_instance();
+
+		$this->prime_configs_cache(
+			[
+				'agentforce_js_sdk_activated' => true,
+				'agentforce_js_sdk_url'       => 'https://example.local',
+			]
+		);
+
+		ob_start();
+		$settings->render_sdk_url_field();
+		$output = ob_get_clean();
+
+		$this->assertStringContainsString( 'id="agentforce-sdk-url"', $output );
+		$this->assertStringContainsString( 'data-url="https://example.local"', $output );
+		$this->assertStringNotContainsString( 'name="agentforce_salesforce_sdk_url"', $output );
 	}
 
 	public function test_render_custom_css_includes_alignment_and_sanitizes_css(): void {
@@ -130,13 +149,7 @@ class Cmp_Tests extends WP_UnitTestCase {
 	public function test_validation_returns_old_values_on_invalid_input(): void {
 		$settings = Settings_Page::get_instance();
 
-		update_option( 'agentforce_salesforce_sdk_url', 'https://old.example/sdk.js' );
 		update_option( 'agentforce_iubenda_category', '3' );
-
-		$this->assertSame(
-			'https://old.example/sdk.js',
-			$settings->validate_salesforce_sdk_url( 'not-a-url' )
-		);
 
 		$this->assertSame(
 			'3',

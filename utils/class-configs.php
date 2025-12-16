@@ -34,10 +34,20 @@ class Configs {
 	}
 
 	/**
+	 * Returns the Agentforce JS SDK URL from integration config.
+	 */
+	public static function get_js_sdk_url(): string {
+		$config = self::get_config();
+		$url    = $config['agentforce_js_sdk_url'] ?? '';
+
+		return is_string( $url ) ? $url : '';
+	}
+
+	/**
 	 * Get the config
 	 * @return array{
 	 *     salesforce_instance_url?: string,
-	 *     ingestion_api_token?: string,
+	 *     ingestion_api_token?: string, // TODO: should the access to the token be available only inside the VIP Agentforce Module?
 	 *     ingestion_api_endpoint?: string,
 	 *     agentforce_js_sdk_url?: string,
 	 *     agentforce_js_sdk_activated?: bool

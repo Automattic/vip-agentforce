@@ -3,7 +3,7 @@ import type { Locator, Page } from '@playwright/test';
 const selectors = {
 	heading: '.agentforce-wrap h1',
 	sdkActivationStatus: '#agentforce-sdk-activation-status',
-	sdkUrl: 'input[name="agentforce_salesforce_sdk_url"]',
+	sdkUrl: '#agentforce-sdk-url',
 	consentType: 'select[name="agentforce_consent_type"]',
 	onetrustRow: '#row_onetrust',
 	onetrustGroupId: 'input[name="agentforce_onetrust_group_id"]',
