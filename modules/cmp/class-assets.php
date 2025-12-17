@@ -180,7 +180,7 @@ class Assets {
 
 		wp_localize_script(
 			$script_handle,
-			'afConsentData',
+			'vipAgentforceConsentData',
 			$localize_data
 		);
 
