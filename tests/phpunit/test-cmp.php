@@ -21,13 +21,13 @@ class Cmp_Tests extends WP_UnitTestCase {
 	}
 
 	public function tearDown(): void {
-		delete_option( 'agentforce_consent_type' );
-		delete_option( 'agentforce_onetrust_group_id' );
-		delete_option( 'agentforce_cookiebot_category' );
-		delete_option( 'agentforce_iubenda_category' );
-		delete_option( 'agentforce_alignment' );
-		delete_option( 'agentforce_custom_css' );
-		delete_option( 'agentforce_enable_oplog' );
+		delete_option( 'vip_agentforce_consent_type' );
+		delete_option( 'vip_agentforce_onetrust_group_id' );
+		delete_option( 'vip_agentforce_cookiebot_category' );
+		delete_option( 'vip_agentforce_iubenda_category' );
+		delete_option( 'vip_agentforce_alignment' );
+		delete_option( 'vip_agentforce_custom_css' );
+		delete_option( 'vip_agentforce_enable_oplog' );
 
 		Configs::flush_cache();
 
@@ -42,7 +42,7 @@ class Cmp_Tests extends WP_UnitTestCase {
 			]
 		);
 
-		update_option( 'agentforce_consent_type', 'CookieYes' );
+		update_option( 'vip_agentforce_consent_type', 'CookieYes' );
 
 		Assets::get_instance()->enqueue_consent_scripts();
 
@@ -60,7 +60,7 @@ class Cmp_Tests extends WP_UnitTestCase {
 			]
 		);
 
-		update_option( 'agentforce_consent_type', 'CookieYes' );
+		update_option( 'vip_agentforce_consent_type', 'CookieYes' );
 
 		Assets::get_instance()->enqueue_consent_scripts();
 
@@ -112,8 +112,8 @@ class Cmp_Tests extends WP_UnitTestCase {
 			]
 		);
 
-		update_option( 'agentforce_consent_type', 'OneTrust' );
-		delete_option( 'agentforce_onetrust_group_id' );
+		update_option( 'vip_agentforce_consent_type', 'OneTrust' );
+		delete_option( 'vip_agentforce_onetrust_group_id' );
 
 		Assets::get_instance()->enqueue_consent_scripts();
 
@@ -160,8 +160,8 @@ class Cmp_Tests extends WP_UnitTestCase {
 	}
 
 	public function test_render_custom_css_includes_alignment_and_sanitizes_css(): void {
-		update_option( 'agentforce_alignment', 'bottom-left' );
-		update_option( 'agentforce_custom_css', 'body { color: red; }' );
+		update_option( 'vip_agentforce_alignment', 'bottom-left' );
+		update_option( 'vip_agentforce_custom_css', 'body { color: red; }' );
 
 		ob_start();
 		Agentforce::get_instance()->render_custom_css();
@@ -175,7 +175,7 @@ class Cmp_Tests extends WP_UnitTestCase {
 	public function test_validation_returns_old_values_on_invalid_input(): void {
 		$settings = Settings_Page::get_instance();
 
-		update_option( 'agentforce_iubenda_category', '3' );
+		update_option( 'vip_agentforce_iubenda_category', '3' );
 
 		$this->assertSame(
 			'3',

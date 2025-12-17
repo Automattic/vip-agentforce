@@ -64,7 +64,7 @@ class Settings_Page {
 	 */
 	public function validate_iubenda_category( $purpose_id ) {
 		$purpose_id = trim( $purpose_id );
-		$old_value  = get_option( 'agentforce_iubenda_category' );
+		$old_value  = get_option( 'vip_agentforce_iubenda_category' );
 
 		if ( empty( $purpose_id ) ) {
 			add_settings_error(
@@ -132,13 +132,13 @@ class Settings_Page {
 
 	/** Render: Enable log checkbox */
 	public function render_oplog_field(): void {
-		$value = (int) get_option( 'agentforce_enable_oplog', 1 );
-		echo '<label><input type="checkbox" name="agentforce_enable_oplog" value="1" ' . checked( 1, $value, false ) . '> ' . esc_html__( 'Enable log', 'vip-agentforce' ) . '</label>';
+		$value = (int) get_option( 'vip_agentforce_enable_oplog', 1 );
+		echo '<label><input type="checkbox" name="vip_agentforce_enable_oplog" value="1" ' . checked( 1, $value, false ) . '> ' . esc_html__( 'Enable log', 'vip-agentforce' ) . '</label>';
 	}
 
 	/** Render: Alignment radio buttons */
 	public function render_alignment_field(): void {
-		$value   = get_option( 'agentforce_alignment', 'bottom-right' );
+		$value   = get_option( 'vip_agentforce_alignment', 'bottom-right' );
 		$options = array(
 			'bottom-right' => __( 'Bottom right', 'vip-agentforce' ),
 			'bottom-left'  => __( 'Bottom left', 'vip-agentforce' ),
@@ -146,7 +146,7 @@ class Settings_Page {
 		echo '<fieldset class="agentforce-radios">';
 		foreach ( $options as $k => $label ) {
 			echo '<label style="display:block;margin:6px 0;">';
-			echo '<input type="radio" name="agentforce_alignment" value="' . esc_attr( $k ) . '" ' . checked( $value, $k, false ) . '> ' . esc_html( $label );
+			echo '<input type="radio" name="vip_agentforce_alignment" value="' . esc_attr( $k ) . '" ' . checked( $value, $k, false ) . '> ' . esc_html( $label );
 			echo '</label>';
 		}
 		echo '</fieldset>';
@@ -154,8 +154,8 @@ class Settings_Page {
 
 	/** Render: Custom CSS textarea */
 	public function render_custom_css_field(): void {
-		$value = get_option( 'agentforce_custom_css', '' );
-		echo '<textarea name="agentforce_custom_css" rows="3" class="large-text code" placeholder="/* Paste CSS to override agentforce styles */">' . esc_textarea( $value ) . '</textarea>';
+		$value = get_option( 'vip_agentforce_custom_css', '' );
+		echo '<textarea name="vip_agentforce_custom_css" rows="3" class="large-text code" placeholder="/* Paste CSS to override agentforce styles */">' . esc_textarea( $value ) . '</textarea>';
 	}
 
 	/**
@@ -178,23 +178,23 @@ class Settings_Page {
 	public function register_settings(): void {
 		register_setting(
 			'agentforce_settings_group',
-			'agentforce_consent_type',
+			'vip_agentforce_consent_type',
 			array(
 				'sanitize_callback' => array( $this, 'sanitize_consent_type' ),
 			)
 		);
-		register_setting( 'agentforce_settings_group', 'agentforce_onetrust_group_id' );
-		register_setting( 'agentforce_settings_group', 'agentforce_cookiebot_category' );
+		register_setting( 'agentforce_settings_group', 'vip_agentforce_onetrust_group_id' );
+		register_setting( 'agentforce_settings_group', 'vip_agentforce_cookiebot_category' );
 		register_setting(
 			'agentforce_settings_group',
-			'agentforce_iubenda_category',
+			'vip_agentforce_iubenda_category',
 			array(
 				'sanitize_callback' => array( $this, 'validate_iubenda_category' ),
 			)
 		);
 		register_setting(
 			'agentforce_settings_group',
-			'agentforce_enable_oplog',
+			'vip_agentforce_enable_oplog',
 			array(
 				'sanitize_callback' => array(
 					$this,
@@ -204,7 +204,7 @@ class Settings_Page {
 		);
 		register_setting(
 			'agentforce_settings_group',
-			'agentforce_alignment',
+			'vip_agentforce_alignment',
 			array(
 				'sanitize_callback' => array(
 					$this,
@@ -214,7 +214,7 @@ class Settings_Page {
 		);
 		register_setting(
 			'agentforce_settings_group',
-			'agentforce_custom_css',
+			'vip_agentforce_custom_css',
 			array(
 				'sanitize_callback' => array(
 					$this,
@@ -239,7 +239,7 @@ class Settings_Page {
 		);
 
 		add_settings_field(
-			'agentforce_consent_type',
+			'vip_agentforce_consent_type',
 			__( 'Consent Type', 'vip-agentforce' ),
 			array( $this, 'render_consent_type_field' ),
 			'vip-agentforce-settings',
@@ -247,7 +247,7 @@ class Settings_Page {
 		);
 
 		add_settings_field(
-			'agentforce_onetrust_group_id',
+			'vip_agentforce_onetrust_group_id',
 			__( 'OneTrust Group ID', 'vip-agentforce' ),
 			array( $this, 'render_onetrust_group_id_field' ),
 			'vip-agentforce-settings',
@@ -255,7 +255,7 @@ class Settings_Page {
 		);
 
 		add_settings_field(
-			'agentforce_cookiebot_category',
+			'vip_agentforce_cookiebot_category',
 			__( 'Cookiebot Category', 'vip-agentforce' ),
 			array( $this, 'render_cookiebot_category_field' ),
 			'vip-agentforce-settings',
@@ -263,7 +263,7 @@ class Settings_Page {
 		);
 
 		add_settings_field(
-			'agentforce_iubenda_category',
+			'vip_agentforce_iubenda_category',
 			__( 'iubenda Purpose ID', 'vip-agentforce' ),
 			array( $this, 'render_iubenda_category_field' ),
 			'vip-agentforce-settings',
@@ -278,7 +278,7 @@ class Settings_Page {
 		);
 
 		add_settings_field(
-			'agentforce_alignment',
+			'vip_agentforce_alignment',
 			__( 'Alignment', 'vip-agentforce' ),
 			array( $this, 'render_alignment_field' ),
 			'vip-agentforce-settings',
@@ -286,7 +286,7 @@ class Settings_Page {
 		);
 
 		add_settings_field(
-			'agentforce_custom_css',
+			'vip_agentforce_custom_css',
 			__( 'Custom CSS (optional)', 'vip-agentforce' ),
 			array( $this, 'render_custom_css_field' ),
 			'vip-agentforce-settings',
@@ -301,7 +301,7 @@ class Settings_Page {
 		);
 
 		add_settings_field(
-			'agentforce_enable_oplog',
+			'vip_agentforce_enable_oplog',
 			__( 'Enable log', 'vip-agentforce' ),
 			array( $this, 'render_oplog_field' ),
 			'vip-agentforce-settings',
@@ -355,9 +355,9 @@ class Settings_Page {
 	 * Render the consent type dropdown.
 	 */
 	public function render_consent_type_field(): void {
-		$value = get_option( 'agentforce_consent_type', 'CookieYes' );
+		$value = get_option( 'vip_agentforce_consent_type', 'CookieYes' );
 		?>
-		<select name="agentforce_consent_type">
+		<select name="vip_agentforce_consent_type">
 			<option
 				value="CookieYes" <?php selected( $value, 'CookieYes' ); ?>><?php esc_html_e( 'CookieYes', 'vip-agentforce' ); ?>
 			</option>
@@ -382,9 +382,9 @@ class Settings_Page {
 	 */
 	public function render_onetrust_group_id_field(): void {
 		// Use the constant from Assets class.
-		$value = get_option( 'agentforce_onetrust_group_id', Constants::DEFAULT_ONETRUST_GROUP_ID );
+		$value = get_option( 'vip_agentforce_onetrust_group_id', Constants::DEFAULT_ONETRUST_GROUP_ID );
 		printf(
-			'<input type="text" name="agentforce_onetrust_group_id" value="%s" class="regular-text" />',
+			'<input type="text" name="vip_agentforce_onetrust_group_id" value="%s" class="regular-text" />',
 			esc_attr( $value )
 		);
 	}
@@ -393,9 +393,9 @@ class Settings_Page {
 	 * Render the Cookiebot category text field.
 	 */
 	public function render_cookiebot_category_field(): void {
-		$value = get_option( 'agentforce_cookiebot_category', Constants::DEFAULT_COOKIEBOT_CATEGORY );
+		$value = get_option( 'vip_agentforce_cookiebot_category', Constants::DEFAULT_COOKIEBOT_CATEGORY );
 		printf(
-			'<input type="text" name="agentforce_cookiebot_category" value="%s" class="regular-text" />',
+			'<input type="text" name="vip_agentforce_cookiebot_category" value="%s" class="regular-text" />',
 			esc_attr( $value )
 		);
 		printf(
@@ -409,9 +409,9 @@ class Settings_Page {
 	 * Render the iubenda Purpose ID text field.
 	 */
 	public function render_iubenda_category_field(): void {
-		$value = get_option( 'agentforce_iubenda_category', Constants::DEFAULT_IUBENDA_PURPOSE_ID );
+		$value = get_option( 'vip_agentforce_iubenda_category', Constants::DEFAULT_IUBENDA_PURPOSE_ID );
 		printf(
-			'<input type="number" name="agentforce_iubenda_category" value="%s" class="small-text" min="1" max="5" />',
+			'<input type="number" name="vip_agentforce_iubenda_category" value="%s" class="small-text" min="1" max="5" />',
 			esc_attr( $value )
 		);
 		printf(

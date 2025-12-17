@@ -10,7 +10,7 @@
 	 */
 	function initConsentTypeFieldToggles() {
 		const consentType = document.querySelector(
-			'[name="agentforce_consent_type"]'
+			'[name="vip_agentforce_consent_type"]'
 		);
 
 		if (!consentType) {

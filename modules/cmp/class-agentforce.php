@@ -40,8 +40,8 @@ class Agentforce {
 	 * @return void
 	 */
 	public function render_custom_css() {
-		$custom_css = get_option( 'agentforce_custom_css', '' );
-		$alignment  = get_option( 'agentforce_alignment', 'bottom-right' );
+		$custom_css = get_option( 'vip_agentforce_custom_css', '' );
+		$alignment  = get_option( 'vip_agentforce_alignment', 'bottom-right' );
 		if ( 'bottom-left' === $alignment ) {
 			echo '<style>
 		          .embedded-messaging > .embeddedMessagingFrame { left: 10px }

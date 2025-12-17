@@ -103,7 +103,7 @@ class Assets {
 			return;
 		}
 		$salesforce_sdk_url = Configs::get_js_sdk_url();
-		$consent_type       = get_option( 'agentforce_consent_type', Constants::DEFAULT_CMP );
+		$consent_type       = get_option( 'vip_agentforce_consent_type', Constants::DEFAULT_CMP );
 		$integration_path = $this->get_integration_path();
 
 		if ( ! in_array( $consent_type, Constants::SUPPORTED_CMPS, true ) ) {
@@ -141,13 +141,13 @@ class Assets {
 
 		// we're late loading the options to make sure we load them only if needed.
 		if ( 'OneTrust' === $consent_type ) {
-			$onetrust_group_id  = get_option( 'agentforce_onetrust_group_id', Constants::DEFAULT_ONETRUST_GROUP_ID );
+			$onetrust_group_id  = get_option( 'vip_agentforce_onetrust_group_id', Constants::DEFAULT_ONETRUST_GROUP_ID );
 			$localize_data['groupId'] = $onetrust_group_id;
 		} elseif ( 'CookieBot' === $consent_type ) {
-			$cookiebot_category = get_option( 'agentforce_cookiebot_category', Constants::DEFAULT_COOKIEBOT_CATEGORY );
+			$cookiebot_category = get_option( 'vip_agentforce_cookiebot_category', Constants::DEFAULT_COOKIEBOT_CATEGORY );
 			$localize_data['cookiebotCategory'] = $cookiebot_category;
 		} elseif ( 'iubenda' === $consent_type ) {
-			$iubenda_purpose_id = get_option( 'agentforce_iubenda_category', Constants::DEFAULT_IUBENDA_PURPOSE_ID );
+			$iubenda_purpose_id = get_option( 'vip_agentforce_iubenda_category', Constants::DEFAULT_IUBENDA_PURPOSE_ID );
 			$localize_data['iubendaPurposeId'] = $iubenda_purpose_id;
 		}
 
