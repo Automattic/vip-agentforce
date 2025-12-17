@@ -150,6 +150,7 @@ class Assets {
 			$script_path = $integration_path . '/assets/build/js/' . $script_file;
 			$library_asset_file = array(
 				'dependencies' => array(),
+				// TODO support a generic VIP_AGENTFORCE_VERSION constant that is tied to the plugin version and the release process
 				'version'      => is_readable( $script_path ) ? filemtime( $script_path ) : false,
 			);
 		}
