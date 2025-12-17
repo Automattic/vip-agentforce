@@ -46,7 +46,7 @@ class Cmp_Tests extends WP_UnitTestCase {
 		Assets::get_instance()->enqueue_consent_scripts();
 
 		$this->assertFalse(
-			wp_script_is( 'af-cookieyes-consent', 'enqueued' ),
+			wp_script_is( 'vip-af-cookieyes-consent', 'enqueued' ),
 			'Consent script should not enqueue if SDK is not activated.'
 		);
 	}
@@ -64,12 +64,11 @@ class Cmp_Tests extends WP_UnitTestCase {
 		Assets::get_instance()->enqueue_consent_scripts();
 
 		$this->assertTrue(
-			wp_script_is( 'af-cookieyes-consent', 'enqueued' ),
+			wp_script_is( 'vip-af-cookieyes-consent', 'enqueued' ),
 			'Consent script should enqueue when SDK is activated.'
 		);
 
-		$localized_data = wp_scripts()->get_data( 'af-cookieyes-consent', 'data' );
-
+		$localized_data = wp_scripts()->get_data( 'vip-af-cookieyes-consent', 'data' );
 		// WP Version 6.9 changed how the data is returned.
 		if ( version_compare( get_bloginfo( 'version' ), '6.9', '<' ) ) {
 			$this->assertStringContainsString( '"sdkUrl":"https:\/\/example.local"', $localized_data );
@@ -91,7 +90,7 @@ class Cmp_Tests extends WP_UnitTestCase {
 
 		Assets::get_instance()->enqueue_consent_scripts();
 
-		$localized_data = wp_scripts()->get_data( 'af-onetrust-consent', 'data' );
+		$localized_data = wp_scripts()->get_data( 'vip-af-onetrust-consent', 'data' );
 		$this->assertStringContainsString( '"groupId":"' . Assets::DEFAULT_ONETRUST_GROUP_ID . '"', $localized_data );
 	}
 
