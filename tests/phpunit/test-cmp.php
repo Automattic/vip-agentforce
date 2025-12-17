@@ -78,6 +78,31 @@ class Cmp_Tests extends WP_UnitTestCase {
 		}
 	}
 
+	public function test_supported_cmp_asset_files_are_present(): void {
+		$integration_path = dirname( VIP_AGENTFORCE_FILE );
+
+		foreach ( Constants::SUPPORTED_CMPS as $cmp ) {
+			$consent_script_filename_no_ext = 'cmp' . strtolower( $cmp );
+			$asset_file                     = $integration_path . '/assets/build/js/' . $consent_script_filename_no_ext . '.asset.php';
+
+			$this->assertFileExists(
+				$asset_file,
+				sprintf( 'Missing consent asset PHP file for CMP "%s": %s', $cmp, $asset_file )
+			);
+			$this->assertTrue(
+				is_readable( $asset_file ),
+				sprintf( 'Consent asset PHP file is not readable for CMP "%s": %s', $cmp, $asset_file )
+			);
+
+			$library_asset_file = include $asset_file;
+
+			$this->assertIsArray( $library_asset_file, sprintf( 'Consent asset PHP file did not return an array for CMP "%s".', $cmp ) );
+			$this->assertArrayHasKey( 'dependencies', $library_asset_file );
+			$this->assertIsArray( $library_asset_file['dependencies'] );
+			$this->assertArrayHasKey( 'version', $library_asset_file );
+		}
+	}
+
 	public function test_onetrust_localization_uses_default_group(): void {
 		$this->prime_configs_cache(
 			[
@@ -138,7 +163,7 @@ class Cmp_Tests extends WP_UnitTestCase {
 		update_option( 'agentforce_custom_css', 'body { color: red; }' );
 
 		ob_start();
-		Agentforce::get_instance()->wp_af_custom_css_render();
+		Agentforce::get_instance()->render_custom_css();
 		$output = ob_get_clean();
 
 		$this->assertStringContainsString( '.embedded-messaging > .embeddedMessagingFrame { left: 10px }', $output );
