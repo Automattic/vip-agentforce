@@ -9,6 +9,16 @@ use Automattic\VIP\Salesforce\Agentforce\Utils\Configs;
 class Cmp_Tests extends WP_UnitTestCase {
 
 	/**
+	 * Dequeue and deregister consent scripts to keep tests isolated.
+	 *
+	 * @param string $handle Script handle.
+	 */
+	private function reset_consent_script( string $handle ): void {
+		wp_dequeue_script( $handle );
+		wp_deregister_script( $handle );
+	}
+
+	/**
 	 * Prime Configs cache for deterministic tests without mutating VIP_AGENTFORCE_CONFIGS.
 	 *
 	 * @param array<string, mixed> $config
@@ -29,6 +39,12 @@ class Cmp_Tests extends WP_UnitTestCase {
 		delete_option( 'vip_agentforce_custom_css' );
 		delete_option( 'vip_agentforce_enable_oplog' );
 
+		$this->reset_consent_script( 'vip-af-cookieyes-consent' );
+		$this->reset_consent_script( 'vip-af-cookiebot-consent' );
+		$this->reset_consent_script( 'vip-af-onetrust-consent' );
+		$this->reset_consent_script( 'vip-af-iubenda-consent' );
+		$this->reset_consent_script( 'vip-af-custom-consent' );
+
 		Configs::flush_cache();
 
 		parent::tearDown();
@@ -43,6 +59,8 @@ class Cmp_Tests extends WP_UnitTestCase {
 		);
 
 		update_option( 'vip_agentforce_consent_type', 'CookieYes' );
+
+		$this->reset_consent_script( 'vip-af-cookieyes-consent' );
 
 		Assets::get_instance()->enqueue_consent_scripts();
 
@@ -61,6 +79,8 @@ class Cmp_Tests extends WP_UnitTestCase {
 		);
 
 		update_option( 'vip_agentforce_consent_type', 'CookieYes' );
+
+		$this->reset_consent_script( 'vip-af-cookieyes-consent' );
 
 		Assets::get_instance()->enqueue_consent_scripts();
 
@@ -115,10 +135,63 @@ class Cmp_Tests extends WP_UnitTestCase {
 		update_option( 'vip_agentforce_consent_type', 'OneTrust' );
 		delete_option( 'vip_agentforce_onetrust_group_id' );
 
+		$this->reset_consent_script( 'vip-af-onetrust-consent' );
+
 		Assets::get_instance()->enqueue_consent_scripts();
 
 		$localized_data = wp_scripts()->get_data( 'vip-af-onetrust-consent', 'data' );
 		$this->assertStringContainsString( '"groupId":"' . Constants::DEFAULT_ONETRUST_GROUP_ID . '"', $localized_data );
+	}
+
+	public function test_cookiebot_localization_uses_default_category(): void {
+		$this->prime_configs_cache(
+			[
+				'agentforce_js_sdk_activated' => true,
+				'agentforce_js_sdk_url'       => 'https://example.local',
+			]
+		);
+
+		update_option( 'vip_agentforce_consent_type', 'CookieBot' );
+		delete_option( 'vip_agentforce_cookiebot_category' );
+
+		$this->reset_consent_script( 'vip-af-cookiebot-consent' );
+
+		Assets::get_instance()->enqueue_consent_scripts();
+
+		$localized_data = wp_scripts()->get_data( 'vip-af-cookiebot-consent', 'data' );
+		$this->assertStringContainsString( '"cookiebotCategory":"' . Constants::DEFAULT_COOKIEBOT_CATEGORY . '"', $localized_data );
+	}
+
+	public function test_iubenda_localization_uses_default_purpose_id(): void {
+		$this->prime_configs_cache(
+			[
+				'agentforce_js_sdk_activated' => true,
+				'agentforce_js_sdk_url'       => 'https://example.local',
+			]
+		);
+
+		update_option( 'vip_agentforce_consent_type', 'iubenda' );
+		delete_option( 'vip_agentforce_iubenda_category' );
+
+		$this->reset_consent_script( 'vip-af-iubenda-consent' );
+
+		Assets::get_instance()->enqueue_consent_scripts();
+
+		$localized_data = wp_scripts()->get_data( 'vip-af-iubenda-consent', 'data' );
+		$this->assertStringContainsString( '"iubendaPurposeId":"' . Constants::DEFAULT_IUBENDA_PURPOSE_ID . '"', $localized_data );
+	}
+
+	public function test_sanitize_consent_type_returns_value_for_supported_cmp(): void {
+		$settings = Settings_Page::get_instance();
+
+		$this->assertSame( 'CookieBot', $settings->sanitize_consent_type( 'CookieBot' ) );
+	}
+
+	public function test_sanitize_consent_type_falls_back_to_default_for_invalid_value(): void {
+		$settings = Settings_Page::get_instance();
+
+		$this->assertSame( Constants::DEFAULT_CMP, $settings->sanitize_consent_type( 'InvalidCMP' ) );
+		$this->assertSame( Constants::DEFAULT_CMP, $settings->sanitize_consent_type( 'onetrust' ) );
 	}
 
 	public function test_sdk_activation_status_is_readonly_and_reflects_config(): void {
