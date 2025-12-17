@@ -43,7 +43,7 @@ class Cmp_Tests extends WP_UnitTestCase {
 
 		update_option( 'agentforce_consent_type', 'CookieYes' );
 
-		Assets::get_instance()->af_enqueue_cookieyes_consent_script();
+		Assets::get_instance()->enqueue_consent_scripts();
 
 		$this->assertFalse(
 			wp_script_is( 'af-cookieyes-consent', 'enqueued' ),
@@ -61,7 +61,7 @@ class Cmp_Tests extends WP_UnitTestCase {
 
 		update_option( 'agentforce_consent_type', 'CookieYes' );
 
-		Assets::get_instance()->af_enqueue_cookieyes_consent_script();
+		Assets::get_instance()->enqueue_consent_scripts();
 
 		$this->assertTrue(
 			wp_script_is( 'af-cookieyes-consent', 'enqueued' ),
@@ -89,7 +89,7 @@ class Cmp_Tests extends WP_UnitTestCase {
 		update_option( 'agentforce_consent_type', 'OneTrust' );
 		delete_option( 'agentforce_onetrust_group_id' );
 
-		Assets::get_instance()->af_enqueue_cookieyes_consent_script();
+		Assets::get_instance()->enqueue_consent_scripts();
 
 		$localized_data = wp_scripts()->get_data( 'af-onetrust-consent', 'data' );
 		$this->assertStringContainsString( '"groupId":"' . Assets::DEFAULT_ONETRUST_GROUP_ID . '"', $localized_data );

@@ -36,7 +36,7 @@ class Assets {
 		 */
 		add_action( 'wp_enqueue_scripts', array( $this, 'enqueue_scripts' ) );
 		add_action( 'admin_enqueue_scripts', array( $this, 'admin_enqueue_scripts' ) );
-		add_action( 'wp_enqueue_scripts', array( $this, 'af_enqueue_cookieyes_consent_script' ) );
+		add_action( 'wp_enqueue_scripts', array( $this, 'enqueue_consent_scripts' ) );
 	}
 
 	/**
@@ -116,7 +116,7 @@ class Assets {
 	 *
 	 * @return void
 	 */
-	public function af_enqueue_cookieyes_consent_script() {
+	public function enqueue_consent_scripts() {
 		if ( ! Configs::is_js_sdk_activated() ) {
 			return;
 		}
