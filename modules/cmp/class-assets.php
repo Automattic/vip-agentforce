@@ -113,9 +113,9 @@ class Assets {
 		$script_handle                  = 'vip-af-' . strtolower( $consent_type ) . '-consent';
 
 		$script_file = $consent_script_filename_no_ext . '.js';
-		$asset_file  = $integration_path . '/assets/build/js/' . $consent_script_filename_no_ext . '.asset.php';
 
-		$library_asset_file = include $asset_file;
+		// phpcs:ignore WordPressVIPMinimum.Files.IncludingFile.UsingVariable
+		$library_asset_file = include $integration_path . '/assets/build/js/' . $consent_script_filename_no_ext . '.asset.php';
 
 		// fallback values in case there are issues with the asset file.
 		if ( ! is_array( $library_asset_file ) ) {
