@@ -3,6 +3,7 @@
 use Automattic\VIP\Salesforce\Agentforce\Cmp\Agentforce;
 use Automattic\VIP\Salesforce\Agentforce\Cmp\Assets;
 use Automattic\VIP\Salesforce\Agentforce\Cmp\Settings_Page;
+use Automattic\VIP\Salesforce\Agentforce\Constants;
 use Automattic\VIP\Salesforce\Agentforce\Utils\Configs;
 
 class Cmp_Tests extends WP_UnitTestCase {
@@ -91,7 +92,7 @@ class Cmp_Tests extends WP_UnitTestCase {
 		Assets::get_instance()->enqueue_consent_scripts();
 
 		$localized_data = wp_scripts()->get_data( 'vip-af-onetrust-consent', 'data' );
-		$this->assertStringContainsString( '"groupId":"' . Assets::DEFAULT_ONETRUST_GROUP_ID . '"', $localized_data );
+		$this->assertStringContainsString( '"groupId":"' . Constants::DEFAULT_ONETRUST_GROUP_ID . '"', $localized_data );
 	}
 
 	public function test_sdk_activation_status_is_readonly_and_reflects_config(): void {

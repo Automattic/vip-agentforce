@@ -106,14 +106,6 @@ class Assets {
 		$consent_type       = get_option( 'agentforce_consent_type', Constants::DEFAULT_CMP );
 		$integration_path = $this->get_integration_path();
 
-		$consent_scripts = array(
-			'CookieYes' => 'cmpcookieyes',
-			'CookieBot' => 'cmpcookiebot',
-			'OneTrust'  => 'cmponetrust',
-			'iubenda'   => 'cmpiubenda',
-			'Custom'    => 'cmpcustom',
-		);
-
 		if ( ! in_array( $consent_type, Constants::SUPPORTED_CMPS, true ) ) {
 			return;
 		}
