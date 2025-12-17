@@ -382,7 +382,7 @@ class Settings_Page {
 	 */
 	public function render_onetrust_group_id_field(): void {
 		// Use the constant from Assets class.
-		$value = get_option( 'agentforce_onetrust_group_id', Assets::DEFAULT_ONETRUST_GROUP_ID );
+		$value = get_option( 'agentforce_onetrust_group_id', Constants::DEFAULT_ONETRUST_GROUP_ID );
 		printf(
 			'<input type="text" name="agentforce_onetrust_group_id" value="%s" class="regular-text" />',
 			esc_attr( $value )
@@ -393,7 +393,7 @@ class Settings_Page {
 	 * Render the Cookiebot category text field.
 	 */
 	public function render_cookiebot_category_field(): void {
-		$value = get_option( 'agentforce_cookiebot_category', Assets::DEFAULT_COOKIEBOT_CATEGORY );
+		$value = get_option( 'agentforce_cookiebot_category', Constants::DEFAULT_COOKIEBOT_CATEGORY );
 		printf(
 			'<input type="text" name="agentforce_cookiebot_category" value="%s" class="regular-text" />',
 			esc_attr( $value )
@@ -409,7 +409,7 @@ class Settings_Page {
 	 * Render the iubenda Purpose ID text field.
 	 */
 	public function render_iubenda_category_field(): void {
-		$value = get_option( 'agentforce_iubenda_category', Assets::DEFAULT_IUBENDA_PURPOSE_ID );
+		$value = get_option( 'agentforce_iubenda_category', Constants::DEFAULT_IUBENDA_PURPOSE_ID );
 		printf(
 			'<input type="number" name="agentforce_iubenda_category" value="%s" class="small-text" min="1" max="5" />',
 			esc_attr( $value )

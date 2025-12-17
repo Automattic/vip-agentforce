@@ -82,6 +82,7 @@ class Cmp_Tests extends WP_UnitTestCase {
 		$integration_path = dirname( VIP_AGENTFORCE_FILE );
 
 		foreach ( Constants::SUPPORTED_CMPS as $cmp ) {
+
 			$consent_script_filename_no_ext = 'cmp' . strtolower( $cmp );
 			$asset_file                     = $integration_path . '/assets/build/js/' . $consent_script_filename_no_ext . '.asset.php';
 
@@ -94,7 +95,7 @@ class Cmp_Tests extends WP_UnitTestCase {
 				sprintf( 'Consent asset PHP file is not readable for CMP "%s": %s', $cmp, $asset_file )
 			);
 
-			$library_asset_file = include $asset_file;
+			$library_asset_file = include $asset_file; // phpcs:ignore WordPressVIPMinimum.Files.IncludingFile.UsingVariable
 
 			$this->assertIsArray( $library_asset_file, sprintf( 'Consent asset PHP file did not return an array for CMP "%s".', $cmp ) );
 			$this->assertArrayHasKey( 'dependencies', $library_asset_file );
