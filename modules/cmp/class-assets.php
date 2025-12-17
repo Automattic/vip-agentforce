@@ -136,7 +136,6 @@ class Assets {
 			return;
 		}
 
-
 		$script_handle = 'vip-af-' . strtolower( $consent_type ) . '-consent';
 		$script_file   = $consent_scripts[ $consent_type ] . '.js';
 
@@ -154,7 +153,6 @@ class Assets {
 				'version'      => is_readable( $script_path ) ? filemtime( $script_path ) : false,
 			);
 		}
-
 
 		wp_register_script(
 			$script_handle,
