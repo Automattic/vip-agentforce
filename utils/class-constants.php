@@ -8,11 +8,6 @@ class Constants {
 	const DEFAULT_CMP     = 'Custom';
 
 	/**
-	 * Enqueue the consent script based on the selected consent type.
-	 *
-	 * @return void
-	 */
-	/**
 	 * Default OneTrust consent group ID
 	 */
 	const DEFAULT_ONETRUST_GROUP_ID = 'C0004';
