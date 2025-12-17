@@ -381,7 +381,7 @@ class Settings_Page {
 	 * Render the OneTrust Group ID text field.
 	 */
 	public function render_onetrust_group_id_field(): void {
-		// Use the constant from Assets class.
+		// Use the constant from Constants class.
 		$value = get_option( 'vip_agentforce_onetrust_group_id', Constants::DEFAULT_ONETRUST_GROUP_ID );
 		printf(
 			'<input type="text" name="vip_agentforce_onetrust_group_id" value="%s" class="regular-text" />',
