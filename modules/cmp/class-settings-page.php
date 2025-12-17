@@ -8,6 +8,7 @@ namespace Automattic\VIP\Salesforce\Agentforce\Cmp;
 use Automattic\VIP\Salesforce\Agentforce\Utils\Configs;
 use Automattic\VIP\Salesforce\Agentforce\Utils\Traits\Singleton;
 use Automattic\VIP\Salesforce\Agentforce\Utils\Traits\WithPluginPaths;
+use Automattic\VIP\Salesforce\Agentforce\Constants;
 
 /**
  * Class Settings_Page
@@ -175,7 +176,13 @@ class Settings_Page {
 	 * Register settings, sections, and fields.
 	 */
 	public function register_settings(): void {
-		register_setting( 'agentforce_settings_group', 'agentforce_consent_type' );
+		register_setting(
+			'agentforce_settings_group',
+			'agentforce_consent_type',
+			array(
+				'sanitize_callback' => array( $this, 'sanitize_consent_type' ),
+			)
+		);
 		register_setting( 'agentforce_settings_group', 'agentforce_onetrust_group_id' );
 		register_setting( 'agentforce_settings_group', 'agentforce_cookiebot_category' );
 		register_setting(
@@ -300,6 +307,14 @@ class Settings_Page {
 			'vip-agentforce-settings',
 			'agentforce_debug_section'
 		);
+	}
+	/**
+	 * Sanitize consent type.
+	 * @param string $value The consent type value.
+	 *
+	 */
+	public function sanitize_consent_type( string $value ): string {
+		return in_array( $value, Constants::SUPPORTED_CMPS, true ) ? $value : Constants::DEFAULT_CMP;
 	}
 
 	/**
