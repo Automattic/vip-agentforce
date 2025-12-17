@@ -537,24 +537,6 @@ class Settings_Page {
 					</aside>
 				</div>
 
-				<script>
-					document.addEventListener('DOMContentLoaded', function () {
-						var consentType = document.querySelector('[name="agentforce_consent_type"]');
-						var oneTrustRow = document.getElementById('row_onetrust');
-						var cookiebotRow = document.getElementById('row_cookiebot');
-						var iubendaRow = document.getElementById('row_iubenda');
-
-						function toggleFields() {
-							oneTrustRow.style.display = (consentType.value === 'OneTrust') ? '' : 'none';
-							cookiebotRow.style.display = (consentType.value === 'CookieBot') ? '' : 'none';
-							iubendaRow.style.display = (consentType.value === 'iubenda') ? '' : 'none';
-						}
-
-						toggleFields();
-						consentType.addEventListener('change', toggleFields);
-					});
-				</script>
-
 			</form>
 		</div>
 		<?php
