@@ -311,7 +311,7 @@ class Settings_Page {
 	/**
 	 * Sanitize consent type.
 	 * @param string $value The consent type value.
-	 *
+	 * @return string The sanitized consent type.
 	 */
 	public function sanitize_consent_type( string $value ): string {
 		return in_array( $value, Constants::SUPPORTED_CMPS, true ) ? $value : Constants::DEFAULT_CMP;
