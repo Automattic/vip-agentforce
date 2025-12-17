@@ -355,7 +355,7 @@ class Settings_Page {
 	 * Render the consent type dropdown.
 	 */
 	public function render_consent_type_field(): void {
-		$value = get_option( 'vip_agentforce_consent_type', 'CookieYes' );
+		$value = get_option( 'vip_agentforce_consent_type', Constants::DEFAULT_CMP );
 		?>
 		<select name="vip_agentforce_consent_type">
 			<option
