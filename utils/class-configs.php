@@ -10,11 +10,49 @@ class Configs {
 	 */
 	private static $cached_config = null;
 
+	/**
+	 * Flush the cached config.
+	 *
+	 * Primarily useful for tests where configs may be overridden via filters.
+	 */
+	public static function flush_cache(): void {
+		self::$cached_config = null;
+	}
+
+	/**
+	 * Returns whether the Agentforce JS SDK is activated in integration config.
+	 */
+	public static function is_js_sdk_activated(): bool {
+		$config = self::get_config();
+
+		if ( ! array_key_exists( 'agentforce_js_sdk_activated', $config ) ) {
+			return false;
+		}
+
+		$activated = filter_var( $config['agentforce_js_sdk_activated'], FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE );
+		return null === $activated ? false : $activated;
+	}
+
+	/**
+	 * Returns the Agentforce JS SDK URL from integration config.
+	 */
+	public static function get_js_sdk_url(): string {
+		$config = self::get_config();
+		$url    = $config['agentforce_js_sdk_url'] ?? '';
+
+		return is_string( $url ) ? $url : '';
+	}
 
 	/**
 	 * Get the config
-	 * @return array<string, mixed> The module configs. Returns an empty array if configs are not found,
-	 * not defined, or if JSON parsing fails.
+	 * @return array{
+	 *     salesforce_instance_url?: string,
+	 *     ingestion_api_token?: string, // TODO: should the access to the token be available only inside the VIP Agentforce Module?
+	 *     ingestion_api_endpoint?: string,
+	 *     agentforce_js_sdk_url?: string,
+	 *     agentforce_js_sdk_activated?: bool
+	 * } The module configs. Returns an empty array if configs are not found, not defined, or if JSON parsing fails.
+	 *
 	 */
 	public static function get_config(): array {
 		if ( null === self::$cached_config ) {

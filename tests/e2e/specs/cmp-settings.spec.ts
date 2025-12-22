@@ -19,11 +19,11 @@ test.describe( 'CMP Settings', () => {
 		await test.step( 'Visit CMP settings page', async () => {
 			await cmpSettings.visit();
 			await expect( cmpSettings.heading ).toHaveText( 'Agentforce Settings' );
+			await expect( cmpSettings.sdkActivationStatus ).toHaveAttribute( 'data-status', 'active' );
+			await expect( cmpSettings.sdkUrl ).toHaveAttribute( 'data-url', 'https://example.local' );
 		} );
 
 		await test.step( 'Configure Cookiebot consent and SDK URL', async () => {
-			await cmpSettings.enableSdk.check( { force: true } );
-			await cmpSettings.sdkUrl.fill( 'https://example.local' );
 			await cmpSettings.setConsentType( 'CookieBot' );
 
 			await expect( cmpSettings.onetrustRow ).toBeHidden();
@@ -36,7 +36,6 @@ test.describe( 'CMP Settings', () => {
 			await cmpSettings.save();
 
 			await expect( cmpSettings.consentType ).toHaveValue( 'CookieBot' );
-			await expect( cmpSettings.sdkUrl ).toHaveValue( 'https://example.local' );
 			await expect( cmpSettings.cookiebotCategory ).toHaveValue( 'marketing' );
 		} );
 	} );
@@ -47,8 +46,8 @@ test.describe( 'CMP Settings', () => {
 
 		await test.step( 'Configure Custom consent with SDK URL', async () => {
 			await cmpSettings.visit();
-			await cmpSettings.enableSdk.check( { force: true } );
-			await cmpSettings.sdkUrl.fill( dataUrl );
+			await expect( cmpSettings.sdkActivationStatus ).toHaveAttribute( 'data-status', 'active' );
+			await expect( cmpSettings.sdkUrl ).toHaveAttribute( 'data-url', dataUrl );
 			await cmpSettings.setConsentType( 'Custom' );
 
 			await cmpSettings.save();

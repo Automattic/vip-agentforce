@@ -2,8 +2,8 @@ import type { Locator, Page } from '@playwright/test';
 
 const selectors = {
 	heading: '.agentforce-wrap h1',
-	enableSdk: 'input[name="agentforce_enable_sdk"]',
-	sdkUrl: 'input[name="agentforce_salesforce_sdk_url"]',
+	sdkActivationStatus: '#agentforce-sdk-activation-status',
+	sdkUrl: '#agentforce-sdk-url',
 	consentType: 'select[name="agentforce_consent_type"]',
 	onetrustRow: '#row_onetrust',
 	onetrustGroupId: 'input[name="agentforce_onetrust_group_id"]',
@@ -18,7 +18,7 @@ const selectors = {
 export class CmpSettingsPage {
 	private readonly page: Page;
 	public readonly heading: Locator;
-	public readonly enableSdk: Locator;
+	public readonly sdkActivationStatus: Locator;
 	public readonly sdkUrl: Locator;
 	public readonly consentType: Locator;
 	public readonly onetrustRow: Locator;
@@ -33,7 +33,7 @@ export class CmpSettingsPage {
 	constructor( page: Page ) {
 		this.page = page;
 		this.heading = page.locator( selectors.heading );
-		this.enableSdk = page.locator( selectors.enableSdk );
+		this.sdkActivationStatus = page.locator( selectors.sdkActivationStatus );
 		this.sdkUrl = page.locator( selectors.sdkUrl );
 		this.consentType = page.locator( selectors.consentType );
 		this.onetrustRow = page.locator( selectors.onetrustRow );
