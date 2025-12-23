@@ -23,17 +23,17 @@ class Ingestion_CLI extends WP_CLI_Command {
 	 * - The post doesn't exist in WordPress
 	 * - The post was never ingested (no tracking meta)
 	 *
+	 * For multisite, use the --url flag to target a specific site. This ensures
+	 * the site's theme and plugins are loaded, allowing site-specific hooks to fire.
+	 *
 	 * ## OPTIONS
 	 *
 	 * <post_id>...
 	 * : One or more post IDs to delete from Salesforce.
 	 *
 	 * [--blog-id=<blog_id>]
-	 * : Blog ID for multisite. Defaults to current blog.
-	 *
-	 * [--switch-blog]
-	 * : Switch to the target blog before deletion. This allows site-specific
-	 *   hooks and filters to fire. Requires the blog to exist.
+	 * : Blog ID for multisite. Doesn't require the blog to exist - useful for deleting records from deleted blogs. Defaults to current blog.
+	 * : If used in conjunction with --url to load site context, the blog ID should match the site loaded by --url.
 	 *
 	 * ## EXAMPLES
 	 *
@@ -43,11 +43,8 @@ class Ingestion_CLI extends WP_CLI_Command {
 	 *     # Delete multiple posts
 	 *     wp vip-agentforce ingestion delete 123 456 789
 	 *
-	 *     # Delete with explicit blog ID (multisite)
-	 *     wp vip-agentforce ingestion delete 123 --blog-id=2
-	 *
-	 *     # Delete with blog switch (fires site-specific hooks)
-	 *     wp vip-agentforce ingestion delete 123 --blog-id=2 --switch-blog
+	 *     # Delete on a specific site (multisite) - use --url to load site context
+	 *     wp vip-agentforce ingestion delete 123 --blog-id=2 --url=https://subsite.example.com
 	 *
 	 * @subcommand delete
 	 *
@@ -55,19 +52,8 @@ class Ingestion_CLI extends WP_CLI_Command {
 	 * @param array<string, string> $assoc_args Associative arguments.
 	 */
 	public function delete( array $args, array $assoc_args ): void {
-		$blog_id     = $assoc_args['blog-id'] ?? (string) get_current_blog_id();
-		$site_id     = defined( 'VIP_GO_APP_ID' ) ? (string) VIP_GO_APP_ID : '0';
-		$switch_blog = isset( $assoc_args['switch-blog'] );
-
-		// If --switch-blog is set, verify the blog exists and switch to it.
-		if ( $switch_blog ) {
-			if ( ! get_blog_details( (int) $blog_id ) ) {
-				WP_CLI::error( sprintf( 'Blog ID %s does not exist. Remove --switch-blog to force delete without switching.', $blog_id ) );
-				return;
-			}
-			switch_to_blog( (int) $blog_id );
-			WP_CLI::log( sprintf( 'Switched to blog %s.', $blog_id ) );
-		}
+		$blog_id = $assoc_args['blog-id'] ?? (string) get_current_blog_id();
+		$site_id = defined( 'VIP_GO_APP_ID' ) ? (string) VIP_GO_APP_ID : '0';
 
 		$success_count = 0;
 		$failure_count = 0;
@@ -113,10 +99,6 @@ class Ingestion_CLI extends WP_CLI_Command {
 					]
 				);
 			}
-		}
-
-		if ( $switch_blog ) {
-			restore_current_blog();
 		}
 
 		if ( $failure_count > 0 ) {
