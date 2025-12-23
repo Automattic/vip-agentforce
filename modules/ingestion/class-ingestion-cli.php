@@ -31,6 +31,10 @@ class Ingestion_CLI extends WP_CLI_Command {
 	 * [--blog-id=<blog_id>]
 	 * : Blog ID for multisite. Defaults to current blog.
 	 *
+	 * [--switch-blog]
+	 * : Switch to the target blog before deletion. This allows site-specific
+	 *   hooks and filters to fire. Requires the blog to exist.
+	 *
 	 * ## EXAMPLES
 	 *
 	 *     # Delete a single post
@@ -42,14 +46,28 @@ class Ingestion_CLI extends WP_CLI_Command {
 	 *     # Delete with explicit blog ID (multisite)
 	 *     wp vip-agentforce ingestion delete 123 --blog-id=2
 	 *
+	 *     # Delete with blog switch (fires site-specific hooks)
+	 *     wp vip-agentforce ingestion delete 123 --blog-id=2 --switch-blog
+	 *
 	 * @subcommand delete
 	 *
 	 * @param array<int, string> $args       Positional arguments (post IDs).
 	 * @param array<string, string> $assoc_args Associative arguments.
 	 */
 	public function delete( array $args, array $assoc_args ): void {
-		$blog_id = $assoc_args['blog-id'] ?? (string) get_current_blog_id();
-		$site_id = defined( 'VIP_GO_APP_ID' ) ? (string) VIP_GO_APP_ID : '0';
+		$blog_id     = $assoc_args['blog-id'] ?? (string) get_current_blog_id();
+		$site_id     = defined( 'VIP_GO_APP_ID' ) ? (string) VIP_GO_APP_ID : '0';
+		$switch_blog = isset( $assoc_args['switch-blog'] );
+
+		// If --switch-blog is set, verify the blog exists and switch to it.
+		if ( $switch_blog ) {
+			if ( ! get_blog_details( (int) $blog_id ) ) {
+				WP_CLI::error( sprintf( 'Blog ID %s does not exist. Remove --switch-blog to force delete without switching.', $blog_id ) );
+				return;
+			}
+			switch_to_blog( (int) $blog_id );
+			WP_CLI::log( sprintf( 'Switched to blog %s.', $blog_id ) );
+		}
 
 		$success_count = 0;
 		$failure_count = 0;
@@ -95,6 +113,10 @@ class Ingestion_CLI extends WP_CLI_Command {
 					]
 				);
 			}
+		}
+
+		if ( $switch_blog ) {
+			restore_current_blog();
 		}
 
 		if ( $failure_count > 0 ) {
