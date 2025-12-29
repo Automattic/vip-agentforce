@@ -7,6 +7,7 @@
 
 namespace Automattic\VIP\Salesforce\Agentforce\Ingestion;
 
+use Automattic\VIP\Salesforce\Agentforce\Utils\Configs;
 use Automattic\VIP\Salesforce\Agentforce\Utils\Logger;
 
 /**
@@ -40,16 +41,6 @@ class Ingestion {
 		$should_ingest = self::should_ingest_post( $post );
 
 		if ( ! $should_ingest ) {
-			Logger::info(
-				'ingestion',
-				'Post will not be ingested',
-				[
-					'post_id'     => $post_id,
-					'post_status' => $post->post_status,
-					'post_type'   => $post->post_type,
-					'result'      => false,
-				]
-			);
 			return;
 		}
 
@@ -62,16 +53,6 @@ class Ingestion {
 
 		$record = self::transform_post( $post );
 		if ( null === $record ) {
-			Logger::info(
-				'ingestion',
-				'Post transformation failed, skipping ingestion',
-				[
-					'post_id'     => $post_id,
-					'post_status' => $post->post_status,
-					'post_type'   => $post->post_type,
-				]
-			);
-
 			self::fire_ingestion_failure(
 				new Ingestion_Failure(
 					[
@@ -95,15 +76,6 @@ class Ingestion {
 		$response = static::send_to_api( $record );
 
 		if ( ! $response['success'] ) {
-			Logger::info(
-				'ingestion',
-				'API call failed',
-				[
-					'post_id'  => $post_id,
-					'response' => $response,
-				]
-			);
-
 			self::fire_ingestion_failure(
 				new Ingestion_Failure(
 					[
@@ -124,17 +96,6 @@ class Ingestion {
 			);
 			return;
 		}
-
-		Logger::info(
-			'ingestion',
-			'Post ingested successfully',
-			[
-				'post_id'        => $post_id,
-				'post_status'    => $post->post_status,
-				'post_type'      => $post->post_type,
-				'post_processed' => $record->to_array(),
-			]
-		);
 	}
 
 	/**
@@ -160,13 +121,56 @@ class Ingestion {
 	}
 
 	/**
-	 * Send record to Salesforce API.
+	 * Send record to Salesforce Data Cloud Ingestion API.
 	 *
 	 * @param Ingestion_Post_Record $record The record to send.
 	 * @return array<string, mixed> Response with 'success' key (true/false) and error details if failed.
 	 */
 	public static function send_to_api( Ingestion_Post_Record $record ): array {
-		// TODO: Implement actual Salesforce API call.
+		$config      = Configs::get_config();
+		$base_url    = $config['salesforce_instance_url'] ?? '';
+		$token       = $config['ingestion_api_token'] ?? '';
+		$source_name = $config['ingestion_api_source_name'] ?? '';
+		$object_name = $config['ingestion_api_object_name'] ?? '';
+
+		if ( empty( $base_url ) || empty( $token ) || empty( $source_name ) || empty( $object_name ) ) {
+			return [
+				'success'       => false,
+				'error_message' => 'Missing required API configuration',
+			];
+		}
+
+		$url = rtrim( $base_url, '/' ) . '/api/v1/ingest/sources/' . rawurlencode( $source_name ) . '/' . rawurlencode( $object_name );
+
+		$response = wp_remote_post(
+			$url,
+			[
+				'headers' => [
+					'Content-Type'  => 'application/json',
+					'Authorization' => 'Bearer ' . $token,
+				],
+				'body'    => wp_json_encode( [ 'data' => [ $record->to_array() ] ] ),
+				'timeout' => 3,
+			]
+		);
+
+		if ( is_wp_error( $response ) ) {
+			return [
+				'success'       => false,
+				'error_message' => $response->get_error_message(),
+			];
+		}
+
+		$status_code = wp_remote_retrieve_response_code( $response );
+
+		if ( 202 !== $status_code ) {
+			return [
+				'success'       => false,
+				'error_message' => 'Unexpected response code: ' . $status_code,
+				'response_body' => wp_remote_retrieve_body( $response ),
+			];
+		}
+
 		return [
 			'success'   => true,
 			'record_id' => $record->to_array()['site_id_blog_id_post_id'],
@@ -193,14 +197,6 @@ class Ingestion {
 		$record = apply_filters( 'vip_agentforce_transform_post', null, $post );
 
 		if ( ! $record instanceof Ingestion_Post_Record ) {
-			Logger::warning(
-				'ingestion',
-				'vip_agentforce_transform_post filter must return an Ingestion_Post_Record instance',
-				[
-					'post_id'       => $post->ID,
-					'returned_type' => is_object( $record ) ? get_class( $record ) : gettype( $record ),
-				]
-			);
 			return null;
 		}
 
