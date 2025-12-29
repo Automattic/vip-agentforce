@@ -47,6 +47,7 @@ class Configs {
 	 * Get the config
 	 * @return array{
 	 *     salesforce_instance_url?: string,
+	 *     ingestion_api_instance_url?: string,
 	 *     ingestion_api_token?: string,
 	 *     ingestion_api_endpoint?: string,
 	 *     ingestion_api_source_name?: string,

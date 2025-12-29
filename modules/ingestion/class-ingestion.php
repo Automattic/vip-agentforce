@@ -123,7 +123,7 @@ class Ingestion {
 	 */
 	public static function send_to_api( Ingestion_Post_Record $record ): array {
 		$config      = Configs::get_config();
-		$base_url    = $config['salesforce_instance_url'] ?? '';
+		$base_url    = $config['ingestion_api_instance_url'] ?? '';
 		$token       = $config['ingestion_api_token'] ?? '';
 		$source_name = $config['ingestion_api_source_name'] ?? '';
 		$object_name = $config['ingestion_api_object_name'] ?? '';
