@@ -2,6 +2,7 @@
 
 # be sure we're testing against the latest code.
 composer dump-autoload
+npm run build:prod
 
 while [ $# -gt 0 ]; do
     case "$1" in

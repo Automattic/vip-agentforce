@@ -3,16 +3,18 @@
 use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion;
 use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_Failure;
 use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_Post_Record;
+use Automattic\VIP\Salesforce\Agentforce\Utils\Logger;
 
 class Ingestion_Test extends WP_UnitTestCase {
 
 	public function setUp(): void {
 		parent::setUp();
-		Ingestion::init();
+		Logger::disable();
 	}
 
 	public function tearDown(): void {
 		parent::tearDown();
+		Logger::enable();
 		remove_all_filters( 'vip_agentforce_should_ingest_post' );
 		remove_all_filters( 'vip_agentforce_transform_post' );
 		remove_all_actions( 'vip_agentforce_post_ingestion_failed' );

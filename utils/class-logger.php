@@ -6,7 +6,7 @@
 namespace Automattic\VIP\Salesforce\Agentforce\Utils;
 
 use Automattic\VIP\Salesforce\Agentforce\Constants;
-
+use Automattic\VIP\Salesforce\Agentforce\Utils\Configs;
 
 class Logger {
 	/**
@@ -14,6 +14,7 @@ class Logger {
 	 */
 	protected static array $logged_entries = [];
 	protected static bool $track_logs      = false;
+	protected static bool $enabled         = true;
 	/**
 	 * Log data to both error_log (non-production) and Logstash
 	 *
@@ -21,6 +22,9 @@ class Logger {
 	 * @return void
 	 */
 	public static function log( array $data ): void {
+		if ( ! self::$enabled ) {
+			return;
+		}
 
 		// Auto-detect file and line if not provided
 		if ( ! isset( $data['file'] ) && ! isset( $data['line'] ) ) {
@@ -117,7 +121,7 @@ class Logger {
 	 * @param array<string,mixed>  $extra Extra data
 	 */
 	public static function warning_log_if_user_logged_in( string $feature, string $message, array $extra = [] ): void {
-		if ( function_exists( 'is_local_env' ) && is_local_env() ) {
+		if ( Configs::is_local_env() ) {
 			self::warning(
 				$feature,
 				$message,
@@ -135,5 +139,19 @@ class Logger {
 				);
 			}
 		});
+	}
+
+	/**
+	 * Disable logging. Useful for tests to avoid exceeding log limits.
+	 */
+	public static function disable(): void {
+		self::$enabled = false;
+	}
+
+	/**
+	 * Enable logging.
+	 */
+	public static function enable(): void {
+		self::$enabled = true;
 	}
 }

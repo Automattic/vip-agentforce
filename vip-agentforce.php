@@ -14,11 +14,14 @@
  */
 
 declare(strict_types = 1);
+const VIP_AGENTFORCE_FILE = __FILE__;
 
 require_once __DIR__ . '/utils/class-configs.php';
 require_once __DIR__ . '/utils/class-constants.php';
 require_once __DIR__ . '/utils/class-logger.php';
 require_once __DIR__ . '/utils/class-tracking.php';
+require_once __DIR__ . '/utils/traits/trait-singleton.php';
+require_once __DIR__ . '/utils/traits/trait-with-plugin-paths.php';
 
 use function Automattic\VIP\Salesforce\Agentforce\Utils\load_integration_configs_from_headers;
 use function Automattic\VIP\Salesforce\Agentforce\Utils\load_integration_configs_from_url;
@@ -53,8 +56,16 @@ if ( class_exists( 'Automattic\\VIP\\Prometheus\\Plugin' ) ) {
 
 
 // Load the modules
-require_once __DIR__ . '/modules/admin-status/class-admin-status.php';
 require_once __DIR__ . '/modules/ingestion/class-ingestion-post-record.php';
 require_once __DIR__ . '/modules/ingestion/class-default-transformer.php';
 require_once __DIR__ . '/modules/ingestion/class-ingestion.php';
 require_once __DIR__ . '/modules/ingestion/class-ingestion-failure.php';
+require_once __DIR__ . '/modules/ingestion/class-deletion-failure.php';
+
+// CMP
+require_once __DIR__ . '/modules/cmp/class-assets.php';
+require_once __DIR__ . '/modules/cmp/class-settings-page.php';
+require_once __DIR__ . '/modules/cmp/class-agentforce.php';
+require_once __DIR__ . '/modules/cmp/class-cmp.php';
+// initialize CMP module
+\Automattic\VIP\Salesforce\Agentforce\Cmp\Cmp::get_instance();
