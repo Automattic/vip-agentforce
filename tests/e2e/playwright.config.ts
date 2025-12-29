@@ -3,7 +3,7 @@
  */
 import { PlaywrightTestConfig } from '@playwright/test';
 
-import { getAgentForceConfigHeaders } from './lib/config-helper';
+import { getAgentforceConfigHeaders } from './lib/config-helper';
 
 const config: PlaywrightTestConfig = {
 	retries: 1,
@@ -22,7 +22,7 @@ const config: PlaywrightTestConfig = {
 		baseURL: process.env.E2E_BASE_URL
 			? process.env.E2E_BASE_URL
 			: 'http://e2e-agentforce-test-site.vipdev.lndo.site',
-		extraHTTPHeaders: getAgentForceConfigHeaders(),
+		extraHTTPHeaders: getAgentforceConfigHeaders(),
 	},
 };
 

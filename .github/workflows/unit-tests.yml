@@ -42,6 +42,13 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
+      - name: Setup Node
+        uses: actions/setup-node@v6.0.0
+        with:
+          node-version: 'lts/*'
+          cache: npm
+          cache-dependency-path: package-lock.json
+
       - name: mu-plugins cache
         uses: actions/cache@v4
         with:
@@ -55,6 +62,9 @@ jobs:
         with:
           path: vendor
           key: ${{ runner.os }}-${{ hashFiles('**/composer.lock') }}
+
+      - name: Install dependencies
+        run: npm ci
 
       - uses: php-actions/composer@v6
         with:
