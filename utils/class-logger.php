@@ -14,6 +14,7 @@ class Logger {
 	 */
 	protected static array $logged_entries = [];
 	protected static bool $track_logs      = false;
+	protected static bool $enabled         = true;
 	/**
 	 * Log data to both error_log (non-production) and Logstash
 	 *
@@ -21,6 +22,9 @@ class Logger {
 	 * @return void
 	 */
 	public static function log( array $data ): void {
+		if ( ! self::$enabled ) {
+			return;
+		}
 
 		// Auto-detect file and line if not provided
 		if ( ! isset( $data['file'] ) && ! isset( $data['line'] ) ) {
@@ -135,5 +139,19 @@ class Logger {
 				);
 			}
 		});
+	}
+
+	/**
+	 * Disable logging. Useful for tests to avoid exceeding log limits.
+	 */
+	public static function disable(): void {
+		self::$enabled = false;
+	}
+
+	/**
+	 * Enable logging.
+	 */
+	public static function enable(): void {
+		self::$enabled = true;
 	}
 }
