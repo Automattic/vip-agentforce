@@ -6,7 +6,7 @@
 namespace Automattic\VIP\Salesforce\Agentforce\Utils;
 
 use Automattic\VIP\Salesforce\Agentforce\Constants;
-
+use Automattic\VIP\Salesforce\Agentforce\Utils\Configs;
 
 class Logger {
 	/**
@@ -121,7 +121,7 @@ class Logger {
 	 * @param array<string,mixed>  $extra Extra data
 	 */
 	public static function warning_log_if_user_logged_in( string $feature, string $message, array $extra = [] ): void {
-		if ( function_exists( 'is_local_env' ) && is_local_env() ) {
+		if ( Configs::is_local_env() ) {
 			self::warning(
 				$feature,
 				$message,

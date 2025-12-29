@@ -16,11 +16,13 @@
 		"phpunit/phpunit": "^9",
 		"szepeviktor/phpstan-wordpress": "^2.0",
 		"wp-phpunit/wp-phpunit": "^6.5",
-		"yoast/phpunit-polyfills": "3.0.0"
+		"yoast/phpunit-polyfills": "3.0.0",
+		"wp-cli/i18n-command": "^2.6"
 	},
 	"autoload-dev": {
 		"classmap": [
-			"./modules/"
+			"./modules/",
+			"./utils/"
 		]
 	},
 	"config": {
@@ -34,15 +36,16 @@
 		}
 	},
 	"scripts": {
+		"start-dev": "npm run build:dev && vip dev-env start",
 		"lint": "./vendor/bin/phpcs --standard=.phpcs.xml.dist",
 		"analyze": "./vendor/bin/phpstan analyse --memory-limit=1024M",
 		"format": "./vendor/bin/phpcbf --standard=.phpcs.xml.dist",
 		"phpcs": "./vendor/bin/phpcs",
-		"test": "./bin/test.sh --php 8.1 --wp 6.8",
-		"test-noninteractive": "CI=true ./bin/test.sh --php 8.1 --wp 6.8",
+		"test": "./bin/test.sh --php 8.1 --wp 6.9",
+		"test-noninteractive": "CI=true ./bin/test.sh --php 8.1 --wp 6.9",
 		"test-ci": "./bin/test.sh ",
-		"test:multisite": "./bin/test.sh --php 8.1 --wp 6.8 --multisite 1",
+		"test:multisite": "./bin/test.sh --php 8.1 --wp 6.6 --multisite 1",
 		"test:integration": "./vendor/bin/phpunit --bootstrap tests/integration/bootstrap.php tests/integration/",
-		"build-mjml": "./scripts/build-mjml.sh"
+		"pot": "wp i18n make-pot . ./languages/vip-agentforce.pot --domain=vip-agentforce --include=\"modules,utils,assets/js\""
 	}
 }

@@ -21,7 +21,7 @@ function load_integration_configs_from_url(): void {
 		return;
 	}
 
-	$endpoint  = sprintf( '%s/integration?slug=agentforce&level=site&site_id=%s&is_vip=true', $config_api_url, constant( 'VIP_GO_APP_ID' ) );
+	$endpoint  = sprintf( '%s/integration?slug=agentforce&level=site&site_id=%s', $config_api_url, constant( 'VIP_GO_APP_ID' ) );
 	$api_error = new \WP_Error( 'config-api-error', 'There was an error while fetching the integration configuration from the API.' );
 	$response  = vip_safe_wp_remote_get( $endpoint, $api_error, 5, 5, 5, array() );
 
@@ -55,13 +55,4 @@ function load_integration_configs_from_headers(): void {
 	if ( ! defined( 'VIP_AGENTFORCE_CONFIGS' ) ) {
 		define( 'VIP_AGENTFORCE_CONFIGS', $configs );
 	}
-}
-
-
-function is_local_env(): bool {
-	return ! defined( 'VIP_GO_APP_ENVIRONMENT' ) || 'local' === constant( 'VIP_GO_APP_ENVIRONMENT' );
-}
-
-function is_production_env(): bool {
-	return defined( 'VIP_GO_APP_ENVIRONMENT' ) && 'production' === constant( 'VIP_GO_APP_ENVIRONMENT' );
 }

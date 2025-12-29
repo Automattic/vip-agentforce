@@ -22,6 +22,10 @@ overrides: |
           - <%= configDir %>/..:/wp/wp-content/plugins/vip-agentforce
           - <%= configDir %>/plugin-loader.php:/wp/wp-content/client-mu-plugins/plugin-loader.php
           - <%= configDir %>/empty:/wp/wp-content/empty
+    nginx:
+      services:
+        volumes:
+          - <%= configDir %>/../assets:/wp/wp-content/plugins/vip-agentforce/assets/
   tooling:
     dev-shell:
       service: php

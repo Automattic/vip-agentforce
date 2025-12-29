@@ -7,6 +7,10 @@ require_once __DIR__ . '/../utils/class-logger.php';
 require_once __DIR__ . '/class-speedup-isolated-wp-tests.php';
 require_once __DIR__ . '/class-testable-logger.php';
 
+if ( ! defined( 'VIP_GO_APP_ENVIRONMENT' ) ) {
+	define( 'VIP_GO_APP_ENVIRONMENT', 'test' );
+}
+
 
 $_tests_dir = getenv( 'WP_TESTS_DIR' );
 
@@ -92,13 +96,11 @@ tests_add_filter( 'translations_api', '_vip_tests_disable_translations_api' );
 // phpcs:ignore WordPressVIPMinimum.Files.IncludingFile.UsingVariable
 require $_tests_dir . '/includes/bootstrap.php';
 
-if ( ! defined( 'VIP_GO_APP_ENVIRONMENT' ) ) {
-	define( 'VIP_GO_APP_ENVIRONMENT', 'test' );
-}
+// VIP_AGENTFORCE_CONFIGS should remain immutable; tests should avoid redefining it and instead
+// prime the Configs cache as needed for deterministic assertions.
 
-// Define the config constant if not already defined
-if ( ! defined( 'VIP_AGENTFORCE_CONFIGS' ) ) {
-	define( 'VIP_AGENTFORCE_CONFIGS', [ 'salesforce_instance_url' => 'https://example.my.salesforce.com' ] );
+if ( ! defined( 'VIP_AGENTFORCE_FILE' ) ) {
+	define( 'VIP_AGENTFORCE_FILE', dirname( __DIR__ ) . '/vip-agentforce.php' );
 }
 
 \Automattic\VIP\Salesforce\Agentforce\Utils\Testable_Logger::set_track_logs( true );
