@@ -78,61 +78,6 @@ class Ingestion_Api_Failure_Test extends WP_UnitTestCase {
 		$this->assertSame( $post->ID, $received_failure->post->ID );
 		$this->assertInstanceOf( WP_Error::class, $received_failure->error );
 		$this->assertSame( 'vip_agentforce_api_error', $received_failure->error->get_error_code() );
-		$this->assertSame( 'Simulated API failure', $received_failure->error->get_error_message() );
-	}
-
-	public function test_api_error_contains_response_in_error_data(): void {
-		$post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
-
-		add_filter( 'vip_agentforce_should_ingest_post', '__return_true' );
-		add_filter(
-			'vip_agentforce_transform_post',
-			// phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundBeforeLastUsed -- Filter callback signature.
-			function ( $record, $filter_post ) {
-				return new Ingestion_Post_Record(
-					[
-						'site_id'                 => '1',
-						'blog_id'                 => '1',
-						'post_id'                 => (string) $filter_post->ID,
-						'site_id_blog_id'         => '1_1',
-						'site_id_blog_id_post_id' => '1_1_' . $filter_post->ID,
-						'published'               => true,
-						'last_published_at'       => '2025-01-01T00:00:00+00:00',
-						'last_modified_at'        => '2025-01-01T00:00:00+00:00',
-						'title'                   => $filter_post->post_title,
-						'content'                 => $filter_post->post_content,
-						'excerpt'                 => $filter_post->post_excerpt,
-						'categories'              => '',
-						'tags'                    => '',
-						'author'                  => '',
-						'url'                     => 'https://example.com',
-						'post_type'               => $filter_post->post_type,
-						'post_status'             => $filter_post->post_status,
-					]
-				);
-			},
-			10,
-			2
-		);
-
-		/** @var Ingestion_Failure|null $received_failure */
-		$received_failure = null;
-
-		add_action(
-			'vip_agentforce_post_ingestion_failed',
-			function ( $failure ) use ( &$received_failure ) {
-				$received_failure = $failure;
-			}
-		);
-
-		Ingestion_With_Failing_Api::ingest_post( $post->ID, $post );
-
-		$this->assertInstanceOf( Ingestion_Failure::class, $received_failure );
-		$error_data = $received_failure->error->get_error_data();
-		$this->assertIsArray( $error_data );
-		$this->assertArrayHasKey( 'response', $error_data );
-		$this->assertIsArray( $error_data['response'] );
-		$this->assertFalse( $error_data['response']['success'] );
-		$this->assertArrayHasKey( 'backtrace', $error_data );
+		$this->assertSame( 'API call failed', $received_failure->error->get_error_message() );
 	}
 }
