@@ -73,3 +73,5 @@ require_once __DIR__ . '/modules/cmp/class-agentforce.php';
 require_once __DIR__ . '/modules/cmp/class-cmp.php';
 // initialize CMP module
 \Automattic\VIP\Salesforce\Agentforce\Cmp\Cmp::get_instance();
+
+add_filter( 'enable_wp_debug_mode_checks', '__return_true' );
