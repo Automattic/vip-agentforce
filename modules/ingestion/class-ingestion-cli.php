@@ -32,8 +32,9 @@ class Ingestion_CLI extends WP_CLI_Command {
 	 * : One or more post IDs to delete from Salesforce.
 	 *
 	 * [--blog-id=<blog_id>]
-	 * : Blog ID for multisite. Doesn't require the blog to exist - useful for deleting records from deleted blogs. Defaults to current blog.
-	 * : If used in conjunction with --url to load site context, the blog ID should match the site loaded by --url.
+	 * : Blog ID for multisite. Doesn't require the blog to exist - useful for deleting
+	 *   records from deleted blogs. Defaults to current blog. If used in conjunction
+	 *   with --url to load site context, the blog ID should match the site loaded by --url.
 	 *
 	 * ## EXAMPLES
 	 *
