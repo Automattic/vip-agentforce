@@ -54,7 +54,10 @@ class Ingestion {
 		}
 
 		// Mark that we're attempting to ingest this post.
-		// This allows us to track posts for deletion even if the filter changes later.
+		// This allows us to track posts for deletion even if: 
+		// - the filter changes later.
+		// - an ingestion succeeded despite the API returning an error
+		// - if we mark it after a successful ingestion, the marking step might have failed, and we wouldn't know it was actually ingested.
 		update_post_meta( $post_id, self::META_KEY_INGESTION_ATTEMPTED, time() );
 
 		$record = self::transform_post( $post );
