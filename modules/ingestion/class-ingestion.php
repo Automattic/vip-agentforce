@@ -410,6 +410,19 @@ class Ingestion {
 	public static function delete_from_api( \WP_Post $post ): array {
 		$record_id = self::build_record_id( $post );
 
+		return self::delete_record_id_from_api( $record_id );
+	}
+
+	/**
+	 * Delete a record from Salesforce API by record ID.
+	 *
+	 * This method allows deletion by record_id directly, useful for CLI commands
+	 * where the post may not exist in WordPress.
+	 *
+	 * @param string $record_id The record ID in format site_id_blog_id_post_id.
+	 * @return array<string, mixed> Response with 'success' key (true/false) and error details if failed.
+	 */
+	public static function delete_record_id_from_api( string $record_id ): array {
 		// TODO: Implement actual Salesforce delete API call.
 		return [
 			'success'   => true,
