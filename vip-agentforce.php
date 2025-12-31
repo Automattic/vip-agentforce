@@ -16,6 +16,13 @@
 declare(strict_types = 1);
 const VIP_AGENTFORCE_FILE = __FILE__;
 
+define( 'VIP_AGENTFORCE_CONFIGS', wp_json_encode( [
+	'ingestion_api_instance_url' => 'https://YOUR_URL_HERE.c360a.salesforce.com',
+	'ingestion_api_token'        => 'YOUR_TOKEN_HERE',
+	'ingestion_api_source_name'  => 'vip_agentforce_wp_post',
+	'ingestion_api_object_name'  => 'wordpress_post',
+] ) );
+
 require_once __DIR__ . '/utils/class-configs.php';
 require_once __DIR__ . '/utils/class-constants.php';
 require_once __DIR__ . '/utils/class-logger.php';
