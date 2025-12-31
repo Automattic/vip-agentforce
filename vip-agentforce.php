@@ -16,13 +16,6 @@
 declare(strict_types = 1);
 const VIP_AGENTFORCE_FILE = __FILE__;
 
-define( 'VIP_AGENTFORCE_CONFIGS', wp_json_encode( [
-	'ingestion_api_instance_url' => 'https://YOUR_URL_HERE.c360a.salesforce.com',
-	'ingestion_api_token'        => 'YOUR_TOKEN_HERE',
-	'ingestion_api_source_name'  => 'vip_agentforce_wp_post',
-	'ingestion_api_object_name'  => 'wordpress_post',
-] ) );
-
 require_once __DIR__ . '/utils/class-configs.php';
 require_once __DIR__ . '/utils/class-constants.php';
 require_once __DIR__ . '/utils/class-logger.php';
@@ -73,6 +66,7 @@ require_once __DIR__ . '/modules/ingestion/class-deletion-failure.php';
 if ( defined( 'WP_CLI' ) && WP_CLI ) {
 	require_once __DIR__ . '/modules/ingestion/class-ingestion-cli.php';
 }
+
 // CMP
 require_once __DIR__ . '/modules/cmp/class-assets.php';
 require_once __DIR__ . '/modules/cmp/class-settings-page.php';
@@ -80,5 +74,3 @@ require_once __DIR__ . '/modules/cmp/class-agentforce.php';
 require_once __DIR__ . '/modules/cmp/class-cmp.php';
 // initialize CMP module
 \Automattic\VIP\Salesforce\Agentforce\Cmp\Cmp::get_instance();
-
-add_filter( 'enable_wp_debug_mode_checks', '__return_true' );
