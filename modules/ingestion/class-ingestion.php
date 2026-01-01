@@ -122,7 +122,7 @@ class Ingestion {
 	 * @return array<string, mixed> Response with 'success' key (true/false) and error details if failed.
 	 */
 	public static function send_to_api( Ingestion_Post_Record $record ): array {
-		$config      = Configs::get_config();
+		$config = Configs::get_config();
 
 		$fields_to_check = [
 			'ingestion_api_instance_url',
