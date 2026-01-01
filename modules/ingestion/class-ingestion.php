@@ -123,17 +123,32 @@ class Ingestion {
 	 */
 	public static function send_to_api( Ingestion_Post_Record $record ): array {
 		$config      = Configs::get_config();
+
+		$fields_to_check = [
+			'ingestion_api_instance_url',
+			'ingestion_api_token',
+			'ingestion_api_source_name',
+			'ingestion_api_object_name',
+		];
+
+		$empty_fields = [];
+		foreach ( $fields_to_check as $field ) {
+			if ( empty( $config[ $field ] ) ) {
+				$empty_fields[] = $field;
+			}
+		}
+
+		if ( ! empty( $empty_fields ) ) {
+			return [
+				'success'       => false,
+				'error_message' => 'Missing required API configuration: ' . implode( ', ', $empty_fields ),
+			];
+		}
+
 		$base_url    = $config['ingestion_api_instance_url'] ?? '';
 		$token       = $config['ingestion_api_token'] ?? '';
 		$source_name = $config['ingestion_api_source_name'] ?? '';
 		$object_name = $config['ingestion_api_object_name'] ?? '';
-
-		if ( empty( $base_url ) || empty( $token ) || empty( $source_name ) || empty( $object_name ) ) {
-			return [
-				'success'       => false,
-				'error_message' => 'Missing required API configuration',
-			];
-		}
 
 		$url = rtrim( $base_url, '/' ) . '/api/v1/ingest/sources/' . rawurlencode( $source_name ) . '/' . rawurlencode( $object_name );
 
