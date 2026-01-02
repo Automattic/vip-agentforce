@@ -1,18 +1,63 @@
 <?php
 
 use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion;
+use Automattic\VIP\Salesforce\Agentforce\Utils\Configs;
 use Automattic\VIP\Salesforce\Agentforce\Utils\Logger;
 
 class Ingestion_CLI_Test extends WP_UnitTestCase {
 
+	/**
+	 * Prime Configs cache for deterministic tests without mutating VIP_AGENTFORCE_CONFIGS.
+	 *
+	 * @param array<string, mixed> $config
+	 */
+	private function prime_configs_cache( array $config ): void {
+		$ref  = new ReflectionClass( Configs::class );
+		$prop = $ref->getProperty( 'cached_config' );
+		$prop->setAccessible( true );
+		$prop->setValue( null, $config );
+	}
+
 	public function setUp(): void {
 		parent::setUp();
 		Logger::disable();
+
+		// Set up config for API calls via cache priming.
+		$this->prime_configs_cache(
+			[
+				'ingestion_api_instance_url' => 'https://test.salesforce.com',
+				'ingestion_api_token'        => 'test-token',
+				'ingestion_api_source_name'  => 'test-source',
+				'ingestion_api_object_name'  => 'test-object',
+			]
+		);
+
+		// Mock HTTP requests to return success.
+		add_filter(
+			'pre_http_request',
+			function ( $preempt, $args, $url ) {
+				// Only mock requests to our test Salesforce instance.
+				if ( strpos( $url, 'test.salesforce.com' ) !== false ) {
+					return [
+						'response' => [
+							'code'    => 202,
+							'message' => 'Accepted',
+						],
+						'body'     => '',
+					];
+				}
+				return $preempt;
+			},
+			10,
+			3
+		);
 	}
 
 	public function tearDown(): void {
 		parent::tearDown();
 		Logger::enable();
+		Configs::flush_cache();
+		remove_all_filters( 'pre_http_request' );
 	}
 
 	// =========================================================================

@@ -278,7 +278,7 @@ class Ingestion {
 			return;
 		}
 
-		self::delete_post_from_salesforce( $post, 'unpublished' );
+		self::delete_post_from_salesforce( $post );
 	}
 
 	/**
@@ -319,7 +319,7 @@ class Ingestion {
 			return;
 		}
 
-		self::delete_post_from_salesforce( $post, 'deleted' );
+		self::delete_post_from_salesforce( $post );
 	}
 
 	/**
@@ -346,70 +346,28 @@ class Ingestion {
 	/**
 	 * Delete a post from Salesforce.
 	 *
-	 * @param \WP_Post $post   The post to delete.
-	 * @param string   $reason The reason for deletion ('unpublished' or 'deleted').
+	 * @param \WP_Post $post The post to delete.
 	 */
-	private static function delete_post_from_salesforce( \WP_Post $post, string $reason ): void {
+	private static function delete_post_from_salesforce( \WP_Post $post ): void {
 		$record_id = self::build_record_id( $post );
-
-		Logger::info(
-			'ingestion',
-			'Attempting to delete post from Salesforce',
-			[
-				'post_id'   => $post->ID,
-				'record_id' => $record_id,
-				'reason'    => $reason,
-			]
-		);
-
-		$response = static::delete_from_api( $post );
+		$response  = static::delete_from_api( $post );
 
 		if ( ! $response['success'] ) {
-			Logger::info(
-				'ingestion',
-				'Delete API call failed',
-				[
-					'post_id'   => $post->ID,
-					'record_id' => $record_id,
-					'response'  => $response,
-				]
-			);
-
 			self::fire_deletion_failure(
-				new Deletion_Failure(
-					[
-						'failure_code' => Deletion_Failure::CODE_DELETE_API_ERROR,
-						'post'         => $post,
-						'record_id'    => $record_id,
-						'error'        => new \WP_Error(
-							'vip_agentforce_delete_api_error',
-							$response['error_message'] ?? 'Delete API call failed',
-							[
-								'post_id'   => $post->ID,
-								'record_id' => $record_id,
-								'response'  => $response,
-								// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_debug_backtrace -- Intentional for error tracing.
-								'backtrace' => debug_backtrace( DEBUG_BACKTRACE_IGNORE_ARGS, 5 ),
-							]
-						),
-					]
-				)
+				$post->ID,
+				$record_id,
+				Deletion_Failure::CODE_DELETE_API_ERROR,
+				[
+					'response'  => $response,
+					// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_debug_backtrace -- Intentional for error tracing.
+					'backtrace' => debug_backtrace( DEBUG_BACKTRACE_IGNORE_ARGS, 5 ),
+				]
 			);
 			return;
 		}
 
 		// Clear the ingestion tracking meta since the post is no longer in Salesforce.
 		delete_post_meta( $post->ID, self::META_KEY_INGESTION_ATTEMPTED );
-
-		Logger::info(
-			'ingestion',
-			'Post deleted from Salesforce successfully',
-			[
-				'post_id'   => $post->ID,
-				'record_id' => $record_id,
-				'reason'    => $reason,
-			]
-		);
 	}
 
 	/**
@@ -434,7 +392,66 @@ class Ingestion {
 	 * @return array<string, mixed> Response with 'success' key (true/false) and error details if failed.
 	 */
 	public static function delete_record_id_from_api( string $record_id ): array {
-		// TODO: Implement actual Salesforce delete API call.
+		$config = Configs::get_config();
+
+		$fields_to_check = [
+			'ingestion_api_instance_url',
+			'ingestion_api_token',
+			'ingestion_api_source_name',
+			'ingestion_api_object_name',
+		];
+
+		$empty_fields = [];
+		foreach ( $fields_to_check as $field ) {
+			if ( empty( $config[ $field ] ) ) {
+				$empty_fields[] = $field;
+			}
+		}
+
+		if ( ! empty( $empty_fields ) ) {
+			return [
+				'success'       => false,
+				'error_message' => 'Missing required API configuration: ' . implode( ', ', $empty_fields ),
+			];
+		}
+
+		$base_url    = $config['ingestion_api_instance_url'] ?? '';
+		$token       = $config['ingestion_api_token'] ?? '';
+		$source_name = $config['ingestion_api_source_name'] ?? '';
+		$object_name = $config['ingestion_api_object_name'] ?? '';
+
+		$url = rtrim( $base_url, '/' ) . '/api/v1/ingest/sources/' . rawurlencode( $source_name ) . '/' . rawurlencode( $object_name );
+
+		$response = wp_remote_request(
+			$url,
+			[
+				'method'  => 'DELETE',
+				'headers' => [
+					'Content-Type'  => 'application/json',
+					'Authorization' => 'Bearer ' . $token,
+				],
+				'body'    => wp_json_encode( [ 'ids' => [ $record_id ] ] ),
+				'timeout' => 3,
+			]
+		);
+
+		if ( is_wp_error( $response ) ) {
+			return [
+				'success'       => false,
+				'error_message' => $response->get_error_message(),
+			];
+		}
+
+		$status_code = wp_remote_retrieve_response_code( $response );
+
+		if ( 202 !== $status_code ) {
+			return [
+				'success'       => false,
+				'error_message' => 'Unexpected response code: ' . $status_code,
+				'response_body' => wp_remote_retrieve_body( $response ),
+			];
+		}
+
 		return [
 			'success'   => true,
 			'record_id' => $record_id,
@@ -459,9 +476,43 @@ class Ingestion {
 	/**
 	 * Fire the deletion failure action.
 	 *
-	 * @param Deletion_Failure $failure The deletion failure.
+	 * @param int                  $post_id      The post ID that failed deletion.
+	 * @param string               $record_id    The Salesforce record ID.
+	 * @param string               $failure_code One of the Deletion_Failure::CODE_* constants.
+	 * @param array<string, mixed> $details      Optional additional details about the failure.
 	 */
-	private static function fire_deletion_failure( Deletion_Failure $failure ): void {
+	private static function fire_deletion_failure( int $post_id, string $record_id, string $failure_code, array $details = [] ): void {
+		$post = get_post( $post_id );
+
+		$error_codes = [
+			Deletion_Failure::CODE_DELETE_API_ERROR => 'vip_agentforce_delete_api_error',
+		];
+
+		$error_messages = [
+			Deletion_Failure::CODE_DELETE_API_ERROR => 'Delete API call failed',
+		];
+
+		$error_data = array_merge(
+			[
+				'post_id'   => $post_id,
+				'record_id' => $record_id,
+			],
+			$details
+		);
+
+		$failure = new Deletion_Failure(
+			[
+				'failure_code' => $failure_code,
+				'post'         => $post,
+				'record_id'    => $record_id,
+				'error'        => new \WP_Error(
+					$error_codes[ $failure_code ] ?? 'vip_agentforce_deletion_failed',
+					$error_messages[ $failure_code ] ?? 'Deletion failed',
+					$error_data
+				),
+			]
+		);
+
 		/**
 		 * Fires when a post deletion from Salesforce fails.
 		 *
