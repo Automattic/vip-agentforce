@@ -45,7 +45,7 @@ class Ingestion {
 		}
 
 		// Mark that we're attempting to ingest this post.
-		// This allows us to track posts for deletion even if: 
+		// This allows us to track posts for deletion even if:
 		// - the filter changes later.
 		// - an ingestion succeeded despite the API returning an error
 		// - if we mark it after a successful ingestion, the marking step might have failed, and we wouldn't know it was actually ingested.
@@ -394,8 +394,6 @@ class Ingestion {
 				Deletion_Failure::CODE_DELETE_API_ERROR,
 				[
 					'result'    => $result,
-					// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_debug_backtrace -- Intentional for error tracing.
-					'backtrace' => debug_backtrace( DEBUG_BACKTRACE_IGNORE_ARGS, 5 ),
 				]
 			);
 			return;
