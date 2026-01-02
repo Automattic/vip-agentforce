@@ -22,6 +22,7 @@ require_once __DIR__ . '/utils/class-logger.php';
 require_once __DIR__ . '/utils/class-tracking.php';
 require_once __DIR__ . '/utils/traits/trait-singleton.php';
 require_once __DIR__ . '/utils/traits/trait-with-plugin-paths.php';
+require_once __DIR__ . '/env.php';
 
 use function Automattic\VIP\Salesforce\Agentforce\Utils\load_integration_configs_from_headers;
 use function Automattic\VIP\Salesforce\Agentforce\Utils\load_integration_configs_from_url;
@@ -57,6 +58,7 @@ if ( class_exists( 'Automattic\\VIP\\Prometheus\\Plugin' ) ) {
 
 // Load the modules
 require_once __DIR__ . '/modules/ingestion/class-ingestion-post-record.php';
+require_once __DIR__ . '/modules/ingestion/class-ingestion-api-result.php';
 require_once __DIR__ . '/modules/ingestion/class-default-transformer.php';
 require_once __DIR__ . '/modules/ingestion/class-ingestion.php';
 require_once __DIR__ . '/modules/ingestion/class-ingestion-failure.php';
@@ -74,3 +76,4 @@ require_once __DIR__ . '/modules/cmp/class-agentforce.php';
 require_once __DIR__ . '/modules/cmp/class-cmp.php';
 // initialize CMP module
 \Automattic\VIP\Salesforce\Agentforce\Cmp\Cmp::get_instance();
+
