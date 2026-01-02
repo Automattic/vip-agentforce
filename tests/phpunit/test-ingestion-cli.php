@@ -67,32 +67,42 @@ class Ingestion_CLI_Test extends WP_UnitTestCase {
 	public function test_delete_record_id_from_api_returns_success(): void {
 		$record_id = '101_1_123';
 
-		$response = Ingestion::delete_record_id_from_api( $record_id );
+		$result = Ingestion::delete_record_id_from_api( $record_id );
 
-		$this->assertTrue( $response['success'] );
-		$this->assertSame( $record_id, $response['record_id'] );
-		$this->assertArrayHasKey( 'timestamp', $response );
+		$this->assertTrue( $result->success );
+		$this->assertSame( $record_id, $result->record_id );
+		$this->assertNotEmpty( $result->timestamp );
 	}
 
 	public function test_delete_record_id_from_api_accepts_any_format(): void {
 		// Even invalid formats should be accepted - it's the API's job to reject them.
 		$record_id = 'invalid_format';
 
-		$response = Ingestion::delete_record_id_from_api( $record_id );
+		$result = Ingestion::delete_record_id_from_api( $record_id );
 
-		$this->assertTrue( $response['success'] );
-		$this->assertSame( $record_id, $response['record_id'] );
+		$this->assertTrue( $result->success );
+		$this->assertSame( $record_id, $result->record_id );
 	}
 
 	public function test_delete_from_api_uses_delete_record_id_from_api(): void {
 		$post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
 
-		$response = Ingestion::delete_from_api( $post );
+		$result = Ingestion::delete_from_api( $post );
 
-		$this->assertTrue( $response['success'] );
-		$this->assertArrayHasKey( 'record_id', $response );
+		$this->assertTrue( $result->success );
+		$this->assertNotNull( $result->record_id );
 		// Record ID should contain the post ID.
-		$this->assertStringContainsString( (string) $post->ID, $response['record_id'] );
+		$this->assertStringContainsString( (string) $post->ID, $result->record_id );
+	}
+
+	public function test_delete_record_id_from_api_includes_response(): void {
+		$record_id = '101_1_123';
+
+		$result = Ingestion::delete_record_id_from_api( $record_id );
+
+		$this->assertTrue( $result->success );
+		$this->assertNotNull( $result->response );
+		$this->assertIsArray( $result->response );
 	}
 
 	// =========================================================================
@@ -102,10 +112,10 @@ class Ingestion_CLI_Test extends WP_UnitTestCase {
 	public function test_record_id_format_contains_site_blog_post(): void {
 		$post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
 
-		$response = Ingestion::delete_from_api( $post );
+		$result = Ingestion::delete_from_api( $post );
 
 		// Format should be site_id_blog_id_post_id.
-		$parts = explode( '_', $response['record_id'] );
+		$parts = explode( '_', $result->record_id );
 		$this->assertCount( 3, $parts, 'Record ID should have 3 parts separated by underscores.' );
 
 		// VIP_GO_APP_ID is defined as 101 in test setup.
@@ -119,11 +129,11 @@ class Ingestion_CLI_Test extends WP_UnitTestCase {
 	public function test_record_id_uses_correct_site_id(): void {
 		$post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
 
-		$response = Ingestion::delete_from_api( $post );
+		$result = Ingestion::delete_from_api( $post );
 
 		// Site ID is VIP_GO_APP_ID if defined, otherwise '0'.
 		$expected_site_id = defined( 'VIP_GO_APP_ID' ) ? (string) VIP_GO_APP_ID : '0';
-		$this->assertStringStartsWith( $expected_site_id . '_', $response['record_id'] );
+		$this->assertStringStartsWith( $expected_site_id . '_', $result->record_id );
 	}
 
 	// =========================================================================
@@ -138,10 +148,10 @@ class Ingestion_CLI_Test extends WP_UnitTestCase {
 		$expected_record_id = $site_id . '_' . $blog_id . '_' . $post_id;
 
 		// This simulates what the CLI command does.
-		$response = Ingestion::delete_record_id_from_api( $expected_record_id );
+		$result = Ingestion::delete_record_id_from_api( $expected_record_id );
 
-		$this->assertTrue( $response['success'] );
-		$this->assertSame( $expected_record_id, $response['record_id'] );
+		$this->assertTrue( $result->success );
+		$this->assertSame( $expected_record_id, $result->record_id );
 	}
 
 	public function test_cli_record_id_generation_with_explicit_blog_id(): void {
@@ -151,11 +161,11 @@ class Ingestion_CLI_Test extends WP_UnitTestCase {
 
 		$expected_record_id = $site_id . '_' . $blog_id . '_' . $post_id;
 
-		$response = Ingestion::delete_record_id_from_api( $expected_record_id );
+		$result = Ingestion::delete_record_id_from_api( $expected_record_id );
 
-		$this->assertTrue( $response['success'] );
-		$this->assertSame( $expected_record_id, $response['record_id'] );
-		$this->assertStringContainsString( '_2_', $response['record_id'] );
+		$this->assertTrue( $result->success );
+		$this->assertSame( $expected_record_id, $result->record_id );
+		$this->assertStringContainsString( '_2_', $result->record_id );
 	}
 
 	public function test_cli_can_delete_non_existent_post(): void {
@@ -167,9 +177,9 @@ class Ingestion_CLI_Test extends WP_UnitTestCase {
 		$record_id = $site_id . '_' . $blog_id . '_' . $non_existent_post_id;
 
 		// This should succeed - the API doesn't care if the post exists in WP.
-		$response = Ingestion::delete_record_id_from_api( $record_id );
+		$result = Ingestion::delete_record_id_from_api( $record_id );
 
-		$this->assertTrue( $response['success'] );
-		$this->assertSame( $record_id, $response['record_id'] );
+		$this->assertTrue( $result->success );
+		$this->assertSame( $record_id, $result->record_id );
 	}
 }

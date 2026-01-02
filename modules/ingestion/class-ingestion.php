@@ -57,10 +57,10 @@ class Ingestion {
 			return;
 		}
 
-		$response = static::send_to_api( $record );
+		$result = static::send_to_api( $record );
 
-		if ( ! $response['success'] ) {
-			self::fire_ingestion_failure( $post_id, Ingestion_Failure::CODE_API_ERROR, [ 'response' => $response ] );
+		if ( ! $result->success ) {
+			self::fire_ingestion_failure( $post_id, Ingestion_Failure::CODE_API_ERROR, [ 'result' => $result ] );
 			return;
 		}
 	}
@@ -119,9 +119,24 @@ class Ingestion {
 	 * Send record to Salesforce Data Cloud Ingestion API.
 	 *
 	 * @param Ingestion_Post_Record $record The record to send.
-	 * @return array<string, mixed> Response with 'success' key (true/false) and error details if failed.
+	 * @return Ingestion_API_Result The API result.
 	 */
-	public static function send_to_api( Ingestion_Post_Record $record ): array {
+	public static function send_to_api( Ingestion_Post_Record $record ): Ingestion_API_Result {
+		$record_id = $record->to_array()['site_id_blog_id_post_id'];
+
+		return self::make_api_request(
+			'POST',
+			wp_json_encode( [ 'data' => [ $record->to_array() ] ] ),
+			$record_id
+		);
+	}
+
+	/**
+	 * Validate that required API configuration fields are present.
+	 *
+	 * @return string|null Error message if validation fails, null if valid.
+	 */
+	private static function validate_api_config(): ?string {
 		$config = Configs::get_config();
 
 		$fields_to_check = [
@@ -139,53 +154,73 @@ class Ingestion {
 		}
 
 		if ( ! empty( $empty_fields ) ) {
-			return [
-				'success'       => false,
-				'error_message' => 'Missing required API configuration: ' . implode( ', ', $empty_fields ),
-			];
+			return 'Missing required API configuration: ' . implode( ', ', $empty_fields );
 		}
 
+		return null;
+	}
+
+	/**
+	 * Build the Ingestion API URL.
+	 *
+	 * @return string The full API URL.
+	 */
+	private static function build_api_url(): string {
+		$config = Configs::get_config();
+
 		$base_url    = $config['ingestion_api_instance_url'] ?? '';
-		$token       = $config['ingestion_api_token'] ?? '';
 		$source_name = $config['ingestion_api_source_name'] ?? '';
 		$object_name = $config['ingestion_api_object_name'] ?? '';
 
-		$url = rtrim( $base_url, '/' ) . '/api/v1/ingest/sources/' . rawurlencode( $source_name ) . '/' . rawurlencode( $object_name );
+		return rtrim( $base_url, '/' ) . '/api/v1/ingest/sources/' . rawurlencode( $source_name ) . '/' . rawurlencode( $object_name );
+	}
 
-		$response = wp_remote_post(
+	/**
+	 * Make an API request to the Salesforce Data Cloud Ingestion API.
+	 *
+	 * @param string $method    HTTP method ('POST' or 'DELETE').
+	 * @param string $body      JSON-encoded request body.
+	 * @param string $record_id The record ID for the result.
+	 * @return Ingestion_API_Result The API result.
+	 */
+	private static function make_api_request( string $method, string $body, string $record_id ): Ingestion_API_Result {
+		$config_error = self::validate_api_config();
+		if ( null !== $config_error ) {
+			return Ingestion_API_Result::failure( $config_error, null, $record_id );
+		}
+
+		$config = Configs::get_config();
+		$token  = $config['ingestion_api_token'] ?? '';
+		$url    = self::build_api_url();
+
+		$response = wp_remote_request(
 			$url,
 			[
+				'method'  => $method,
 				'headers' => [
 					'Content-Type'  => 'application/json',
 					'Authorization' => 'Bearer ' . $token,
 				],
-				'body'    => wp_json_encode( [ 'data' => [ $record->to_array() ] ] ),
+				'body'    => $body,
 				'timeout' => 3,
 			]
 		);
 
 		if ( is_wp_error( $response ) ) {
-			return [
-				'success'       => false,
-				'error_message' => $response->get_error_message(),
-			];
+			return Ingestion_API_Result::failure( $response->get_error_message(), $response, $record_id );
 		}
 
 		$status_code = wp_remote_retrieve_response_code( $response );
 
 		if ( 202 !== $status_code ) {
-			return [
-				'success'       => false,
-				'error_message' => 'Unexpected response code: ' . $status_code,
-				'response_body' => wp_remote_retrieve_body( $response ),
-			];
+			return Ingestion_API_Result::failure(
+				'Unexpected response code: ' . $status_code,
+				$response,
+				$record_id
+			);
 		}
 
-		return [
-			'success'   => true,
-			'record_id' => $record->to_array()['site_id_blog_id_post_id'],
-			'timestamp' => gmdate( 'c' ),
-		];
+		return Ingestion_API_Result::success( $record_id, $response );
 	}
 
 	/**
@@ -350,15 +385,15 @@ class Ingestion {
 	 */
 	private static function delete_post_from_salesforce( \WP_Post $post ): void {
 		$record_id = self::build_record_id( $post );
-		$response  = static::delete_from_api( $post );
+		$result    = static::delete_from_api( $post );
 
-		if ( ! $response['success'] ) {
+		if ( ! $result->success ) {
 			self::fire_deletion_failure(
 				$post->ID,
 				$record_id,
 				Deletion_Failure::CODE_DELETE_API_ERROR,
 				[
-					'response'  => $response,
+					'result'    => $result,
 					// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_debug_backtrace -- Intentional for error tracing.
 					'backtrace' => debug_backtrace( DEBUG_BACKTRACE_IGNORE_ARGS, 5 ),
 				]
@@ -374,9 +409,9 @@ class Ingestion {
 	 * Delete a post record from Salesforce API.
 	 *
 	 * @param \WP_Post $post The post to delete.
-	 * @return array<string, mixed> Response with 'success' key (true/false) and error details if failed.
+	 * @return Ingestion_API_Result The API result.
 	 */
-	public static function delete_from_api( \WP_Post $post ): array {
+	public static function delete_from_api( \WP_Post $post ): Ingestion_API_Result {
 		$record_id = self::build_record_id( $post );
 
 		return self::delete_record_id_from_api( $record_id );
@@ -389,74 +424,14 @@ class Ingestion {
 	 * where the post may not exist in WordPress.
 	 *
 	 * @param string $record_id The record ID in format site_id_blog_id_post_id.
-	 * @return array<string, mixed> Response with 'success' key (true/false) and error details if failed.
+	 * @return Ingestion_API_Result The API result.
 	 */
-	public static function delete_record_id_from_api( string $record_id ): array {
-		$config = Configs::get_config();
-
-		$fields_to_check = [
-			'ingestion_api_instance_url',
-			'ingestion_api_token',
-			'ingestion_api_source_name',
-			'ingestion_api_object_name',
-		];
-
-		$empty_fields = [];
-		foreach ( $fields_to_check as $field ) {
-			if ( empty( $config[ $field ] ) ) {
-				$empty_fields[] = $field;
-			}
-		}
-
-		if ( ! empty( $empty_fields ) ) {
-			return [
-				'success'       => false,
-				'error_message' => 'Missing required API configuration: ' . implode( ', ', $empty_fields ),
-			];
-		}
-
-		$base_url    = $config['ingestion_api_instance_url'] ?? '';
-		$token       = $config['ingestion_api_token'] ?? '';
-		$source_name = $config['ingestion_api_source_name'] ?? '';
-		$object_name = $config['ingestion_api_object_name'] ?? '';
-
-		$url = rtrim( $base_url, '/' ) . '/api/v1/ingest/sources/' . rawurlencode( $source_name ) . '/' . rawurlencode( $object_name );
-
-		$response = wp_remote_request(
-			$url,
-			[
-				'method'  => 'DELETE',
-				'headers' => [
-					'Content-Type'  => 'application/json',
-					'Authorization' => 'Bearer ' . $token,
-				],
-				'body'    => wp_json_encode( [ 'ids' => [ $record_id ] ] ),
-				'timeout' => 3,
-			]
+	public static function delete_record_id_from_api( string $record_id ): Ingestion_API_Result {
+		return self::make_api_request(
+			'DELETE',
+			wp_json_encode( [ 'ids' => [ $record_id ] ] ),
+			$record_id
 		);
-
-		if ( is_wp_error( $response ) ) {
-			return [
-				'success'       => false,
-				'error_message' => $response->get_error_message(),
-			];
-		}
-
-		$status_code = wp_remote_retrieve_response_code( $response );
-
-		if ( 202 !== $status_code ) {
-			return [
-				'success'       => false,
-				'error_message' => 'Unexpected response code: ' . $status_code,
-				'response_body' => wp_remote_retrieve_body( $response ),
-			];
-		}
-
-		return [
-			'success'   => true,
-			'record_id' => $record_id,
-			'timestamp' => gmdate( 'c' ),
-		];
 	}
 
 	/**

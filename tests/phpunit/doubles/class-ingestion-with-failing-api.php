@@ -6,6 +6,7 @@
  */
 
 use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion;
+use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_API_Result;
 use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_Post_Record;
 
 /**
@@ -17,14 +18,10 @@ class Ingestion_With_Failing_Api extends Ingestion {
 	 * Override send_to_api to always fail.
 	 *
 	 * @param Ingestion_Post_Record $record The record to send.
-	 * @return array<string, mixed> Simulated failure response.
+	 * @return Ingestion_API_Result Simulated failure result.
 	 */
-	public static function send_to_api( Ingestion_Post_Record $record ): array {
+	public static function send_to_api( Ingestion_Post_Record $record ): Ingestion_API_Result {
 		unset( $record ); // Unused in mock.
-		return [
-			'success'       => false,
-			'error_message' => 'Simulated API failure',
-			'timestamp'     => gmdate( 'c' ),
-		];
+		return Ingestion_API_Result::failure( 'Simulated API failure' );
 	}
 }

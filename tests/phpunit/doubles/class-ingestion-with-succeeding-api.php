@@ -6,6 +6,7 @@
  */
 
 use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion;
+use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_API_Result;
 use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_Post_Record;
 
 /**
@@ -17,13 +18,9 @@ class Ingestion_With_Succeeding_Api extends Ingestion {
 	 * Override send_to_api to always succeed.
 	 *
 	 * @param Ingestion_Post_Record $record The record to send.
-	 * @return array<string, mixed> Simulated success response.
+	 * @return Ingestion_API_Result Simulated success result.
 	 */
-	public static function send_to_api( Ingestion_Post_Record $record ): array {
-		return [
-			'success'   => true,
-			'record_id' => $record->to_array()['site_id_blog_id_post_id'],
-			'timestamp' => gmdate( 'c' ),
-		];
+	public static function send_to_api( Ingestion_Post_Record $record ): Ingestion_API_Result {
+		return Ingestion_API_Result::success( $record->to_array()['site_id_blog_id_post_id'] );
 	}
 }

@@ -72,9 +72,9 @@ class Ingestion_CLI extends WP_CLI_Command {
 				]
 			);
 
-			$response = Ingestion::delete_record_id_from_api( $record_id );
+			$result = Ingestion::delete_record_id_from_api( $record_id );
 
-			if ( $response['success'] ) {
+			if ( $result->success ) {
 				WP_CLI::success( sprintf( 'Deleted record %s from Salesforce.', $record_id ) );
 				++$success_count;
 
@@ -87,7 +87,7 @@ class Ingestion_CLI extends WP_CLI_Command {
 					]
 				);
 			} else {
-				WP_CLI::warning( sprintf( 'Failed to delete record %s: %s', $record_id, $response['error_message'] ?? 'Unknown error' ) );
+				WP_CLI::warning( sprintf( 'Failed to delete record %s: %s', $record_id, $result->error_message ?? 'Unknown error' ) );
 				++$failure_count;
 
 				Logger::info(
@@ -96,7 +96,7 @@ class Ingestion_CLI extends WP_CLI_Command {
 					[
 						'post_id'   => $post_id,
 						'record_id' => $record_id,
-						'response'  => $response,
+						'result'    => $result,
 					]
 				);
 			}
