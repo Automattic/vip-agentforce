@@ -67,11 +67,6 @@ if ( defined( 'WP_CLI' ) && WP_CLI ) {
 	require_once __DIR__ . '/modules/ingestion/class-ingestion-cli.php';
 }
 
-// Load WP-CLI commands.
-if ( defined( 'WP_CLI' ) && WP_CLI ) {
-	require_once __DIR__ . '/modules/ingestion/class-ingestion-cli.php';
-}
-
 // CMP
 require_once __DIR__ . '/modules/cmp/class-assets.php';
 require_once __DIR__ . '/modules/cmp/class-settings-page.php';
