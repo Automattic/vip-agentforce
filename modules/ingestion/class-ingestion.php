@@ -393,7 +393,7 @@ class Ingestion {
 				$record_id,
 				Deletion_Failure::CODE_DELETE_API_ERROR,
 				[
-					'result'    => $result,
+					'result' => $result,
 				]
 			);
 			return;
