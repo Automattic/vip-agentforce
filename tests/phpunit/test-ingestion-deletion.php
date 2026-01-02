@@ -516,4 +516,186 @@ class Ingestion_Deletion_Test extends WP_UnitTestCase {
 
 		$this->assertFalse( $action_fired, 'Failure action should NOT fire on successful deletion.' );
 	}
+
+	// =========================================================================
+	// Full Flow Tests (ingest then delete)
+	// =========================================================================
+
+	public function test_full_flow_publish_ingest_then_unpublish_deletes(): void {
+		// 1. Create and publish a post.
+		$post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
+
+		// 2. Set up filters to allow ingestion.
+		$this->setup_ingestion_filters();
+
+		// 3. Trigger ingestion via on_save_post (simulates saving a published post).
+		Ingestion::on_save_post( $post->ID, $post );
+
+		// Verify the post was marked as ingested.
+		$meta = get_post_meta( $post->ID, Ingestion::META_KEY_INGESTION_ATTEMPTED, true );
+		$this->assertNotEmpty( $meta, 'Post should be marked as ingested after on_save_post.' );
+
+		// 4. Now unpublish the post (switch to draft).
+		Ingestion::handle_post_unpublished( 'draft', 'publish', $post );
+
+		// 5. Verify the meta was cleared (deletion was successful).
+		$meta_after = get_post_meta( $post->ID, Ingestion::META_KEY_INGESTION_ATTEMPTED, true );
+		$this->assertEmpty( $meta_after, 'Meta should be cleared after unpublishing (deletion successful).' );
+	}
+
+	public function test_full_flow_publish_ingest_then_trash_deletes(): void {
+		$post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
+
+		$this->setup_ingestion_filters();
+		Ingestion::on_save_post( $post->ID, $post );
+
+		// Verify ingested.
+		$this->assertNotEmpty( get_post_meta( $post->ID, Ingestion::META_KEY_INGESTION_ATTEMPTED, true ) );
+
+		// Trash the post.
+		Ingestion::handle_post_unpublished( 'trash', 'publish', $post );
+
+		// Verify deleted from Salesforce.
+		$this->assertEmpty( get_post_meta( $post->ID, Ingestion::META_KEY_INGESTION_ATTEMPTED, true ) );
+	}
+
+	// =========================================================================
+	// Filter Rejection Deletion Tests (on_save_post)
+	// =========================================================================
+
+	public function test_on_save_post_deletes_when_filter_rejects_previously_ingested_post(): void {
+		$post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
+
+		// 1. First, ingest the post.
+		$this->setup_ingestion_filters();
+		Ingestion::on_save_post( $post->ID, $post );
+
+		// Verify ingested.
+		$this->assertNotEmpty( get_post_meta( $post->ID, Ingestion::META_KEY_INGESTION_ATTEMPTED, true ) );
+
+		// 2. Now change the filter to reject the post.
+		remove_all_filters( 'vip_agentforce_should_ingest_post' );
+		add_filter( 'vip_agentforce_should_ingest_post', '__return_false' );
+
+		// 3. Trigger on_save_post again (simulates user editing and saving the post).
+		Ingestion::on_save_post( $post->ID, $post );
+
+		// 4. Verify the post was deleted from Salesforce (meta cleared).
+		$meta_after = get_post_meta( $post->ID, Ingestion::META_KEY_INGESTION_ATTEMPTED, true );
+		$this->assertEmpty( $meta_after, 'Post should be deleted from Salesforce when filter rejects previously ingested post.' );
+	}
+
+	public function test_on_save_post_does_not_delete_when_filter_rejects_never_ingested_post(): void {
+		$post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
+
+		// Post was never ingested (no meta).
+		$this->assertEmpty( get_post_meta( $post->ID, Ingestion::META_KEY_INGESTION_ATTEMPTED, true ) );
+
+		// Filter rejects the post.
+		add_filter( 'vip_agentforce_should_ingest_post', '__return_false' );
+
+		// Use failing API to detect if deletion is attempted.
+		Ingestion_With_Failing_Delete_Api::init();
+
+		$deletion_attempted = false;
+		add_action(
+			'vip_agentforce_post_deletion_failed',
+			function () use ( &$deletion_attempted ) {
+				$deletion_attempted = true;
+			}
+		);
+
+		// Trigger on_save_post.
+		Ingestion_With_Failing_Delete_Api::on_save_post( $post->ID, $post );
+
+		// No deletion should be attempted for a post that was never ingested.
+		$this->assertFalse( $deletion_attempted, 'No deletion should occur for post that was never ingested.' );
+	}
+
+	public function test_on_save_post_deletes_when_post_no_longer_published(): void {
+		// Start with a published post that was ingested.
+		$post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
+		$this->setup_ingestion_filters();
+		Ingestion::on_save_post( $post->ID, $post );
+
+		// Verify ingested.
+		$this->assertNotEmpty( get_post_meta( $post->ID, Ingestion::META_KEY_INGESTION_ATTEMPTED, true ) );
+
+		// Change post to draft status.
+		$post->post_status = 'draft';
+
+		// Trigger on_save_post - should_ingest_post returns false for drafts.
+		Ingestion::on_save_post( $post->ID, $post );
+
+		// Verify deleted from Salesforce.
+		$this->assertEmpty(
+			get_post_meta( $post->ID, Ingestion::META_KEY_INGESTION_ATTEMPTED, true ),
+			'Post should be deleted when status changes to non-published.'
+		);
+	}
+
+	public function test_on_save_post_category_change_triggers_deletion(): void {
+		$post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
+
+		// Create a category and assign it to the post.
+		$cat_id = $this->factory()->category->create( [ 'name' => 'Ingestible Category' ] );
+		wp_set_post_categories( $post->ID, [ $cat_id ] );
+
+		// Filter that only ingests posts in specific category.
+		add_filter(
+			'vip_agentforce_should_ingest_post',
+			function ( $should_ingest, $filter_post ) use ( $cat_id ) {
+				return has_category( $cat_id, $filter_post );
+			},
+			10,
+			2
+		);
+		add_filter(
+			'vip_agentforce_transform_post',
+			function ( $record, $filter_post ) {
+				return new Ingestion_Post_Record(
+					[
+						'site_id'                 => '1',
+						'blog_id'                 => '1',
+						'post_id'                 => (string) $filter_post->ID,
+						'site_id_blog_id'         => '1_1',
+						'site_id_blog_id_post_id' => '1_1_' . $filter_post->ID,
+						'published'               => true,
+						'last_published_at'       => '2025-01-01T00:00:00+00:00',
+						'last_modified_at'        => '2025-01-01T00:00:00+00:00',
+						'title'                   => $filter_post->post_title,
+						'content'                 => $filter_post->post_content,
+						'excerpt'                 => $filter_post->post_excerpt,
+						'categories'              => '',
+						'tags'                    => '',
+						'author'                  => '',
+						'url'                     => 'https://example.com',
+						'post_type'               => $filter_post->post_type,
+						'post_status'             => $filter_post->post_status,
+					]
+				);
+			},
+			10,
+			2
+		);
+
+		// Ingest the post.
+		Ingestion::on_save_post( $post->ID, $post );
+		$this->assertNotEmpty( get_post_meta( $post->ID, Ingestion::META_KEY_INGESTION_ATTEMPTED, true ) );
+
+		// Remove the category from the post.
+		wp_set_post_categories( $post->ID, [] );
+
+		// Re-fetch post to get updated state.
+		$post = get_post( $post->ID );
+
+		// Save the post again.
+		Ingestion::on_save_post( $post->ID, $post );
+
+		// Post should be deleted from Salesforce because it no longer has the required category.
+		$this->assertEmpty(
+			get_post_meta( $post->ID, Ingestion::META_KEY_INGESTION_ATTEMPTED, true ),
+			'Post should be deleted when category is removed and filter no longer matches.'
+		);
+	}
 }
