@@ -26,21 +26,28 @@ class Ingestion {
 	 * Initialize the module.
 	 */
 	public static function init(): void {
-		add_action( 'save_post', [ __CLASS__, 'ingest_post' ], 10, 2 );
+		add_action( 'save_post', [ __CLASS__, 'on_save_post' ], 10, 2 );
 		add_action( 'transition_post_status', [ __CLASS__, 'handle_post_unpublished' ], 10, 3 );
 		add_action( 'before_delete_post', [ __CLASS__, 'handle_post_deleted' ], 10, 2 );
 	}
 
 	/**
-	 * Attempts to ingest a post if it passes the filter.
+	 * Handle post save - ingest or delete from Salesforce as appropriate.
+	 *
+	 * If the post passes the filter, it will be ingested.
+	 * If it doesn't pass but was previously ingested, it will be deleted.
 	 *
 	 * @param int      $post_id Post ID.
 	 * @param \WP_Post $post    Post object.
 	 */
-	public static function ingest_post( int $post_id, \WP_Post $post ): void {
+	public static function on_save_post( int $post_id, \WP_Post $post ): void {
 		$should_ingest = self::should_ingest_post( $post );
 
 		if ( ! $should_ingest ) {
+			// If this post was previously ingested, delete it from Salesforce.
+			if ( self::was_post_ingestible( $post ) ) {
+				self::delete_post_from_salesforce( $post );
+			}
 			return;
 		}
 

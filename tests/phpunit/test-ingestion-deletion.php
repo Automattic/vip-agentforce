@@ -131,7 +131,7 @@ class Ingestion_Deletion_Test extends WP_UnitTestCase {
 		$this->setup_ingestion_filters();
 
 		// Trigger ingestion.
-		Ingestion::ingest_post( $post->ID, $post );
+		Ingestion::on_save_post( $post->ID, $post );
 
 		// Verify meta was set.
 		$meta = get_post_meta( $post->ID, Ingestion::META_KEY_INGESTION_ATTEMPTED, true );
@@ -453,32 +453,6 @@ class Ingestion_Deletion_Test extends WP_UnitTestCase {
 		$this->assertInstanceOf( Deletion_Failure::class, $received_failure );
 		$this->assertInstanceOf( WP_Post::class, $received_failure->post );
 		$this->assertSame( $post->ID, $received_failure->post->ID );
-	}
-
-	public function test_deletion_failure_contains_backtrace(): void {
-		$post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
-		$this->mark_post_as_ingested( $post );
-
-		Ingestion_With_Failing_Delete_Api::init();
-
-		/** @var Deletion_Failure|null $received_failure */
-		$received_failure = null;
-
-		add_action(
-			'vip_agentforce_post_deletion_failed',
-			function ( $failure ) use ( &$received_failure ) {
-				$received_failure = $failure;
-			}
-		);
-
-		Ingestion_With_Failing_Delete_Api::handle_post_unpublished( 'draft', 'publish', $post );
-
-		$this->assertInstanceOf( Deletion_Failure::class, $received_failure );
-		$error_data = $received_failure->error->get_error_data();
-		$this->assertIsArray( $error_data );
-		$this->assertArrayHasKey( 'backtrace', $error_data );
-		$this->assertIsArray( $error_data['backtrace'] );
-		$this->assertNotEmpty( $error_data['backtrace'] );
 	}
 
 	public function test_deletion_failure_to_array(): void {

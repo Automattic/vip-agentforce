@@ -23,7 +23,7 @@ class Ingestion_Test extends WP_UnitTestCase {
 	}
 
 	public function test_save_post_hook_is_registered(): void {
-		$this->assertEquals( 10, has_action( 'save_post', [ Ingestion::class, 'ingest_post' ] ) );
+		$this->assertEquals( 10, has_action( 'save_post', [ Ingestion::class, 'on_save_post' ] ) );
 	}
 
 	public function test_returns_false_when_no_filter_registered(): void {
@@ -272,7 +272,7 @@ class Ingestion_Test extends WP_UnitTestCase {
 			}
 		);
 
-		Ingestion::ingest_post( $post->ID, $post );
+		Ingestion::on_save_post( $post->ID, $post );
 
 		$this->assertFalse( $action_fired, 'Action should NOT fire when filter rejects post (skip is not a failure).' );
 	}
@@ -291,7 +291,7 @@ class Ingestion_Test extends WP_UnitTestCase {
 			}
 		);
 
-		Ingestion::ingest_post( $post->ID, $post );
+		Ingestion::on_save_post( $post->ID, $post );
 
 		$this->assertFalse( $action_fired, 'Action should NOT fire when no filter is registered (skip is not a failure).' );
 	}
@@ -315,7 +315,7 @@ class Ingestion_Test extends WP_UnitTestCase {
 			}
 		);
 
-		Ingestion::ingest_post( $post->ID, $post );
+		Ingestion::on_save_post( $post->ID, $post );
 
 		$this->assertTrue( $action_fired, 'Action should fire when transform fails.' );
 		$this->assertInstanceOf( Ingestion_Failure::class, $received_failure );
@@ -369,7 +369,7 @@ class Ingestion_Test extends WP_UnitTestCase {
 			}
 		);
 
-		Ingestion_With_Succeeding_Api::ingest_post( $post->ID, $post );
+		Ingestion_With_Succeeding_Api::on_save_post( $post->ID, $post );
 
 		$this->assertFalse( $action_fired, 'Action should NOT fire on successful ingestion.' );
 	}
@@ -390,7 +390,7 @@ class Ingestion_Test extends WP_UnitTestCase {
 			}
 		);
 
-		Ingestion::ingest_post( $post->ID, $post );
+		Ingestion::on_save_post( $post->ID, $post );
 
 		$this->assertInstanceOf( Ingestion_Failure::class, $received_failure );
 		$error_data = $received_failure->error->get_error_data();
@@ -415,7 +415,7 @@ class Ingestion_Test extends WP_UnitTestCase {
 			}
 		);
 
-		Ingestion::ingest_post( $post->ID, $post );
+		Ingestion::on_save_post( $post->ID, $post );
 
 		$this->assertInstanceOf( Ingestion_Failure::class, $received_failure );
 		$array = $received_failure->to_array();
