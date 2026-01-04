@@ -1,35 +1,53 @@
 <?php
 
+use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion;
 use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_Failure;
 use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_Post_Record;
 
-require_once __DIR__ . '/doubles/class-ingestion-with-failing-api.php';
-
 /**
- * Test class for API failure scenarios using a subclass to mock send_to_api().
+ * Test class for API failure scenarios using pre_http_request filter to mock failures.
  */
 class Ingestion_Api_Failure_Test extends WP_UnitTestCase {
 
 	public function setUp(): void {
 		parent::setUp();
-		Ingestion_With_Failing_Api::init();
+		Ingestion::init();
+
+		// Mock the config so API URL is set.
+		add_filter(
+			'vip_agentforce_config',
+			function ( $config ) {
+				return array_merge(
+					$config,
+					[
+						'ingestion_api_instance_url' => 'https://test.salesforce.com',
+						'ingestion_api_token'        => 'test-token',
+						'ingestion_api_source_name'  => 'test_source',
+						'ingestion_api_object_name'  => 'test_object',
+					]
+				);
+			}
+		);
 	}
 
 	public function tearDown(): void {
 		parent::tearDown();
 		remove_all_filters( 'vip_agentforce_should_ingest_post' );
 		remove_all_filters( 'vip_agentforce_transform_post' );
+		remove_all_filters( 'vip_agentforce_config' );
+		remove_all_filters( 'pre_http_request' );
 		remove_all_actions( 'vip_agentforce_post_ingestion_failed' );
 	}
 
-	public function test_failure_action_fires_on_api_error(): void {
-		$post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
-
+	/**
+	 * Set up ingestion filters that return true and provide a valid record.
+	 */
+	private function setup_ingestion_filters(): void {
 		add_filter( 'vip_agentforce_should_ingest_post', '__return_true' );
 		add_filter(
 			'vip_agentforce_transform_post',
 			// phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundBeforeLastUsed -- Filter callback signature.
-			function ( $record, $filter_post ) {
+			function ( $_record, $filter_post ) {
 				return new Ingestion_Post_Record(
 					[
 						'site_id'                 => '1',
@@ -55,7 +73,27 @@ class Ingestion_Api_Failure_Test extends WP_UnitTestCase {
 			10,
 			2
 		);
+	}
 
+	/**
+	 * Mock HTTP requests to fail.
+	 */
+	private function mock_http_failure(): void {
+		add_filter(
+			'pre_http_request',
+			function ( $preempt, $args, $url ) {
+				if ( strpos( $url, 'test.salesforce.com' ) !== false ) {
+					return new \WP_Error( 'http_error', 'Connection failed' );
+				}
+				return $preempt;
+			},
+			10,
+			3
+		);
+	}
+
+	public function test_failure_action_fires_on_api_error(): void {
+		// Set up failure listener FIRST.
 		$action_fired = false;
 		/** @var Ingestion_Failure|null $received_failure */
 		$received_failure = null;
@@ -68,7 +106,14 @@ class Ingestion_Api_Failure_Test extends WP_UnitTestCase {
 			}
 		);
 
-		Ingestion_With_Failing_Api::handle_save_post( $post->ID, $post );
+		// Set up HTTP mock to fail.
+		$this->mock_http_failure();
+
+		// Set up ingestion filters.
+		$this->setup_ingestion_filters();
+
+		// Create post - this triggers save_post which triggers ingestion.
+		$post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
 
 		$this->assertTrue( $action_fired, 'Action should fire when API fails.' );
 		$this->assertInstanceOf( Ingestion_Failure::class, $received_failure );
@@ -78,6 +123,5 @@ class Ingestion_Api_Failure_Test extends WP_UnitTestCase {
 		$this->assertSame( $post->ID, $received_failure->post->ID );
 		$this->assertInstanceOf( WP_Error::class, $received_failure->error );
 		$this->assertSame( 'vip_agentforce_api_error', $received_failure->error->get_error_code() );
-		$this->assertSame( 'API call failed', $received_failure->error->get_error_message() );
 	}
 }
