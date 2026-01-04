@@ -6,6 +6,8 @@ use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_Post_Record;
 use Automattic\VIP\Salesforce\Agentforce\Utils\Configs;
 use Automattic\VIP\Salesforce\Agentforce\Utils\Logger;
 
+require_once __DIR__ . '/doubles/class-ingestion-with-succeeding-api.php';
+
 class Ingestion_Test extends WP_UnitTestCase {
 
 	/**
