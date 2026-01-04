@@ -8,6 +8,13 @@ use Automattic\VIP\Salesforce\Agentforce\Utils\Configs;
 class Ingestion_Deletion_Test extends WP_UnitTestCase {
 
 	/**
+	 * Captured HTTP requests for verification.
+	 *
+	 * @var array<int, array{url: string, method: string, body: string}>
+	 */
+	private array $captured_requests = [];
+
+	/**
 	 * Prime Configs cache for deterministic tests without mutating VIP_AGENTFORCE_CONFIGS.
 	 *
 	 * @param array<string, mixed> $config
@@ -20,13 +27,18 @@ class Ingestion_Deletion_Test extends WP_UnitTestCase {
 	}
 
 	/**
-	 * Mock HTTP requests to return success (202).
+	 * Mock HTTP requests to return success (202) and capture request details.
 	 */
 	private function mock_http_success(): void {
 		add_filter(
 			'pre_http_request',
 			function ( $preempt, $args, $url ) {
 				if ( strpos( $url, 'test.salesforce.com' ) !== false ) {
+					$this->captured_requests[] = [
+						'url'    => $url,
+						'method' => $args['method'] ?? 'GET',
+						'body'   => $args['body'] ?? '',
+					];
 					return [
 						'response' => [
 							'code'    => 202,
@@ -50,6 +62,11 @@ class Ingestion_Deletion_Test extends WP_UnitTestCase {
 			'pre_http_request',
 			function ( $preempt, $args, $url ) {
 				if ( strpos( $url, 'test.salesforce.com' ) !== false ) {
+					$this->captured_requests[] = [
+						'url'    => $url,
+						'method' => $args['method'] ?? 'GET',
+						'body'   => $args['body'] ?? '',
+					];
 					return new \WP_Error( 'http_error', 'Simulated API failure' );
 				}
 				return $preempt;
@@ -57,6 +74,37 @@ class Ingestion_Deletion_Test extends WP_UnitTestCase {
 			10,
 			3
 		);
+	}
+
+	/**
+	 * Get deletion requests from captured HTTP calls.
+	 *
+	 * @return array<int, array{url: string, method: string, body: string}>
+	 */
+	private function get_deletion_requests(): array {
+		return array_filter(
+			$this->captured_requests,
+			fn( $req ) => 'DELETE' === $req['method']
+		);
+	}
+
+	/**
+	 * Get ingestion requests from captured HTTP calls.
+	 *
+	 * @return array<int, array{url: string, method: string, body: string}>
+	 */
+	private function get_ingestion_requests(): array {
+		return array_filter(
+			$this->captured_requests,
+			fn( $req ) => 'POST' === $req['method']
+		);
+	}
+
+	/**
+	 * Clear captured requests (useful between test phases).
+	 */
+	private function clear_captured_requests(): void {
+		$this->captured_requests = [];
 	}
 
 	public function setUp(): void {
@@ -205,21 +253,18 @@ class Ingestion_Deletion_Test extends WP_UnitTestCase {
 		$post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
 		$this->assertNotEmpty( get_post_meta( $post->ID, Ingestion::META_KEY_INGESTION_ATTEMPTED, true ) );
 
-		$deletion_attempted = false;
-		add_action(
-			'vip_agentforce_post_deletion_failed',
-			function () use ( &$deletion_attempted ) {
-				$deletion_attempted = true;
-			}
-		);
+		// Clear captured requests from ingestion, so we only see deletion requests.
+		$this->clear_captured_requests();
 
 		// Change status using WordPress function - triggers transition_post_status.
 		wp_update_post( [ 'ID' => $post->ID, 'post_status' => $new_status ] );
 
-		// Since HTTP mock returns success, no failure action should fire.
-		// Meta should be cleared on success.
-		$this->assertFalse( $deletion_attempted, "No failure should occur on successful deletion (publish -> {$new_status})." );
-		$this->assertEmpty( get_post_meta( $post->ID, Ingestion::META_KEY_INGESTION_ATTEMPTED, true ), 'Meta should be cleared after deletion.' );
+		// Verify deletion API was called with DELETE method.
+		$deletion_requests = $this->get_deletion_requests();
+		$this->assertCount( 1, $deletion_requests, "Deletion API should be called for publish -> {$new_status}." );
+
+		// Meta should be cleared on successful deletion.
+		$this->assertEmpty( get_post_meta( $post->ID, Ingestion::META_KEY_INGESTION_ATTEMPTED, true ), 'Meta should be cleared after successful deletion.' );
 	}
 
 	/**
@@ -253,22 +298,15 @@ class Ingestion_Deletion_Test extends WP_UnitTestCase {
 		// the transition itself doesn't trigger deletion, not filter rejection.
 		$this->setup_ingestion_filters();
 
-		// Use HTTP failure mock to detect deletion attempts.
-		remove_all_filters( 'pre_http_request' );
-		$this->mock_http_failure();
-
-		$deletion_attempted = false;
-		add_action(
-			'vip_agentforce_post_deletion_failed',
-			function () use ( &$deletion_attempted ) {
-				$deletion_attempted = true;
-			}
-		);
+		// Clear any captured requests.
+		$this->clear_captured_requests();
 
 		// Change status using WordPress function.
 		wp_update_post( [ 'ID' => $post->ID, 'post_status' => $new_status ] );
 
-		$this->assertFalse( $deletion_attempted, "No deletion should occur for {$old_status} -> {$new_status}." );
+		// Verify no DELETE API was called.
+		$deletion_requests = $this->get_deletion_requests();
+		$this->assertEmpty( $deletion_requests, "No deletion should occur for {$old_status} -> {$new_status}." );
 	}
 
 	// =========================================================================
@@ -280,22 +318,15 @@ class Ingestion_Deletion_Test extends WP_UnitTestCase {
 		$post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
 		$this->assertEmpty( get_post_meta( $post->ID, Ingestion::META_KEY_INGESTION_ATTEMPTED, true ) );
 
-		// Use HTTP failure mock to detect deletion attempts.
-		remove_all_filters( 'pre_http_request' );
-		$this->mock_http_failure();
-
-		$deletion_attempted = false;
-		add_action(
-			'vip_agentforce_post_deletion_failed',
-			function () use ( &$deletion_attempted ) {
-				$deletion_attempted = true;
-			}
-		);
+		// Clear any captured requests.
+		$this->clear_captured_requests();
 
 		// Unpublish using WordPress function.
 		wp_update_post( [ 'ID' => $post->ID, 'post_status' => 'draft' ] );
 
-		$this->assertFalse( $deletion_attempted, 'No deletion should occur when post has no ingestion meta.' );
+		// Verify no DELETE API was called.
+		$deletion_requests = $this->get_deletion_requests();
+		$this->assertEmpty( $deletion_requests, 'No deletion should occur when post has no ingestion meta.' );
 	}
 
 	public function test_unpublish_with_meta_triggers_deletion(): void {
@@ -304,22 +335,18 @@ class Ingestion_Deletion_Test extends WP_UnitTestCase {
 		$post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
 		$this->assertNotEmpty( get_post_meta( $post->ID, Ingestion::META_KEY_INGESTION_ATTEMPTED, true ) );
 
-		// Use HTTP failure mock to detect deletion attempt.
-		remove_all_filters( 'pre_http_request' );
-		$this->mock_http_failure();
-
-		$deletion_attempted = false;
-		add_action(
-			'vip_agentforce_post_deletion_failed',
-			function () use ( &$deletion_attempted ) {
-				$deletion_attempted = true;
-			}
-		);
+		// Clear captured requests from ingestion.
+		$this->clear_captured_requests();
 
 		// Unpublish using WordPress function.
 		wp_update_post( [ 'ID' => $post->ID, 'post_status' => 'draft' ] );
 
-		$this->assertTrue( $deletion_attempted, 'Deletion should be attempted when post has ingestion meta.' );
+		// Verify DELETE API was called.
+		$deletion_requests = $this->get_deletion_requests();
+		$this->assertCount( 1, $deletion_requests, 'Deletion API should be called when post has ingestion meta.' );
+
+		// Meta should be cleared on successful deletion.
+		$this->assertEmpty( get_post_meta( $post->ID, Ingestion::META_KEY_INGESTION_ATTEMPTED, true ), 'Meta should be cleared after successful deletion.' );
 	}
 
 	public function test_deletion_works_even_when_filter_changed(): void {
@@ -332,22 +359,18 @@ class Ingestion_Deletion_Test extends WP_UnitTestCase {
 		remove_all_filters( 'vip_agentforce_should_ingest_post' );
 		add_filter( 'vip_agentforce_should_ingest_post', '__return_false' );
 
-		// Use HTTP failure mock to detect deletion attempt.
-		remove_all_filters( 'pre_http_request' );
-		$this->mock_http_failure();
-
-		$deletion_attempted = false;
-		add_action(
-			'vip_agentforce_post_deletion_failed',
-			function () use ( &$deletion_attempted ) {
-				$deletion_attempted = true;
-			}
-		);
+		// Clear captured requests from ingestion.
+		$this->clear_captured_requests();
 
 		// Unpublish using WordPress function.
 		wp_update_post( [ 'ID' => $post->ID, 'post_status' => 'draft' ] );
 
-		$this->assertTrue( $deletion_attempted, 'Deletion should occur based on meta, not current filter state.' );
+		// Verify DELETE API was called based on meta, not current filter state.
+		$deletion_requests = $this->get_deletion_requests();
+		$this->assertCount( 1, $deletion_requests, 'Deletion should occur based on meta, not current filter state.' );
+
+		// Meta should be cleared on successful deletion.
+		$this->assertEmpty( get_post_meta( $post->ID, Ingestion::META_KEY_INGESTION_ATTEMPTED, true ), 'Meta should be cleared after successful deletion.' );
 	}
 
 	// =========================================================================
@@ -361,22 +384,15 @@ class Ingestion_Deletion_Test extends WP_UnitTestCase {
 		$post_id = $post->ID;
 		$this->assertNotEmpty( get_post_meta( $post_id, Ingestion::META_KEY_INGESTION_ATTEMPTED, true ) );
 
-		// Use HTTP failure mock to detect deletion attempt.
-		remove_all_filters( 'pre_http_request' );
-		$this->mock_http_failure();
-
-		$deletion_attempted = false;
-		add_action(
-			'vip_agentforce_post_deletion_failed',
-			function () use ( &$deletion_attempted ) {
-				$deletion_attempted = true;
-			}
-		);
+		// Clear captured requests from ingestion.
+		$this->clear_captured_requests();
 
 		// Permanently delete using WordPress function - triggers before_delete_post.
 		wp_delete_post( $post_id, true );
 
-		$this->assertTrue( $deletion_attempted, 'Deletion should be attempted for published post with meta.' );
+		// Verify DELETE API was called.
+		$deletion_requests = $this->get_deletion_requests();
+		$this->assertCount( 1, $deletion_requests, 'Deletion API should be called for published post with meta.' );
 	}
 
 	public function test_delete_published_post_without_meta_does_not_delete(): void {
@@ -385,22 +401,15 @@ class Ingestion_Deletion_Test extends WP_UnitTestCase {
 		$post_id = $post->ID;
 		$this->assertEmpty( get_post_meta( $post_id, Ingestion::META_KEY_INGESTION_ATTEMPTED, true ) );
 
-		// Use HTTP failure mock to detect deletion attempts.
-		remove_all_filters( 'pre_http_request' );
-		$this->mock_http_failure();
-
-		$deletion_attempted = false;
-		add_action(
-			'vip_agentforce_post_deletion_failed',
-			function () use ( &$deletion_attempted ) {
-				$deletion_attempted = true;
-			}
-		);
+		// Clear any captured requests.
+		$this->clear_captured_requests();
 
 		// Permanently delete using WordPress function.
 		wp_delete_post( $post_id, true );
 
-		$this->assertFalse( $deletion_attempted, 'No deletion should occur for published post without meta.' );
+		// Verify no DELETE API was called.
+		$deletion_requests = $this->get_deletion_requests();
+		$this->assertEmpty( $deletion_requests, 'No deletion should occur for published post without meta.' );
 	}
 
 	public function test_delete_draft_post_does_not_trigger_deletion(): void {
@@ -409,22 +418,15 @@ class Ingestion_Deletion_Test extends WP_UnitTestCase {
 		$post_id = $post->ID;
 		$this->mark_post_as_ingested( $post ); // Even with meta, drafts shouldn't trigger deletion.
 
-		// Use HTTP failure mock to detect deletion attempts.
-		remove_all_filters( 'pre_http_request' );
-		$this->mock_http_failure();
-
-		$deletion_attempted = false;
-		add_action(
-			'vip_agentforce_post_deletion_failed',
-			function () use ( &$deletion_attempted ) {
-				$deletion_attempted = true;
-			}
-		);
+		// Clear any captured requests.
+		$this->clear_captured_requests();
 
 		// Permanently delete using WordPress function.
 		wp_delete_post( $post_id, true );
 
-		$this->assertFalse( $deletion_attempted, 'No deletion should occur for draft post.' );
+		// Verify no DELETE API was called.
+		$deletion_requests = $this->get_deletion_requests();
+		$this->assertEmpty( $deletion_requests, 'No deletion should occur for draft post.' );
 	}
 
 	// =========================================================================
@@ -576,6 +578,9 @@ class Ingestion_Deletion_Test extends WP_UnitTestCase {
 		$post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
 		$this->assertNotEmpty( get_post_meta( $post->ID, Ingestion::META_KEY_INGESTION_ATTEMPTED, true ) );
 
+		// Clear captured requests from ingestion.
+		$this->clear_captured_requests();
+
 		// HTTP mock returns success by default.
 		$action_fired = false;
 		add_action(
@@ -588,7 +593,15 @@ class Ingestion_Deletion_Test extends WP_UnitTestCase {
 		// Unpublish using WordPress function.
 		wp_update_post( [ 'ID' => $post->ID, 'post_status' => 'draft' ] );
 
+		// Verify DELETE API was called.
+		$deletion_requests = $this->get_deletion_requests();
+		$this->assertCount( 1, $deletion_requests, 'Deletion API should be called.' );
+
+		// Failure action should NOT fire on success.
 		$this->assertFalse( $action_fired, 'Failure action should NOT fire on successful deletion.' );
+
+		// Meta should be cleared on successful deletion.
+		$this->assertEmpty( get_post_meta( $post->ID, Ingestion::META_KEY_INGESTION_ATTEMPTED, true ), 'Meta should be cleared after successful deletion.' );
 	}
 
 	// =========================================================================
@@ -606,8 +619,15 @@ class Ingestion_Deletion_Test extends WP_UnitTestCase {
 		$meta = get_post_meta( $post->ID, Ingestion::META_KEY_INGESTION_ATTEMPTED, true );
 		$this->assertNotEmpty( $meta, 'Post should be marked as ingested after creation.' );
 
+		// Clear captured requests from ingestion.
+		$this->clear_captured_requests();
+
 		// Unpublish using WordPress function - triggers transition_post_status.
 		wp_update_post( [ 'ID' => $post->ID, 'post_status' => 'draft' ] );
+
+		// Verify DELETE API was called.
+		$deletion_requests = $this->get_deletion_requests();
+		$this->assertCount( 1, $deletion_requests, 'Deletion API should be called when unpublishing.' );
 
 		// Verify the meta was cleared (deletion was successful).
 		$meta_after = get_post_meta( $post->ID, Ingestion::META_KEY_INGESTION_ATTEMPTED, true );
@@ -624,8 +644,15 @@ class Ingestion_Deletion_Test extends WP_UnitTestCase {
 		// Verify ingested.
 		$this->assertNotEmpty( get_post_meta( $post->ID, Ingestion::META_KEY_INGESTION_ATTEMPTED, true ) );
 
+		// Clear captured requests from ingestion.
+		$this->clear_captured_requests();
+
 		// Trash the post using WordPress function.
 		wp_trash_post( $post->ID );
+
+		// Verify DELETE API was called.
+		$deletion_requests = $this->get_deletion_requests();
+		$this->assertCount( 1, $deletion_requests, 'Deletion API should be called when trashing.' );
 
 		// Verify deleted from Salesforce.
 		$this->assertEmpty( get_post_meta( $post->ID, Ingestion::META_KEY_INGESTION_ATTEMPTED, true ) );
@@ -647,12 +674,19 @@ class Ingestion_Deletion_Test extends WP_UnitTestCase {
 		remove_all_filters( 'vip_agentforce_should_ingest_post' );
 		add_filter( 'vip_agentforce_should_ingest_post', '__return_false' );
 
+		// Clear captured requests from ingestion.
+		$this->clear_captured_requests();
+
 		// Update the post (simulates user editing and saving) - triggers save_post.
 		wp_update_post( [ 'ID' => $post->ID, 'post_title' => 'Updated Title' ] );
 
+		// Verify DELETE API was called.
+		$deletion_requests = $this->get_deletion_requests();
+		$this->assertCount( 1, $deletion_requests, 'Deletion API should be called when filter rejects previously ingested post.' );
+
 		// Verify the post was deleted from Salesforce (meta cleared).
 		$meta_after = get_post_meta( $post->ID, Ingestion::META_KEY_INGESTION_ATTEMPTED, true );
-		$this->assertEmpty( $meta_after, 'Post should be deleted from Salesforce when filter rejects previously ingested post.' );
+		$this->assertEmpty( $meta_after, 'Meta should be cleared after deletion.' );
 	}
 
 	public function test_handle_save_post_does_not_delete_when_filter_rejects_never_ingested_post(): void {
@@ -663,23 +697,15 @@ class Ingestion_Deletion_Test extends WP_UnitTestCase {
 		// Filter rejects the post.
 		add_filter( 'vip_agentforce_should_ingest_post', '__return_false' );
 
-		// Use HTTP failure mock to detect deletion attempts.
-		remove_all_filters( 'pre_http_request' );
-		$this->mock_http_failure();
-
-		$deletion_attempted = false;
-		add_action(
-			'vip_agentforce_post_deletion_failed',
-			function () use ( &$deletion_attempted ) {
-				$deletion_attempted = true;
-			}
-		);
+		// Clear any captured requests.
+		$this->clear_captured_requests();
 
 		// Update the post - triggers save_post.
 		wp_update_post( [ 'ID' => $post->ID, 'post_title' => 'Updated Title' ] );
 
 		// No deletion should be attempted for a post that was never ingested.
-		$this->assertFalse( $deletion_attempted, 'No deletion should occur for post that was never ingested.' );
+		$deletion_requests = $this->get_deletion_requests();
+		$this->assertEmpty( $deletion_requests, 'No deletion should occur for post that was never ingested.' );
 	}
 
 	public function test_handle_save_post_deletes_when_post_no_longer_published(): void {
@@ -690,13 +716,20 @@ class Ingestion_Deletion_Test extends WP_UnitTestCase {
 		// Verify ingested.
 		$this->assertNotEmpty( get_post_meta( $post->ID, Ingestion::META_KEY_INGESTION_ATTEMPTED, true ) );
 
+		// Clear captured requests from ingestion.
+		$this->clear_captured_requests();
+
 		// Change post to draft status using WordPress function.
 		wp_update_post( [ 'ID' => $post->ID, 'post_status' => 'draft' ] );
+
+		// Verify DELETE API was called.
+		$deletion_requests = $this->get_deletion_requests();
+		$this->assertCount( 1, $deletion_requests, 'Deletion API should be called when status changes to non-published.' );
 
 		// Verify deleted from Salesforce.
 		$this->assertEmpty(
 			get_post_meta( $post->ID, Ingestion::META_KEY_INGESTION_ATTEMPTED, true ),
-			'Post should be deleted when status changes to non-published.'
+			'Meta should be cleared after deletion.'
 		);
 	}
 
@@ -749,16 +782,23 @@ class Ingestion_Deletion_Test extends WP_UnitTestCase {
 		] );
 		$this->assertNotEmpty( get_post_meta( $post->ID, Ingestion::META_KEY_INGESTION_ATTEMPTED, true ) );
 
+		// Clear captured requests from ingestion.
+		$this->clear_captured_requests();
+
 		// Remove the category from the post using WordPress function.
 		wp_set_post_categories( $post->ID, [] );
 
 		// Trigger save_post by updating the post.
 		wp_update_post( [ 'ID' => $post->ID, 'post_title' => 'Updated Title' ] );
 
-		// Post should be deleted from Salesforce because it no longer has the required category.
+		// Verify DELETE API was called.
+		$deletion_requests = $this->get_deletion_requests();
+		$this->assertCount( 1, $deletion_requests, 'Deletion API should be called when category is removed and filter no longer matches.' );
+
+		// Post should be deleted from Salesforce (meta cleared).
 		$this->assertEmpty(
 			get_post_meta( $post->ID, Ingestion::META_KEY_INGESTION_ATTEMPTED, true ),
-			'Post should be deleted when category is removed and filter no longer matches.'
+			'Meta should be cleared after deletion.'
 		);
 	}
 }
