@@ -22,7 +22,6 @@ require_once __DIR__ . '/utils/class-logger.php';
 require_once __DIR__ . '/utils/class-tracking.php';
 require_once __DIR__ . '/utils/traits/trait-singleton.php';
 require_once __DIR__ . '/utils/traits/trait-with-plugin-paths.php';
-require_once __DIR__ . '/env.php';
 
 use function Automattic\VIP\Salesforce\Agentforce\Utils\load_integration_configs_from_headers;
 use function Automattic\VIP\Salesforce\Agentforce\Utils\load_integration_configs_from_url;
