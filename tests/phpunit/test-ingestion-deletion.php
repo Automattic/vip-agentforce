@@ -61,6 +61,7 @@ class Ingestion_Deletion_Test extends WP_UnitTestCase {
 
 	public function setUp(): void {
 		parent::setUp();
+		Ingestion::init();
 
 		// Set up config for API calls via cache priming.
 		$this->prime_configs_cache(

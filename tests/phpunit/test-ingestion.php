@@ -11,6 +11,7 @@ class Ingestion_Test extends WP_UnitTestCase {
 	public function setUp(): void {
 		parent::setUp();
 		Logger::disable();
+		Ingestion::init();
 
 		// Prime configs cache for API calls.
 		$this->prime_configs_cache(
