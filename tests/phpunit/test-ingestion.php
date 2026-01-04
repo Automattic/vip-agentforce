@@ -493,6 +493,33 @@ class Ingestion_Test extends WP_UnitTestCase {
 		$this->assertCount( 1, $ingestion_requests, 'Updating published post should make exactly 1 API call.' );
 	}
 
+	public function test_updating_post_does_not_ingest_revision(): void {
+		$this->mock_http_success();
+		$this->setup_ingestion_filters();
+
+		// Create and publish a post.
+		$post_id = $this->factory()->post->create( [ 'post_status' => 'publish' ] );
+
+		// Clear requests from initial creation.
+		$this->clear_captured_requests();
+
+		// Update the post - WordPress creates a revision internally.
+		wp_update_post(
+			[
+				'ID'           => $post_id,
+				'post_content' => 'Updated content triggers revision',
+			]
+		);
+
+		// Verify a revision was actually created (guards against disabled revisions).
+		$revisions = wp_get_post_revisions( $post_id );
+		$this->assertNotEmpty( $revisions, 'Test requires revisions to be enabled - a revision should have been created' );
+
+		// Should have exactly 1 ingestion call (for the post), not 2 (post + revision).
+		$ingestion_requests = $this->get_ingestion_requests();
+		$this->assertCount( 1, $ingestion_requests, 'Updating a post should trigger exactly one ingestion call, not one for the revision too' );
+	}
+
 	public function test_failure_error_contains_post_id(): void {
 		add_filter( 'vip_agentforce_should_ingest_post', '__return_true' );
 		add_filter( 'vip_agentforce_transform_post', '__return_null' );
