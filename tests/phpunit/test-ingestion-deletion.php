@@ -550,7 +550,7 @@ class Ingestion_Deletion_Test extends WP_UnitTestCase {
 
 		// Meta should NOT be cleared on failure - we still need to track that the post is in Salesforce.
 		$meta = get_post_meta( $post->ID, Ingestion::META_KEY_INGESTION_ATTEMPTED, true );
-		// @phpstan-ignore method.impossibleType (get_post_meta returns mixed, assertion is valid at runtime)
+		// @phpstan-ignore method.alreadyNarrowedType (get_post_meta returns mixed, assertion is valid at runtime)
 		$this->assertNotEmpty( $meta, 'Meta should NOT be cleared when deletion fails.' );
 	}
 
