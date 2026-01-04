@@ -89,18 +89,6 @@ class Ingestion_Deletion_Test extends WP_UnitTestCase {
 	}
 
 	/**
-	 * Get ingestion requests from captured HTTP calls.
-	 *
-	 * @return array<int, array{url: string, method: string, body: string}>
-	 */
-	private function get_ingestion_requests(): array {
-		return array_filter(
-			$this->captured_requests,
-			fn( $req ) => 'POST' === $req['method']
-		);
-	}
-
-	/**
 	 * Clear captured requests (useful between test phases).
 	 */
 	private function clear_captured_requests(): void {
@@ -219,6 +207,7 @@ class Ingestion_Deletion_Test extends WP_UnitTestCase {
 
 		// Verify meta was cleared.
 		$meta = get_post_meta( $post->ID, Ingestion::META_KEY_INGESTION_ATTEMPTED, true );
+		// @phpstan-ignore method.impossibleType (get_post_meta returns mixed, assertion is valid at runtime)
 		$this->assertEmpty( $meta, 'Successful deletion should clear tracking meta.' );
 	}
 
@@ -565,6 +554,7 @@ class Ingestion_Deletion_Test extends WP_UnitTestCase {
 
 		// Meta should NOT be cleared on failure - we still need to track that the post is in Salesforce.
 		$meta = get_post_meta( $post->ID, Ingestion::META_KEY_INGESTION_ATTEMPTED, true );
+		// @phpstan-ignore method.impossibleType (get_post_meta returns mixed, assertion is valid at runtime)
 		$this->assertNotEmpty( $meta, 'Meta should NOT be cleared when deletion fails.' );
 	}
 
@@ -686,6 +676,7 @@ class Ingestion_Deletion_Test extends WP_UnitTestCase {
 
 		// Verify the post was deleted from Salesforce (meta cleared).
 		$meta_after = get_post_meta( $post->ID, Ingestion::META_KEY_INGESTION_ATTEMPTED, true );
+		// @phpstan-ignore method.impossibleType (get_post_meta returns mixed, assertion is valid at runtime)
 		$this->assertEmpty( $meta_after, 'Meta should be cleared after deletion.' );
 	}
 
