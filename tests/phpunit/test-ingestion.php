@@ -3,15 +3,24 @@
 use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion;
 use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_Failure;
 use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_Post_Record;
+use Automattic\VIP\Salesforce\Agentforce\Utils\Configs;
 use Automattic\VIP\Salesforce\Agentforce\Utils\Logger;
-
-require_once __DIR__ . '/doubles/class-ingestion-with-succeeding-api.php';
 
 class Ingestion_Test extends WP_UnitTestCase {
 
 	public function setUp(): void {
 		parent::setUp();
 		Logger::disable();
+
+		// Prime configs cache for API calls.
+		$this->prime_configs_cache(
+			[
+				'ingestion_api_instance_url' => 'https://test.salesforce.com',
+				'ingestion_api_token'        => 'test-token',
+				'ingestion_api_source_name'  => 'test-source',
+				'ingestion_api_object_name'  => 'test-object',
+			]
+		);
 	}
 
 	public function tearDown(): void {
@@ -20,6 +29,78 @@ class Ingestion_Test extends WP_UnitTestCase {
 		remove_all_filters( 'vip_agentforce_should_ingest_post' );
 		remove_all_filters( 'vip_agentforce_transform_post' );
 		remove_all_actions( 'vip_agentforce_post_ingestion_failed' );
+		remove_all_filters( 'pre_http_request' );
+		Configs::flush_cache();
+	}
+
+	/**
+	 * Prime Configs cache for deterministic tests.
+	 *
+	 * @param array<string, mixed> $config
+	 */
+	private function prime_configs_cache( array $config ): void {
+		$ref  = new ReflectionClass( Configs::class );
+		$prop = $ref->getProperty( 'cached_config' );
+		$prop->setAccessible( true );
+		$prop->setValue( null, $config );
+	}
+
+	/**
+	 * Mock HTTP requests to return success (202).
+	 */
+	private function mock_http_success(): void {
+		add_filter(
+			'pre_http_request',
+			function ( $preempt, $args, $url ) {
+				if ( strpos( $url, 'test.salesforce.com' ) !== false ) {
+					return [
+						'response' => [
+							'code'    => 202,
+							'message' => 'Accepted',
+						],
+						'body'     => '',
+					];
+				}
+				return $preempt;
+			},
+			10,
+			3
+		);
+	}
+
+	/**
+	 * Helper to set up filters for a valid ingestion.
+	 */
+	private function setup_ingestion_filters(): void {
+		add_filter( 'vip_agentforce_should_ingest_post', '__return_true' );
+		add_filter(
+			'vip_agentforce_transform_post',
+			function ( $record, $post ) {
+				return new Ingestion_Post_Record(
+					[
+						'site_id'                 => '1',
+						'blog_id'                 => '1',
+						'post_id'                 => (string) $post->ID,
+						'site_id_blog_id'         => '1_1',
+						'site_id_blog_id_post_id' => '1_1_' . $post->ID,
+						'published'               => true,
+						'last_published_at'       => '2025-01-01T00:00:00+00:00',
+						'last_modified_at'        => '2025-01-01T00:00:00+00:00',
+						'title'                   => $post->post_title,
+						'content'                 => $post->post_content,
+						'excerpt'                 => $post->post_excerpt,
+						'categories'              => '',
+						'tags'                    => '',
+						'author'                  => '',
+						'url'                     => 'https://example.com',
+						'post_type'               => $post->post_type,
+						'post_status'             => $post->post_status,
+					]
+				);
+			},
+			10,
+			2
+		);
 	}
 
 	public function test_save_post_hook_is_registered(): void {
@@ -258,8 +339,6 @@ class Ingestion_Test extends WP_UnitTestCase {
 	// =========================================================================
 
 	public function test_failure_action_does_not_fire_on_filter_rejection(): void {
-		$post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
-
 		// Filter opts out of ingestion - this is NOT a failure.
 		add_filter( 'vip_agentforce_should_ingest_post', '__return_false' );
 
@@ -272,15 +351,14 @@ class Ingestion_Test extends WP_UnitTestCase {
 			}
 		);
 
-		Ingestion::handle_save_post( $post->ID, $post );
+		// Create post - save_post hook fires, filter rejects, no failure.
+		$this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
 
 		$this->assertFalse( $action_fired, 'Action should NOT fire when filter rejects post (skip is not a failure).' );
 	}
 
 	public function test_failure_action_does_not_fire_on_no_filter_registered(): void {
 		remove_all_filters( 'vip_agentforce_should_ingest_post' );
-
-		$post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
 
 		$action_fired = false;
 
@@ -291,14 +369,13 @@ class Ingestion_Test extends WP_UnitTestCase {
 			}
 		);
 
-		Ingestion::handle_save_post( $post->ID, $post );
+		// Create post - save_post hook fires, no filter registered, no failure.
+		$this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
 
 		$this->assertFalse( $action_fired, 'Action should NOT fire when no filter is registered (skip is not a failure).' );
 	}
 
 	public function test_failure_action_fires_on_transform_failure(): void {
-		$post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
-
 		// Filter opts in but transform returns null.
 		add_filter( 'vip_agentforce_should_ingest_post', '__return_true' );
 		add_filter( 'vip_agentforce_transform_post', '__return_null' );
@@ -315,7 +392,8 @@ class Ingestion_Test extends WP_UnitTestCase {
 			}
 		);
 
-		Ingestion::handle_save_post( $post->ID, $post );
+		// Create post - save_post hook fires, transform fails, failure action fires.
+		$post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
 
 		$this->assertTrue( $action_fired, 'Action should fire when transform fails.' );
 		$this->assertInstanceOf( Ingestion_Failure::class, $received_failure );
@@ -328,37 +406,11 @@ class Ingestion_Test extends WP_UnitTestCase {
 	}
 
 	public function test_failure_action_does_not_fire_on_success(): void {
-		$post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
+		// Mock HTTP to return success.
+		$this->mock_http_success();
 
-		add_filter( 'vip_agentforce_should_ingest_post', '__return_true' );
-		add_filter(
-			'vip_agentforce_transform_post',
-			function ( $record, $filter_post ) {
-				return new Ingestion_Post_Record(
-					[
-						'site_id'                 => '1',
-						'blog_id'                 => '1',
-						'post_id'                 => (string) $filter_post->ID,
-						'site_id_blog_id'         => '1_1',
-						'site_id_blog_id_post_id' => '1_1_' . $filter_post->ID,
-						'published'               => true,
-						'last_published_at'       => '2025-01-01T00:00:00+00:00',
-						'last_modified_at'        => '2025-01-01T00:00:00+00:00',
-						'title'                   => $filter_post->post_title,
-						'content'                 => $filter_post->post_content,
-						'excerpt'                 => $filter_post->post_excerpt,
-						'categories'              => '',
-						'tags'                    => '',
-						'author'                  => '',
-						'url'                     => 'https://example.com',
-						'post_type'               => $filter_post->post_type,
-						'post_status'             => $filter_post->post_status,
-					]
-				);
-			},
-			10,
-			2
-		);
+		// Set up ingestion filters.
+		$this->setup_ingestion_filters();
 
 		$action_fired = false;
 
@@ -369,14 +421,13 @@ class Ingestion_Test extends WP_UnitTestCase {
 			}
 		);
 
-		Ingestion_With_Succeeding_Api::handle_save_post( $post->ID, $post );
+		// Create post - save_post hook fires, ingestion succeeds, no failure.
+		$this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
 
 		$this->assertFalse( $action_fired, 'Action should NOT fire on successful ingestion.' );
 	}
 
 	public function test_failure_error_contains_post_id(): void {
-		$post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
-
 		add_filter( 'vip_agentforce_should_ingest_post', '__return_true' );
 		add_filter( 'vip_agentforce_transform_post', '__return_null' );
 
@@ -390,7 +441,8 @@ class Ingestion_Test extends WP_UnitTestCase {
 			}
 		);
 
-		Ingestion::handle_save_post( $post->ID, $post );
+		// Create post - triggers failure.
+		$post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
 
 		$this->assertInstanceOf( Ingestion_Failure::class, $received_failure );
 		$error_data = $received_failure->error->get_error_data();
@@ -400,8 +452,6 @@ class Ingestion_Test extends WP_UnitTestCase {
 	}
 
 	public function test_failure_to_array(): void {
-		$post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
-
 		add_filter( 'vip_agentforce_should_ingest_post', '__return_true' );
 		add_filter( 'vip_agentforce_transform_post', '__return_null' );
 
@@ -415,7 +465,8 @@ class Ingestion_Test extends WP_UnitTestCase {
 			}
 		);
 
-		Ingestion::handle_save_post( $post->ID, $post );
+		// Create post - triggers failure.
+		$post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
 
 		$this->assertInstanceOf( Ingestion_Failure::class, $received_failure );
 		$array = $received_failure->to_array();
