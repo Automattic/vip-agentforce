@@ -5,6 +5,8 @@ use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_Failure;
 use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_Post_Record;
 use Automattic\VIP\Salesforce\Agentforce\Utils\Logger;
 
+require_once __DIR__ . '/doubles/class-ingestion-with-succeeding-api.php';
+
 class Ingestion_Test extends WP_UnitTestCase {
 
 	public function setUp(): void {
@@ -367,7 +369,7 @@ class Ingestion_Test extends WP_UnitTestCase {
 			}
 		);
 
-		Ingestion::ingest_post( $post->ID, $post );
+		Ingestion_With_Succeeding_Api::ingest_post( $post->ID, $post );
 
 		$this->assertFalse( $action_fired, 'Action should NOT fire on successful ingestion.' );
 	}

@@ -47,8 +47,11 @@ class Configs {
 	 * Get the config
 	 * @return array{
 	 *     salesforce_instance_url?: string,
-	 *     ingestion_api_token?: string, // TODO: should the access to the token be available only inside the VIP Agentforce Module?
+	 *     ingestion_api_instance_url?: string,
+	 *     ingestion_api_token?: string,
 	 *     ingestion_api_endpoint?: string,
+	 *     ingestion_api_source_name?: string,
+	 *     ingestion_api_object_name?: string,
 	 *     agentforce_js_sdk_url?: string,
 	 *     agentforce_js_sdk_activated?: bool
 	 * } The module configs. Returns an empty array if configs are not found, not defined, or if JSON parsing fails.
