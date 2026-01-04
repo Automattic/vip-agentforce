@@ -199,7 +199,10 @@ class Ingestion_Deletion_Test extends WP_UnitTestCase {
 		$this->assertNotEmpty( get_post_meta( $post->ID, Ingestion::META_KEY_INGESTION_ATTEMPTED, true ) );
 
 		// Unpublish using WordPress function - triggers transition_post_status.
-		wp_update_post( [ 'ID' => $post->ID, 'post_status' => 'draft' ] );
+		wp_update_post( [
+			'ID'          => $post->ID,
+			'post_status' => 'draft',
+		] );
 
 		// Verify meta was cleared.
 		$meta = get_post_meta( $post->ID, Ingestion::META_KEY_INGESTION_ATTEMPTED, true );
@@ -242,7 +245,10 @@ class Ingestion_Deletion_Test extends WP_UnitTestCase {
 		$this->clear_captured_requests();
 
 		// Change status using WordPress function - triggers transition_post_status.
-		wp_update_post( [ 'ID' => $post->ID, 'post_status' => $new_status ] );
+		wp_update_post( [
+			'ID'          => $post->ID,
+			'post_status' => $new_status,
+		] );
 
 		// Verify deletion API was called with DELETE method.
 		$deletion_requests = $this->get_deletion_requests();
@@ -287,7 +293,10 @@ class Ingestion_Deletion_Test extends WP_UnitTestCase {
 		$this->clear_captured_requests();
 
 		// Change status using WordPress function.
-		wp_update_post( [ 'ID' => $post->ID, 'post_status' => $new_status ] );
+		wp_update_post( [
+			'ID'          => $post->ID,
+			'post_status' => $new_status,
+		] );
 
 		// Verify no DELETE API was called.
 		$deletion_requests = $this->get_deletion_requests();
@@ -307,7 +316,10 @@ class Ingestion_Deletion_Test extends WP_UnitTestCase {
 		$this->clear_captured_requests();
 
 		// Unpublish using WordPress function.
-		wp_update_post( [ 'ID' => $post->ID, 'post_status' => 'draft' ] );
+		wp_update_post( [
+			'ID'          => $post->ID,
+			'post_status' => 'draft',
+		] );
 
 		// Verify no DELETE API was called.
 		$deletion_requests = $this->get_deletion_requests();
@@ -324,7 +336,10 @@ class Ingestion_Deletion_Test extends WP_UnitTestCase {
 		$this->clear_captured_requests();
 
 		// Unpublish using WordPress function.
-		wp_update_post( [ 'ID' => $post->ID, 'post_status' => 'draft' ] );
+		wp_update_post( [
+			'ID'          => $post->ID,
+			'post_status' => 'draft',
+		] );
 
 		// Verify DELETE API was called.
 		$deletion_requests = $this->get_deletion_requests();
@@ -348,7 +363,10 @@ class Ingestion_Deletion_Test extends WP_UnitTestCase {
 		$this->clear_captured_requests();
 
 		// Unpublish using WordPress function.
-		wp_update_post( [ 'ID' => $post->ID, 'post_status' => 'draft' ] );
+		wp_update_post( [
+			'ID'          => $post->ID,
+			'post_status' => 'draft',
+		] );
 
 		// Verify DELETE API was called based on meta, not current filter state.
 		$deletion_requests = $this->get_deletion_requests();
@@ -365,7 +383,7 @@ class Ingestion_Deletion_Test extends WP_UnitTestCase {
 	public function test_delete_published_post_with_meta_triggers_deletion(): void {
 		// Create ingested post.
 		$this->setup_ingestion_filters();
-		$post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
+		$post    = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
 		$post_id = $post->ID;
 		$this->assertNotEmpty( get_post_meta( $post_id, Ingestion::META_KEY_INGESTION_ATTEMPTED, true ) );
 
@@ -382,7 +400,7 @@ class Ingestion_Deletion_Test extends WP_UnitTestCase {
 
 	public function test_delete_published_post_without_meta_does_not_delete(): void {
 		// Create post WITHOUT ingestion filters - no meta.
-		$post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
+		$post    = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
 		$post_id = $post->ID;
 		$this->assertEmpty( get_post_meta( $post_id, Ingestion::META_KEY_INGESTION_ATTEMPTED, true ) );
 
@@ -399,7 +417,7 @@ class Ingestion_Deletion_Test extends WP_UnitTestCase {
 
 	public function test_delete_draft_post_does_not_trigger_deletion(): void {
 		// Create draft post with meta (simulating it was ingested in the past when published).
-		$post = $this->factory()->post->create_and_get( [ 'post_status' => 'draft' ] );
+		$post    = $this->factory()->post->create_and_get( [ 'post_status' => 'draft' ] );
 		$post_id = $post->ID;
 		$this->mark_post_as_ingested( $post ); // Even with meta, drafts shouldn't trigger deletion.
 
@@ -441,7 +459,10 @@ class Ingestion_Deletion_Test extends WP_UnitTestCase {
 		);
 
 		// Unpublish using WordPress function.
-		wp_update_post( [ 'ID' => $post->ID, 'post_status' => 'draft' ] );
+		wp_update_post( [
+			'ID'          => $post->ID,
+			'post_status' => 'draft',
+		] );
 
 		$this->assertTrue( $action_fired, 'Failure action should fire on API error.' );
 		$this->assertInstanceOf( Deletion_Failure::class, $received_failure );
@@ -469,7 +490,10 @@ class Ingestion_Deletion_Test extends WP_UnitTestCase {
 		);
 
 		// Unpublish using WordPress function.
-		wp_update_post( [ 'ID' => $post->ID, 'post_status' => 'draft' ] );
+		wp_update_post( [
+			'ID'          => $post->ID,
+			'post_status' => 'draft',
+		] );
 
 		$this->assertInstanceOf( Deletion_Failure::class, $received_failure );
 		$this->assertNotEmpty( $received_failure->record_id );
@@ -497,7 +521,10 @@ class Ingestion_Deletion_Test extends WP_UnitTestCase {
 		);
 
 		// Unpublish using WordPress function.
-		wp_update_post( [ 'ID' => $post->ID, 'post_status' => 'draft' ] );
+		wp_update_post( [
+			'ID'          => $post->ID,
+			'post_status' => 'draft',
+		] );
 
 		$this->assertInstanceOf( Deletion_Failure::class, $received_failure );
 		$this->assertInstanceOf( WP_Post::class, $received_failure->post );
@@ -524,7 +551,10 @@ class Ingestion_Deletion_Test extends WP_UnitTestCase {
 		);
 
 		// Unpublish using WordPress function.
-		wp_update_post( [ 'ID' => $post->ID, 'post_status' => 'draft' ] );
+		wp_update_post( [
+			'ID'          => $post->ID,
+			'post_status' => 'draft',
+		] );
 
 		$this->assertInstanceOf( Deletion_Failure::class, $received_failure );
 		$array = $received_failure->to_array();
@@ -546,7 +576,10 @@ class Ingestion_Deletion_Test extends WP_UnitTestCase {
 		$this->mock_http_failure();
 
 		// Unpublish using WordPress function.
-		wp_update_post( [ 'ID' => $post->ID, 'post_status' => 'draft' ] );
+		wp_update_post( [
+			'ID'          => $post->ID,
+			'post_status' => 'draft',
+		] );
 
 		// Meta should NOT be cleared on failure - we still need to track that the post is in Salesforce.
 		$meta = get_post_meta( $post->ID, Ingestion::META_KEY_INGESTION_ATTEMPTED, true );
@@ -577,7 +610,10 @@ class Ingestion_Deletion_Test extends WP_UnitTestCase {
 		);
 
 		// Unpublish using WordPress function.
-		wp_update_post( [ 'ID' => $post->ID, 'post_status' => 'draft' ] );
+		wp_update_post( [
+			'ID'          => $post->ID,
+			'post_status' => 'draft',
+		] );
 
 		// Verify DELETE API was called.
 		$deletion_requests = $this->get_deletion_requests();
@@ -609,7 +645,10 @@ class Ingestion_Deletion_Test extends WP_UnitTestCase {
 		$this->clear_captured_requests();
 
 		// Unpublish using WordPress function - triggers transition_post_status.
-		wp_update_post( [ 'ID' => $post->ID, 'post_status' => 'draft' ] );
+		wp_update_post( [
+			'ID'          => $post->ID,
+			'post_status' => 'draft',
+		] );
 
 		// Verify DELETE API was called.
 		$deletion_requests = $this->get_deletion_requests();
@@ -664,7 +703,10 @@ class Ingestion_Deletion_Test extends WP_UnitTestCase {
 		$this->clear_captured_requests();
 
 		// Update the post (simulates user editing and saving) - triggers save_post.
-		wp_update_post( [ 'ID' => $post->ID, 'post_title' => 'Updated Title' ] );
+		wp_update_post( [
+			'ID'         => $post->ID,
+			'post_title' => 'Updated Title',
+		] );
 
 		// Verify DELETE API was called.
 		$deletion_requests = $this->get_deletion_requests();
@@ -688,7 +730,10 @@ class Ingestion_Deletion_Test extends WP_UnitTestCase {
 		$this->clear_captured_requests();
 
 		// Update the post - triggers save_post.
-		wp_update_post( [ 'ID' => $post->ID, 'post_title' => 'Updated Title' ] );
+		wp_update_post( [
+			'ID'         => $post->ID,
+			'post_title' => 'Updated Title',
+		] );
 
 		// No deletion should be attempted for a post that was never ingested.
 		$deletion_requests = $this->get_deletion_requests();
@@ -707,7 +752,10 @@ class Ingestion_Deletion_Test extends WP_UnitTestCase {
 		$this->clear_captured_requests();
 
 		// Change post to draft status using WordPress function.
-		wp_update_post( [ 'ID' => $post->ID, 'post_status' => 'draft' ] );
+		wp_update_post( [
+			'ID'          => $post->ID,
+			'post_status' => 'draft',
+		] );
 
 		// Verify DELETE API was called.
 		$deletion_requests = $this->get_deletion_requests();
@@ -776,7 +824,10 @@ class Ingestion_Deletion_Test extends WP_UnitTestCase {
 		wp_set_post_categories( $post->ID, [] );
 
 		// Trigger save_post by updating the post.
-		wp_update_post( [ 'ID' => $post->ID, 'post_title' => 'Updated Title' ] );
+		wp_update_post( [
+			'ID'         => $post->ID,
+			'post_title' => 'Updated Title',
+		] );
 
 		// Verify DELETE API was called.
 		$deletion_requests = $this->get_deletion_requests();

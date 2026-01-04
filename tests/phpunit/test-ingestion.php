@@ -483,7 +483,10 @@ class Ingestion_Test extends WP_UnitTestCase {
 		$this->clear_captured_requests();
 
 		// Update the post (stays published).
-		wp_update_post( [ 'ID' => $post->ID, 'post_title' => 'Updated Title' ] );
+		wp_update_post( [
+			'ID'         => $post->ID,
+			'post_title' => 'Updated Title',
+		] );
 
 		// Verify exactly 1 API call for update (no duplicates).
 		$ingestion_requests = $this->get_ingestion_requests();
