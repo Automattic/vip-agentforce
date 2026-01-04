@@ -170,10 +170,6 @@ class Ingestion_Deletion_Test extends WP_UnitTestCase {
 	// Hook Registration Tests
 	// =========================================================================
 
-	public function test_transition_post_status_hook_is_registered(): void {
-		$this->assertEquals( 10, has_action( 'transition_post_status', [ Ingestion::class, 'handle_transition_post_status' ] ) );
-	}
-
 	public function test_before_delete_post_hook_is_registered(): void {
 		$this->assertEquals( 10, has_action( 'before_delete_post', [ Ingestion::class, 'handle_before_delete_post' ] ) );
 	}

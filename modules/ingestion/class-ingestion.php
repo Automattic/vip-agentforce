@@ -27,7 +27,6 @@ class Ingestion {
 	 */
 	public static function init(): void {
 		add_action( 'save_post', [ __CLASS__, 'handle_save_post' ], 10, 2 );
-		add_action( 'transition_post_status', [ __CLASS__, 'handle_transition_post_status' ], 10, 3 );
 		add_action( 'before_delete_post', [ __CLASS__, 'handle_before_delete_post' ], 10, 2 );
 	}
 
@@ -283,33 +282,6 @@ class Ingestion {
 		 * @return bool Whether to ingest the post.
 		 */
 		return (bool) apply_filters( 'vip_agentforce_should_ingest_post', false, $post );
-	}
-
-	/**
-	 * Handle post status transitions.
-	 * 
-	 * We only care about transitioning from 'publish' to non-publish statuses.
-	 * Other statuses can be handled by handle_save_post.
-	 * 
-	 * When a post transitions from 'publish' to any other status,
-	 * we delete it from Salesforce if it was previously ingestible.
-	 *
-	 * @param string   $new_status New post status.
-	 * @param string   $old_status Old post status.
-	 * @param \WP_Post $post       Post object.
-	 */
-	public static function handle_transition_post_status( string $new_status, string $old_status, \WP_Post $post ): void {
-		// only act if old status is 'publish'
-		// also do nothing if new status is 'publish' - that's handled by handle_save_post.
-		if ( 'publish' !== $old_status || 'publish' === $new_status ) {
-			return;
-		}
-
-		if ( ! self::was_post_ingested( $post ) ) {
-			return;
-		}
-
-		self::delete_post_from_salesforce( $post );
 	}
 
 	/**
