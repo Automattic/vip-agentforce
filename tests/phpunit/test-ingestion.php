@@ -8,6 +8,13 @@ use Automattic\VIP\Salesforce\Agentforce\Utils\Logger;
 
 class Ingestion_Test extends WP_UnitTestCase {
 
+	/**
+	 * Captured HTTP requests for verification.
+	 *
+	 * @var array<int, array{url: string, method: string, body: string}>
+	 */
+	private array $captured_requests = [];
+
 	public function setUp(): void {
 		parent::setUp();
 		Logger::disable();
@@ -32,6 +39,7 @@ class Ingestion_Test extends WP_UnitTestCase {
 		remove_all_actions( 'vip_agentforce_post_ingestion_failed' );
 		remove_all_filters( 'pre_http_request' );
 		Configs::flush_cache();
+		$this->captured_requests = [];
 	}
 
 	/**
@@ -47,13 +55,18 @@ class Ingestion_Test extends WP_UnitTestCase {
 	}
 
 	/**
-	 * Mock HTTP requests to return success (202).
+	 * Mock HTTP requests to return success (202) and capture request details.
 	 */
 	private function mock_http_success(): void {
 		add_filter(
 			'pre_http_request',
 			function ( $preempt, $args, $url ) {
 				if ( strpos( $url, 'test.salesforce.com' ) !== false ) {
+					$this->captured_requests[] = [
+						'url'    => $url,
+						'method' => $args['method'] ?? 'GET',
+						'body'   => $args['body'] ?? '',
+					];
 					return [
 						'response' => [
 							'code'    => 202,
@@ -67,6 +80,27 @@ class Ingestion_Test extends WP_UnitTestCase {
 			10,
 			3
 		);
+	}
+
+	/**
+	 * Get ingestion (POST) requests from captured HTTP calls.
+	 *
+	 * @return array<int, array{url: string, method: string, body: string}>
+	 */
+	private function get_ingestion_requests(): array {
+		return array_values(
+			array_filter(
+				$this->captured_requests,
+				fn( $req ) => 'POST' === $req['method']
+			)
+		);
+	}
+
+	/**
+	 * Clear captured requests (useful between test phases).
+	 */
+	private function clear_captured_requests(): void {
+		$this->captured_requests = [];
 	}
 
 	/**
@@ -426,6 +460,34 @@ class Ingestion_Test extends WP_UnitTestCase {
 		$this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
 
 		$this->assertFalse( $action_fired, 'Action should NOT fire on successful ingestion.' );
+
+		// Verify exactly 1 API call was made (no duplicates).
+		$ingestion_requests = $this->get_ingestion_requests();
+		$this->assertCount( 1, $ingestion_requests, 'Exactly 1 ingestion API call should be made.' );
+	}
+
+	public function test_updating_published_post_makes_exactly_one_api_call(): void {
+		// Mock HTTP to return success.
+		$this->mock_http_success();
+
+		// Set up ingestion filters.
+		$this->setup_ingestion_filters();
+
+		// Create post.
+		$post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
+
+		// Verify initial ingestion.
+		$this->assertCount( 1, $this->get_ingestion_requests(), 'Initial publish should make exactly 1 API call.' );
+
+		// Clear requests.
+		$this->clear_captured_requests();
+
+		// Update the post (stays published).
+		wp_update_post( [ 'ID' => $post->ID, 'post_title' => 'Updated Title' ] );
+
+		// Verify exactly 1 API call for update (no duplicates).
+		$ingestion_requests = $this->get_ingestion_requests();
+		$this->assertCount( 1, $ingestion_requests, 'Updating published post should make exactly 1 API call.' );
 	}
 
 	public function test_failure_error_contains_post_id(): void {
