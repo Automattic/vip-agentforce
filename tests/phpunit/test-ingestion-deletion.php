@@ -114,11 +114,11 @@ class Ingestion_Deletion_Test extends WP_UnitTestCase {
 	// =========================================================================
 
 	public function test_transition_post_status_hook_is_registered(): void {
-		$this->assertEquals( 10, has_action( 'transition_post_status', [ Ingestion::class, 'handle_post_unpublished' ] ) );
+		$this->assertEquals( 10, has_action( 'transition_post_status', [ Ingestion::class, 'handle_transition_post_status' ] ) );
 	}
 
 	public function test_before_delete_post_hook_is_registered(): void {
-		$this->assertEquals( 10, has_action( 'before_delete_post', [ Ingestion::class, 'handle_post_deleted' ] ) );
+		$this->assertEquals( 10, has_action( 'before_delete_post', [ Ingestion::class, 'handle_before_delete_post' ] ) );
 	}
 
 	// =========================================================================
@@ -131,7 +131,7 @@ class Ingestion_Deletion_Test extends WP_UnitTestCase {
 		$this->setup_ingestion_filters();
 
 		// Trigger ingestion.
-		Ingestion::on_save_post( $post->ID, $post );
+		Ingestion::handle_save_post( $post->ID, $post );
 
 		// Verify meta was set.
 		$meta = get_post_meta( $post->ID, Ingestion::META_KEY_INGESTION_ATTEMPTED, true );
@@ -146,7 +146,7 @@ class Ingestion_Deletion_Test extends WP_UnitTestCase {
 		$this->assertNotEmpty( get_post_meta( $post->ID, Ingestion::META_KEY_INGESTION_ATTEMPTED, true ) );
 
 		// Trigger deletion (unpublish).
-		Ingestion::handle_post_unpublished( 'draft', 'publish', $post );
+		Ingestion::handle_transition_post_status( 'draft', 'publish', $post );
 
 		// Verify meta was cleared.
 		$meta = get_post_meta( $post->ID, Ingestion::META_KEY_INGESTION_ATTEMPTED, true );
@@ -191,7 +191,7 @@ class Ingestion_Deletion_Test extends WP_UnitTestCase {
 		);
 
 		// Simulate status transition.
-		Ingestion::handle_post_unpublished( $new_status, 'publish', $post );
+		Ingestion::handle_transition_post_status( $new_status, 'publish', $post );
 
 		// Since delete_from_api returns success by default, no failure action should fire.
 		// Meta should be cleared on success.
@@ -246,7 +246,7 @@ class Ingestion_Deletion_Test extends WP_UnitTestCase {
 			}
 		);
 
-		Ingestion_With_Failing_Delete_Api::handle_post_unpublished( $new_status, $old_status, $post );
+		Ingestion_With_Failing_Delete_Api::handle_transition_post_status( $new_status, $old_status, $post );
 
 		$this->assertFalse( $deletion_attempted, "No deletion should occur for {$old_status} -> {$new_status}." );
 	}
@@ -269,7 +269,7 @@ class Ingestion_Deletion_Test extends WP_UnitTestCase {
 			}
 		);
 
-		Ingestion_With_Failing_Delete_Api::handle_post_unpublished( 'draft', 'publish', $post );
+		Ingestion_With_Failing_Delete_Api::handle_transition_post_status( 'draft', 'publish', $post );
 
 		$this->assertFalse( $deletion_attempted, 'No deletion should occur when post has no ingestion meta.' );
 	}
@@ -289,7 +289,7 @@ class Ingestion_Deletion_Test extends WP_UnitTestCase {
 			}
 		);
 
-		Ingestion_With_Failing_Delete_Api::handle_post_unpublished( 'draft', 'publish', $post );
+		Ingestion_With_Failing_Delete_Api::handle_transition_post_status( 'draft', 'publish', $post );
 
 		$this->assertTrue( $deletion_attempted, 'Deletion should be attempted when post has ingestion meta.' );
 	}
@@ -311,7 +311,7 @@ class Ingestion_Deletion_Test extends WP_UnitTestCase {
 			}
 		);
 
-		Ingestion_With_Failing_Delete_Api::handle_post_unpublished( 'draft', 'publish', $post );
+		Ingestion_With_Failing_Delete_Api::handle_transition_post_status( 'draft', 'publish', $post );
 
 		$this->assertTrue( $deletion_attempted, 'Deletion should occur based on meta, not current filter state.' );
 	}
@@ -335,7 +335,7 @@ class Ingestion_Deletion_Test extends WP_UnitTestCase {
 			}
 		);
 
-		Ingestion_With_Failing_Delete_Api::handle_post_deleted( $post->ID, $post );
+		Ingestion_With_Failing_Delete_Api::handle_before_delete_post( $post->ID, $post );
 
 		$this->assertTrue( $deletion_attempted, 'Deletion should be attempted for published post with meta.' );
 	}
@@ -354,7 +354,7 @@ class Ingestion_Deletion_Test extends WP_UnitTestCase {
 			}
 		);
 
-		Ingestion_With_Failing_Delete_Api::handle_post_deleted( $post->ID, $post );
+		Ingestion_With_Failing_Delete_Api::handle_before_delete_post( $post->ID, $post );
 
 		$this->assertFalse( $deletion_attempted, 'No deletion should occur for published post without meta.' );
 	}
@@ -373,7 +373,7 @@ class Ingestion_Deletion_Test extends WP_UnitTestCase {
 			}
 		);
 
-		Ingestion_With_Failing_Delete_Api::handle_post_deleted( $post->ID, $post );
+		Ingestion_With_Failing_Delete_Api::handle_before_delete_post( $post->ID, $post );
 
 		$this->assertFalse( $deletion_attempted, 'No deletion should occur for draft post.' );
 	}
@@ -400,7 +400,7 @@ class Ingestion_Deletion_Test extends WP_UnitTestCase {
 			}
 		);
 
-		Ingestion_With_Failing_Delete_Api::handle_post_unpublished( 'draft', 'publish', $post );
+		Ingestion_With_Failing_Delete_Api::handle_transition_post_status( 'draft', 'publish', $post );
 
 		$this->assertTrue( $action_fired, 'Failure action should fire on API error.' );
 		$this->assertInstanceOf( Deletion_Failure::class, $received_failure );
@@ -424,7 +424,7 @@ class Ingestion_Deletion_Test extends WP_UnitTestCase {
 			}
 		);
 
-		Ingestion_With_Failing_Delete_Api::handle_post_unpublished( 'draft', 'publish', $post );
+		Ingestion_With_Failing_Delete_Api::handle_transition_post_status( 'draft', 'publish', $post );
 
 		$this->assertInstanceOf( Deletion_Failure::class, $received_failure );
 		$this->assertNotEmpty( $received_failure->record_id );
@@ -448,7 +448,7 @@ class Ingestion_Deletion_Test extends WP_UnitTestCase {
 			}
 		);
 
-		Ingestion_With_Failing_Delete_Api::handle_post_unpublished( 'draft', 'publish', $post );
+		Ingestion_With_Failing_Delete_Api::handle_transition_post_status( 'draft', 'publish', $post );
 
 		$this->assertInstanceOf( Deletion_Failure::class, $received_failure );
 		$this->assertInstanceOf( WP_Post::class, $received_failure->post );
@@ -471,7 +471,7 @@ class Ingestion_Deletion_Test extends WP_UnitTestCase {
 			}
 		);
 
-		Ingestion_With_Failing_Delete_Api::handle_post_unpublished( 'draft', 'publish', $post );
+		Ingestion_With_Failing_Delete_Api::handle_transition_post_status( 'draft', 'publish', $post );
 
 		$this->assertInstanceOf( Deletion_Failure::class, $received_failure );
 		$array = $received_failure->to_array();
@@ -488,7 +488,7 @@ class Ingestion_Deletion_Test extends WP_UnitTestCase {
 
 		Ingestion_With_Failing_Delete_Api::init();
 
-		Ingestion_With_Failing_Delete_Api::handle_post_unpublished( 'draft', 'publish', $post );
+		Ingestion_With_Failing_Delete_Api::handle_transition_post_status( 'draft', 'publish', $post );
 
 		// Meta should NOT be cleared on failure - we still need to track that the post is in Salesforce.
 		$meta = get_post_meta( $post->ID, Ingestion::META_KEY_INGESTION_ATTEMPTED, true );
@@ -512,7 +512,7 @@ class Ingestion_Deletion_Test extends WP_UnitTestCase {
 			}
 		);
 
-		Ingestion::handle_post_unpublished( 'draft', 'publish', $post );
+		Ingestion::handle_transition_post_status( 'draft', 'publish', $post );
 
 		$this->assertFalse( $action_fired, 'Failure action should NOT fire on successful deletion.' );
 	}
@@ -528,15 +528,15 @@ class Ingestion_Deletion_Test extends WP_UnitTestCase {
 		// 2. Set up filters to allow ingestion.
 		$this->setup_ingestion_filters();
 
-		// 3. Trigger ingestion via on_save_post (simulates saving a published post).
-		Ingestion::on_save_post( $post->ID, $post );
+		// 3. Trigger ingestion via handle_save_post (simulates saving a published post).
+		Ingestion::handle_save_post( $post->ID, $post );
 
 		// Verify the post was marked as ingested.
 		$meta = get_post_meta( $post->ID, Ingestion::META_KEY_INGESTION_ATTEMPTED, true );
-		$this->assertNotEmpty( $meta, 'Post should be marked as ingested after on_save_post.' );
+		$this->assertNotEmpty( $meta, 'Post should be marked as ingested after handle_save_post.' );
 
 		// 4. Now unpublish the post (switch to draft).
-		Ingestion::handle_post_unpublished( 'draft', 'publish', $post );
+		Ingestion::handle_transition_post_status( 'draft', 'publish', $post );
 
 		// 5. Verify the meta was cleared (deletion was successful).
 		$meta_after = get_post_meta( $post->ID, Ingestion::META_KEY_INGESTION_ATTEMPTED, true );
@@ -547,28 +547,28 @@ class Ingestion_Deletion_Test extends WP_UnitTestCase {
 		$post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
 
 		$this->setup_ingestion_filters();
-		Ingestion::on_save_post( $post->ID, $post );
+		Ingestion::handle_save_post( $post->ID, $post );
 
 		// Verify ingested.
 		$this->assertNotEmpty( get_post_meta( $post->ID, Ingestion::META_KEY_INGESTION_ATTEMPTED, true ) );
 
 		// Trash the post.
-		Ingestion::handle_post_unpublished( 'trash', 'publish', $post );
+		Ingestion::handle_transition_post_status( 'trash', 'publish', $post );
 
 		// Verify deleted from Salesforce.
 		$this->assertEmpty( get_post_meta( $post->ID, Ingestion::META_KEY_INGESTION_ATTEMPTED, true ) );
 	}
 
 	// =========================================================================
-	// Filter Rejection Deletion Tests (on_save_post)
+	// Filter Rejection Deletion Tests (handle_save_post)
 	// =========================================================================
 
-	public function test_on_save_post_deletes_when_filter_rejects_previously_ingested_post(): void {
+	public function test_handle_save_post_deletes_when_filter_rejects_previously_ingested_post(): void {
 		$post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
 
 		// 1. First, ingest the post.
 		$this->setup_ingestion_filters();
-		Ingestion::on_save_post( $post->ID, $post );
+		Ingestion::handle_save_post( $post->ID, $post );
 
 		// Verify ingested.
 		$this->assertNotEmpty( get_post_meta( $post->ID, Ingestion::META_KEY_INGESTION_ATTEMPTED, true ) );
@@ -577,15 +577,15 @@ class Ingestion_Deletion_Test extends WP_UnitTestCase {
 		remove_all_filters( 'vip_agentforce_should_ingest_post' );
 		add_filter( 'vip_agentforce_should_ingest_post', '__return_false' );
 
-		// 3. Trigger on_save_post again (simulates user editing and saving the post).
-		Ingestion::on_save_post( $post->ID, $post );
+		// 3. Trigger handle_save_post again (simulates user editing and saving the post).
+		Ingestion::handle_save_post( $post->ID, $post );
 
 		// 4. Verify the post was deleted from Salesforce (meta cleared).
 		$meta_after = get_post_meta( $post->ID, Ingestion::META_KEY_INGESTION_ATTEMPTED, true );
 		$this->assertEmpty( $meta_after, 'Post should be deleted from Salesforce when filter rejects previously ingested post.' );
 	}
 
-	public function test_on_save_post_does_not_delete_when_filter_rejects_never_ingested_post(): void {
+	public function test_handle_save_post_does_not_delete_when_filter_rejects_never_ingested_post(): void {
 		$post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
 
 		// Post was never ingested (no meta).
@@ -605,18 +605,18 @@ class Ingestion_Deletion_Test extends WP_UnitTestCase {
 			}
 		);
 
-		// Trigger on_save_post.
-		Ingestion_With_Failing_Delete_Api::on_save_post( $post->ID, $post );
+		// Trigger handle_save_post.
+		Ingestion_With_Failing_Delete_Api::handle_save_post( $post->ID, $post );
 
 		// No deletion should be attempted for a post that was never ingested.
 		$this->assertFalse( $deletion_attempted, 'No deletion should occur for post that was never ingested.' );
 	}
 
-	public function test_on_save_post_deletes_when_post_no_longer_published(): void {
+	public function test_handle_save_post_deletes_when_post_no_longer_published(): void {
 		// Start with a published post that was ingested.
 		$post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
 		$this->setup_ingestion_filters();
-		Ingestion::on_save_post( $post->ID, $post );
+		Ingestion::handle_save_post( $post->ID, $post );
 
 		// Verify ingested.
 		$this->assertNotEmpty( get_post_meta( $post->ID, Ingestion::META_KEY_INGESTION_ATTEMPTED, true ) );
@@ -624,8 +624,8 @@ class Ingestion_Deletion_Test extends WP_UnitTestCase {
 		// Change post to draft status.
 		$post->post_status = 'draft';
 
-		// Trigger on_save_post - should_ingest_post returns false for drafts.
-		Ingestion::on_save_post( $post->ID, $post );
+		// Trigger handle_save_post - should_ingest_post returns false for drafts.
+		Ingestion::handle_save_post( $post->ID, $post );
 
 		// Verify deleted from Salesforce.
 		$this->assertEmpty(
@@ -634,7 +634,7 @@ class Ingestion_Deletion_Test extends WP_UnitTestCase {
 		);
 	}
 
-	public function test_on_save_post_category_change_triggers_deletion(): void {
+	public function test_handle_save_post_category_change_triggers_deletion(): void {
 		$post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
 
 		// Create a category and assign it to the post.
@@ -680,7 +680,7 @@ class Ingestion_Deletion_Test extends WP_UnitTestCase {
 		);
 
 		// Ingest the post.
-		Ingestion::on_save_post( $post->ID, $post );
+		Ingestion::handle_save_post( $post->ID, $post );
 		$this->assertNotEmpty( get_post_meta( $post->ID, Ingestion::META_KEY_INGESTION_ATTEMPTED, true ) );
 
 		// Remove the category from the post.
@@ -690,7 +690,7 @@ class Ingestion_Deletion_Test extends WP_UnitTestCase {
 		$post = get_post( $post->ID );
 
 		// Save the post again.
-		Ingestion::on_save_post( $post->ID, $post );
+		Ingestion::handle_save_post( $post->ID, $post );
 
 		// Post should be deleted from Salesforce because it no longer has the required category.
 		$this->assertEmpty(

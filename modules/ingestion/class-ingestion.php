@@ -26,9 +26,9 @@ class Ingestion {
 	 * Initialize the module.
 	 */
 	public static function init(): void {
-		add_action( 'save_post', [ __CLASS__, 'on_save_post' ], 10, 2 );
-		add_action( 'transition_post_status', [ __CLASS__, 'handle_post_unpublished' ], 10, 3 );
-		add_action( 'before_delete_post', [ __CLASS__, 'handle_post_deleted' ], 10, 2 );
+		add_action( 'save_post', [ __CLASS__, 'handle_save_post' ], 10, 2 );
+		add_action( 'transition_post_status', [ __CLASS__, 'handle_transition_post_status' ], 10, 3 );
+		add_action( 'before_delete_post', [ __CLASS__, 'handle_before_delete_post' ], 10, 2 );
 	}
 
 	/**
@@ -40,12 +40,12 @@ class Ingestion {
 	 * @param int      $post_id Post ID.
 	 * @param \WP_Post $post    Post object.
 	 */
-	public static function on_save_post( int $post_id, \WP_Post $post ): void {
+	public static function handle_save_post( int $post_id, \WP_Post $post ): void {
 		$should_ingest = self::should_ingest_post( $post );
 
 		if ( ! $should_ingest ) {
 			// If this post was previously ingested, delete it from Salesforce.
-			if ( self::was_post_ingestible( $post ) ) {
+			if ( self::was_post_ingested( $post ) ) {
 				self::delete_post_from_salesforce( $post );
 			}
 			return;
@@ -286,8 +286,11 @@ class Ingestion {
 	}
 
 	/**
-	 * Handle post status transitions that result in unpublishing.
-	 *
+	 * Handle post status transitions.
+	 * 
+	 * We only care about transitioning from 'publish' to non-publish statuses.
+	 * Other statuses can be handled by handle_save_post.
+	 * 
 	 * When a post transitions from 'publish' to any other status,
 	 * we delete it from Salesforce if it was previously ingestible.
 	 *
@@ -295,28 +298,14 @@ class Ingestion {
 	 * @param string   $old_status Old post status.
 	 * @param \WP_Post $post       Post object.
 	 */
-	public static function handle_post_unpublished( string $new_status, string $old_status, \WP_Post $post ): void {
-		// Skip revisions and autosaves.
-		if ( wp_is_post_revision( $post ) || wp_is_post_autosave( $post ) ) {
-			return;
-		}
-
-		// Only act if transitioning FROM 'publish' to a non-publish status.
+	public static function handle_transition_post_status( string $new_status, string $old_status, \WP_Post $post ): void {
+		// only act if old status is 'publish'
+		// also do nothing if new status is 'publish' - that's handled by handle_save_post.
 		if ( 'publish' !== $old_status || 'publish' === $new_status ) {
 			return;
 		}
 
-		// Check if the post was previously ingested (has tracking meta).
-		if ( ! self::was_post_ingestible( $post ) ) {
-			Logger::info(
-				'ingestion',
-				'Post was not previously ingested, skipping deletion',
-				[
-					'post_id'    => $post->ID,
-					'old_status' => $old_status,
-					'new_status' => $new_status,
-				]
-			);
+		if ( ! self::was_post_ingested( $post ) ) {
 			return;
 		}
 
@@ -332,32 +321,14 @@ class Ingestion {
 	 * @param int      $post_id Post ID.
 	 * @param \WP_Post $post    Post object.
 	 */
-	public static function handle_post_deleted( int $post_id, \WP_Post $post ): void {
-		// Skip revisions and autosaves.
-		if ( wp_is_post_revision( $post ) || wp_is_post_autosave( $post ) ) {
-			return;
-		}
-
+	public static function handle_before_delete_post( int $post_id, \WP_Post $post ): void {
 		// Only act if the post was published (otherwise it wouldn't be in Salesforce).
 		if ( 'publish' !== $post->post_status ) {
-			Logger::info(
-				'ingestion',
-				'Deleted post was not published, skipping Salesforce deletion',
-				[
-					'post_id'     => $post_id,
-					'post_status' => $post->post_status,
-				]
-			);
 			return;
 		}
 
 		// Check if the post was previously ingested (has tracking meta).
-		if ( ! self::was_post_ingestible( $post ) ) {
-			Logger::info(
-				'ingestion',
-				'Deleted post was not previously ingested, skipping deletion',
-				[ 'post_id' => $post_id ]
-			);
+		if ( ! self::was_post_ingested( $post ) ) {
 			return;
 		}
 
@@ -370,11 +341,17 @@ class Ingestion {
 	 * This checks for the ingestion meta first - if it exists, we know we attempted
 	 * to ingest this post. This is more reliable than checking the filter, as filters
 	 * can change over time.
+	 * 
+	 * Post revisions and autosaves are never considered ingested, even if they have the meta.
 	 *
 	 * @param \WP_Post $post The post to check.
 	 * @return bool Whether the post was previously ingested.
 	 */
-	private static function was_post_ingestible( \WP_Post $post ): bool {
+	private static function was_post_ingested( \WP_Post $post ): bool {
+		if ( wp_is_post_revision( $post ) || wp_is_post_autosave( $post ) ) {
+			return false;
+		}
+
 		// Check if we have a record of attempting to ingest this post.
 		$ingestion_attempted = get_post_meta( $post->ID, self::META_KEY_INGESTION_ATTEMPTED, true );
 

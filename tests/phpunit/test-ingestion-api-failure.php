@@ -68,7 +68,7 @@ class Ingestion_Api_Failure_Test extends WP_UnitTestCase {
 			}
 		);
 
-		Ingestion_With_Failing_Api::on_save_post( $post->ID, $post );
+		Ingestion_With_Failing_Api::handle_save_post( $post->ID, $post );
 
 		$this->assertTrue( $action_fired, 'Action should fire when API fails.' );
 		$this->assertInstanceOf( Ingestion_Failure::class, $received_failure );
