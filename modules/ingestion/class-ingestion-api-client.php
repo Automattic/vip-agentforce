@@ -98,7 +98,7 @@ class Ingestion_API_Client {
 			// Calculate total wait time before making request.
 			// Order: block_remaining (Retry-After) + jitter + exponential backoff.
 			$block_remaining = $this->get_rate_limit_block_remaining();
-			$backoff_delay   = $attempt > 0 ? $this->calculate_backoff_delay( $attempt ) : 0;
+			$backoff_delay   = $this->calculate_backoff_delay( $attempt );
 			$total_wait      = $block_remaining + $backoff_delay;
 
 			if ( $total_wait > 0 ) {
@@ -119,7 +119,7 @@ class Ingestion_API_Client {
 				return Ingestion_API_Result::success( $record_id, $response );
 			}
 
-			// Rate limited - set block and retry.
+			// Rate limited (429) - set block in cache and retry.
 			if ( 429 === $status_code ) {
 				$this->handle_rate_limit_response( $response );
 
@@ -135,7 +135,27 @@ class Ingestion_API_Client {
 				);
 			}
 
-			// Other error - don't retry.
+			// Retryable server errors (5xx) and timeout (408) - retry with backoff.
+			if ( $this->is_retryable_error( $status_code ) ) {
+				// Check for Retry-After header (503 may include it).
+				$retry_after = $this->parse_retry_after_header( $response );
+				if ( $retry_after > 0 ) {
+					$this->set_rate_limit_block( $retry_after );
+				}
+
+				++$attempt;
+				if ( $attempt <= self::MAX_RETRIES ) {
+					continue;
+				}
+
+				return Ingestion_API_Result::failure(
+					'Server error (' . $status_code . ') after ' . self::MAX_RETRIES . ' retries',
+					$response,
+					$record_id
+				);
+			}
+
+			// Non-retryable error (4xx client errors) - fail immediately.
 			return Ingestion_API_Result::failure(
 				'Unexpected response code: ' . $status_code,
 				$response,
@@ -288,6 +308,24 @@ class Ingestion_API_Client {
 	}
 
 	/**
+	 * Check if an HTTP status code is a retryable error.
+	 *
+	 * Retryable errors are server-side issues that may succeed on retry:
+	 * - 408: Request Timeout
+	 * - 500: Internal Server Error
+	 * - 502: Bad Gateway
+	 * - 503: Service Unavailable
+	 * - 504: Gateway Timeout
+	 *
+	 * @param int $status_code The HTTP status code.
+	 * @return bool Whether the error should be retried.
+	 */
+	private function is_retryable_error( int $status_code ): bool {
+		$retryable_codes = [ 408, 500, 502, 503, 504 ];
+		return in_array( $status_code, $retryable_codes, true );
+	}
+
+	/**
 	 * Parse the Retry-After header value.
 	 *
 	 * Supports both seconds and HTTP-date formats.
@@ -354,6 +392,10 @@ class Ingestion_API_Client {
 	 * @return float The delay in seconds.
 	 */
 	private function calculate_backoff_delay( int $attempt ): float {
+		if ( $attempt < 1 ) {
+			return 0;
+		}
+
 		// Exponential backoff: base * 2^(attempt-1).
 		$delay = self::BASE_DELAY_SECONDS * pow( 2, $attempt - 1 );
 

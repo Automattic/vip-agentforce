@@ -317,8 +317,9 @@ class Ingestion_API_Client_Test extends WP_UnitTestCase {
 	// Error handling tests
 	// =========================================================================
 
-	public function test_returns_failure_on_non_202_response(): void {
-		$this->mock_http_responses( [ $this->error_response( 500, 'Internal Server Error' ) ] );
+	public function test_returns_failure_on_non_retryable_error(): void {
+		// Use 400 (Bad Request) which is a non-retryable client error.
+		$this->mock_http_responses( [ $this->error_response( 400, 'Bad Request' ) ] );
 
 		$client = new Ingestion_API_Client();
 		$record = $this->create_test_record();
@@ -326,7 +327,7 @@ class Ingestion_API_Client_Test extends WP_UnitTestCase {
 		$result = $client->send( $record );
 
 		$this->assertFalse( $result->success );
-		$this->assertStringContainsString( '500', $result->error_message );
+		$this->assertStringContainsString( '400', $result->error_message );
 	}
 
 	public function test_returns_failure_on_wp_error(): void {
@@ -504,5 +505,196 @@ class Ingestion_API_Client_Test extends WP_UnitTestCase {
 
 		$this->assertTrue( $result->success );
 		$this->assertCount( 2, $this->captured_requests );
+	}
+
+	// =========================================================================
+	// Server error (5xx) retry tests
+	// =========================================================================
+
+	public function test_retries_on_500_and_eventually_succeeds(): void {
+		$this->mock_http_responses(
+			[
+				$this->error_response( 500, 'Internal Server Error' ),
+				$this->success_response(),
+			]
+		);
+
+		$client = new Ingestion_API_Client();
+		$record = $this->create_test_record();
+
+		$result = $client->send( $record );
+
+		$this->assertTrue( $result->success );
+		$this->assertCount( 2, $this->captured_requests, 'Should retry after 500' );
+	}
+
+	public function test_retries_on_502_and_eventually_succeeds(): void {
+		$this->mock_http_responses(
+			[
+				$this->error_response( 502, 'Bad Gateway' ),
+				$this->success_response(),
+			]
+		);
+
+		$client = new Ingestion_API_Client();
+		$record = $this->create_test_record();
+
+		$result = $client->send( $record );
+
+		$this->assertTrue( $result->success );
+		$this->assertCount( 2, $this->captured_requests, 'Should retry after 502' );
+	}
+
+	public function test_retries_on_503_with_retry_after_header(): void {
+		$this->mock_http_responses(
+			[
+				[
+					'response' => [
+						'code'    => 503,
+						'message' => 'Service Unavailable',
+					],
+					'headers'  => [
+						'retry-after' => '0',
+					],
+					'body'     => '',
+				],
+				$this->success_response(),
+			]
+		);
+
+		$client = new Ingestion_API_Client();
+		$record = $this->create_test_record();
+
+		$result = $client->send( $record );
+
+		$this->assertTrue( $result->success );
+		$this->assertCount( 2, $this->captured_requests, 'Should retry after 503' );
+	}
+
+	public function test_retries_on_504_and_eventually_succeeds(): void {
+		$this->mock_http_responses(
+			[
+				$this->error_response( 504, 'Gateway Timeout' ),
+				$this->success_response(),
+			]
+		);
+
+		$client = new Ingestion_API_Client();
+		$record = $this->create_test_record();
+
+		$result = $client->send( $record );
+
+		$this->assertTrue( $result->success );
+		$this->assertCount( 2, $this->captured_requests, 'Should retry after 504' );
+	}
+
+	public function test_retries_on_408_request_timeout(): void {
+		$this->mock_http_responses(
+			[
+				$this->error_response( 408, 'Request Timeout' ),
+				$this->success_response(),
+			]
+		);
+
+		$client = new Ingestion_API_Client();
+		$record = $this->create_test_record();
+
+		$result = $client->send( $record );
+
+		$this->assertTrue( $result->success );
+		$this->assertCount( 2, $this->captured_requests, 'Should retry after 408' );
+	}
+
+	public function test_fails_after_max_retries_on_5xx(): void {
+		$this->mock_http_responses(
+			[
+				$this->error_response( 500 ),
+				$this->error_response( 500 ),
+				$this->error_response( 500 ),
+				$this->error_response( 500 ), // 4 attempts (1 initial + 3 retries).
+			]
+		);
+
+		$client = new Ingestion_API_Client();
+		$record = $this->create_test_record();
+
+		$result = $client->send( $record );
+
+		$this->assertFalse( $result->success );
+		$this->assertStringContainsString( 'Server error (500)', $result->error_message );
+		$this->assertCount( 4, $this->captured_requests, 'Should make 4 attempts (1 + 3 retries)' );
+	}
+
+	// =========================================================================
+	// Non-retryable error tests
+	// =========================================================================
+
+	public function test_does_not_retry_on_400(): void {
+		$this->mock_http_responses(
+			[
+				$this->error_response( 400, 'Bad Request' ),
+				$this->success_response(), // Should never reach this.
+			]
+		);
+
+		$client = new Ingestion_API_Client();
+		$record = $this->create_test_record();
+
+		$result = $client->send( $record );
+
+		$this->assertFalse( $result->success );
+		$this->assertStringContainsString( '400', $result->error_message );
+		$this->assertCount( 1, $this->captured_requests, 'Should NOT retry on 400' );
+	}
+
+	public function test_does_not_retry_on_401(): void {
+		$this->mock_http_responses(
+			[
+				$this->error_response( 401, 'Unauthorized' ),
+				$this->success_response(),
+			]
+		);
+
+		$client = new Ingestion_API_Client();
+		$record = $this->create_test_record();
+
+		$result = $client->send( $record );
+
+		$this->assertFalse( $result->success );
+		$this->assertCount( 1, $this->captured_requests, 'Should NOT retry on 401' );
+	}
+
+	public function test_does_not_retry_on_403(): void {
+		$this->mock_http_responses(
+			[
+				$this->error_response( 403, 'Forbidden' ),
+				$this->success_response(),
+			]
+		);
+
+		$client = new Ingestion_API_Client();
+		$record = $this->create_test_record();
+
+		$result = $client->send( $record );
+
+		$this->assertFalse( $result->success );
+		$this->assertCount( 1, $this->captured_requests, 'Should NOT retry on 403' );
+	}
+
+	public function test_does_not_retry_on_404(): void {
+		$this->mock_http_responses(
+			[
+				$this->error_response( 404, 'Not Found' ),
+				$this->success_response(),
+			]
+		);
+
+		$client = new Ingestion_API_Client();
+		$record = $this->create_test_record();
+
+		$result = $client->send( $record );
+
+		$this->assertFalse( $result->success );
+		$this->assertCount( 1, $this->captured_requests, 'Should NOT retry on 404' );
 	}
 }
