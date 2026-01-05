@@ -95,10 +95,14 @@ class Ingestion_API_Client {
 		$attempt = 0;
 
 		while ( $attempt <= self::MAX_RETRIES ) {
-			// Check if we're currently rate limited.
+			// Calculate total wait time before making request.
+			// Order: block_remaining (Retry-After) + jitter + exponential backoff.
 			$block_remaining = $this->get_rate_limit_block_remaining();
-			if ( $block_remaining > 0 ) {
-				$this->sleep_with_jitter( $block_remaining );
+			$backoff_delay   = $attempt > 0 ? $this->calculate_backoff_delay( $attempt ) : 0;
+			$total_wait      = $block_remaining + $backoff_delay;
+
+			if ( $total_wait > 0 ) {
+				$this->sleep_with_jitter( $total_wait );
 			}
 
 			$response = $this->execute_request( $method, $body );
@@ -115,14 +119,12 @@ class Ingestion_API_Client {
 				return Ingestion_API_Result::success( $record_id, $response );
 			}
 
-			// Rate limited - retry with backoff.
+			// Rate limited - set block and retry.
 			if ( 429 === $status_code ) {
 				$this->handle_rate_limit_response( $response );
 
 				++$attempt;
 				if ( $attempt <= self::MAX_RETRIES ) {
-					$delay = $this->calculate_backoff_delay( $attempt );
-					$this->sleep_with_jitter( $delay );
 					continue;
 				}
 
