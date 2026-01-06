@@ -32,7 +32,7 @@ class Ingestion_API_Client {
 	/**
 	 * Maximum number of retry attempts.
 	 */
-	private const MAX_RETRIES = 3;
+	private const MAX_RETRIES = 10;
 
 	/**
 	 * Base delay for exponential backoff in seconds.
@@ -441,7 +441,7 @@ class Ingestion_API_Client {
 	 *
 	 * @param float $base_seconds The base sleep duration in seconds.
 	 */
-	private function sleep_with_jitter( float $base_seconds ): void {
+	protected function sleep_with_jitter( float $base_seconds ): void {
 		// Add 0-50% jitter.
 		$jitter        = $base_seconds * ( wp_rand( 0, 500 ) / 1000 );
 		$total_seconds = $base_seconds + $jitter;

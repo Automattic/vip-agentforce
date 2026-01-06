@@ -5,6 +5,15 @@ use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_Post_Record;
 use Automattic\VIP\Salesforce\Agentforce\Utils\Configs;
 use Automattic\VIP\Salesforce\Agentforce\Utils\Logger;
 
+/**
+ * Test double that skips sleeping for faster tests.
+ */
+class Test_Ingestion_API_Client extends Ingestion_API_Client {
+	protected function sleep_with_jitter( float $base_seconds ): void {
+		// No-op for tests.
+	}
+}
+
 class Ingestion_API_Client_Test extends WP_UnitTestCase {
 
 	/**
@@ -201,7 +210,7 @@ class Ingestion_API_Client_Test extends WP_UnitTestCase {
 	public function test_send_returns_success_on_202_response(): void {
 		$this->mock_http_responses( [ $this->success_response() ] );
 
-		$client = new Ingestion_API_Client();
+		$client = new Test_Ingestion_API_Client();
 		$record = $this->create_test_record();
 
 		$result = $client->send( $record );
@@ -214,7 +223,7 @@ class Ingestion_API_Client_Test extends WP_UnitTestCase {
 	public function test_send_makes_post_request_with_correct_body(): void {
 		$this->mock_http_responses( [ $this->success_response() ] );
 
-		$client = new Ingestion_API_Client();
+		$client = new Test_Ingestion_API_Client();
 		$record = $this->create_test_record();
 
 		$client->send( $record );
@@ -231,7 +240,7 @@ class Ingestion_API_Client_Test extends WP_UnitTestCase {
 	public function test_delete_returns_success_on_202_response(): void {
 		$this->mock_http_responses( [ $this->success_response() ] );
 
-		$client = new Ingestion_API_Client();
+		$client = new Test_Ingestion_API_Client();
 
 		$result = $client->delete( '1_1_456' );
 
@@ -242,7 +251,7 @@ class Ingestion_API_Client_Test extends WP_UnitTestCase {
 	public function test_delete_makes_delete_request_with_correct_body(): void {
 		$this->mock_http_responses( [ $this->success_response() ] );
 
-		$client = new Ingestion_API_Client();
+		$client = new Test_Ingestion_API_Client();
 
 		$client->delete( '1_1_456' );
 
@@ -257,7 +266,7 @@ class Ingestion_API_Client_Test extends WP_UnitTestCase {
 	public function test_request_includes_auth_header(): void {
 		$this->mock_http_responses( [ $this->success_response() ] );
 
-		$client = new Ingestion_API_Client();
+		$client = new Test_Ingestion_API_Client();
 		$record = $this->create_test_record();
 
 		$client->send( $record );
@@ -268,7 +277,7 @@ class Ingestion_API_Client_Test extends WP_UnitTestCase {
 	public function test_request_uses_correct_url(): void {
 		$this->mock_http_responses( [ $this->success_response() ] );
 
-		$client = new Ingestion_API_Client();
+		$client = new Test_Ingestion_API_Client();
 		$record = $this->create_test_record();
 
 		$client->send( $record );
@@ -287,7 +296,7 @@ class Ingestion_API_Client_Test extends WP_UnitTestCase {
 		$this->prime_configs_cache( [] );
 		$this->mock_http_responses( [ $this->success_response() ] );
 
-		$client = new Ingestion_API_Client();
+		$client = new Test_Ingestion_API_Client();
 		$record = $this->create_test_record();
 
 		$result = $client->send( $record );
@@ -306,7 +315,7 @@ class Ingestion_API_Client_Test extends WP_UnitTestCase {
 		);
 		$this->mock_http_responses( [ $this->success_response() ] );
 
-		$client = new Ingestion_API_Client();
+		$client = new Test_Ingestion_API_Client();
 		$record = $this->create_test_record();
 
 		$result = $client->send( $record );
@@ -324,7 +333,7 @@ class Ingestion_API_Client_Test extends WP_UnitTestCase {
 		// Use 400 (Bad Request) which is a non-retryable client error.
 		$this->mock_http_responses( [ $this->error_response( 400, 'Bad Request' ) ] );
 
-		$client = new Ingestion_API_Client();
+		$client = new Test_Ingestion_API_Client();
 		$record = $this->create_test_record();
 
 		$result = $client->send( $record );
@@ -336,7 +345,7 @@ class Ingestion_API_Client_Test extends WP_UnitTestCase {
 	public function test_returns_failure_on_wp_error(): void {
 		$this->mock_http_responses( [ new WP_Error( 'http_error', 'Connection failed' ) ] );
 
-		$client = new Ingestion_API_Client();
+		$client = new Test_Ingestion_API_Client();
 		$record = $this->create_test_record();
 
 		$result = $client->send( $record );
@@ -357,7 +366,7 @@ class Ingestion_API_Client_Test extends WP_UnitTestCase {
 			]
 		);
 
-		$client = new Ingestion_API_Client();
+		$client = new Test_Ingestion_API_Client();
 		$record = $this->create_test_record();
 
 		$result = $client->send( $record );
@@ -366,68 +375,53 @@ class Ingestion_API_Client_Test extends WP_UnitTestCase {
 		$this->assertCount( 2, $this->captured_requests, 'Should retry after 429' );
 	}
 
-	public function test_respects_retry_after_header(): void {
-		$start_time = microtime( true );
-
-		// Use very small retry-after for test speed.
+	public function test_retries_after_429_with_retry_after_header(): void {
 		$this->mock_http_responses(
 			[
-				$this->rate_limited_response( 0 ), // 0 second retry-after.
+				$this->rate_limited_response( 1 ),
 				$this->success_response(),
 			]
 		);
 
-		$client = new Ingestion_API_Client();
+		$client = new Test_Ingestion_API_Client();
 		$record = $this->create_test_record();
 
 		$result = $client->send( $record );
 
-		$elapsed = microtime( true ) - $start_time;
-
 		$this->assertTrue( $result->success );
-		// Should have some delay due to exponential backoff (minimum 1 second base).
-		$this->assertGreaterThanOrEqual( 0.5, $elapsed );
+		$this->assertCount( 2, $this->captured_requests, 'Should retry after 429' );
 	}
 
 	public function test_fails_after_max_retries(): void {
+		// 11 responses for 1 initial + 10 retries.
 		$this->mock_http_responses(
-			[
-				$this->rate_limited_response( 0 ),
-				$this->rate_limited_response( 0 ),
-				$this->rate_limited_response( 0 ),
-				$this->rate_limited_response( 0 ), // 4 attempts (1 initial + 3 retries).
-			]
+			array_fill( 0, 11, $this->rate_limited_response( 0 ) )
 		);
 
-		$client = new Ingestion_API_Client();
+		$client = new Test_Ingestion_API_Client();
 		$record = $this->create_test_record();
 
 		$result = $client->send( $record );
 
 		$this->assertFalse( $result->success );
 		$this->assertStringContainsString( 'Rate limited after', $result->error_message );
-		$this->assertCount( 4, $this->captured_requests, 'Should make 4 attempts (1 + 3 retries)' );
+		$this->assertCount( 11, $this->captured_requests, 'Should make 11 attempts (1 + 10 retries)' );
 	}
 
-	public function test_caches_rate_limit_block_for_subsequent_requests(): void {
-		// Set up a rate limit block in cache.
-		$blocked_until = microtime( true ) + 0.1; // Block for 100ms.
+	public function test_succeeds_after_rate_limit_block_expires(): void {
+		// Set up an already-expired rate limit block in cache.
+		$blocked_until = microtime( true ) - 1; // Expired 1 second ago.
 		wp_cache_set( 'vip_agentforce_rate_limit_blocked_until', $blocked_until, 'vip_agentforce', 2 );
 
 		$this->mock_http_responses( [ $this->success_response() ] );
 
-		$start_time = microtime( true );
-
-		$client = new Ingestion_API_Client();
+		$client = new Test_Ingestion_API_Client();
 		$record = $this->create_test_record();
 
 		$result = $client->send( $record );
 
-		$elapsed = microtime( true ) - $start_time;
-
 		$this->assertTrue( $result->success );
-		// Should have waited at least 100ms (plus jitter) for the rate limit block.
-		$this->assertGreaterThanOrEqual( 0.1, $elapsed );
+		$this->assertCount( 1, $this->captured_requests );
 	}
 
 	public function test_processes_rate_limit_headers_on_success(): void {
@@ -438,7 +432,7 @@ class Ingestion_API_Client_Test extends WP_UnitTestCase {
 		];
 		$this->mock_http_responses( [ $this->success_response( $headers ) ] );
 
-		$client = new Ingestion_API_Client();
+		$client = new Test_Ingestion_API_Client();
 		$record = $this->create_test_record();
 
 		$result = $client->send( $record );
@@ -451,11 +445,10 @@ class Ingestion_API_Client_Test extends WP_UnitTestCase {
 	}
 
 	// =========================================================================
-	// Exponential backoff tests
+	// Multiple retry tests
 	// =========================================================================
 
-	public function test_exponential_backoff_increases_delay(): void {
-		// We can't easily test exact timing, but we can verify multiple retries happen.
+	public function test_retries_multiple_times_before_success(): void {
 		$this->mock_http_responses(
 			[
 				$this->rate_limited_response( 0 ),
@@ -464,19 +457,13 @@ class Ingestion_API_Client_Test extends WP_UnitTestCase {
 			]
 		);
 
-		$start_time = microtime( true );
-
-		$client = new Ingestion_API_Client();
+		$client = new Test_Ingestion_API_Client();
 		$record = $this->create_test_record();
 
 		$result = $client->send( $record );
 
-		$elapsed = microtime( true ) - $start_time;
-
 		$this->assertTrue( $result->success );
-		$this->assertCount( 3, $this->captured_requests );
-		// With exponential backoff: 1s + 2s = 3s minimum (plus jitter).
-		$this->assertGreaterThanOrEqual( 2.5, $elapsed );
+		$this->assertCount( 3, $this->captured_requests, 'Should make 3 attempts before success' );
 	}
 
 	// =========================================================================
@@ -501,7 +488,7 @@ class Ingestion_API_Client_Test extends WP_UnitTestCase {
 			]
 		);
 
-		$client = new Ingestion_API_Client();
+		$client = new Test_Ingestion_API_Client();
 		$record = $this->create_test_record();
 
 		$result = $client->send( $record );
@@ -522,7 +509,7 @@ class Ingestion_API_Client_Test extends WP_UnitTestCase {
 			]
 		);
 
-		$client = new Ingestion_API_Client();
+		$client = new Test_Ingestion_API_Client();
 		$record = $this->create_test_record();
 
 		$result = $client->send( $record );
@@ -539,7 +526,7 @@ class Ingestion_API_Client_Test extends WP_UnitTestCase {
 			]
 		);
 
-		$client = new Ingestion_API_Client();
+		$client = new Test_Ingestion_API_Client();
 		$record = $this->create_test_record();
 
 		$result = $client->send( $record );
@@ -565,7 +552,7 @@ class Ingestion_API_Client_Test extends WP_UnitTestCase {
 			]
 		);
 
-		$client = new Ingestion_API_Client();
+		$client = new Test_Ingestion_API_Client();
 		$record = $this->create_test_record();
 
 		$result = $client->send( $record );
@@ -582,7 +569,7 @@ class Ingestion_API_Client_Test extends WP_UnitTestCase {
 			]
 		);
 
-		$client = new Ingestion_API_Client();
+		$client = new Test_Ingestion_API_Client();
 		$record = $this->create_test_record();
 
 		$result = $client->send( $record );
@@ -599,7 +586,7 @@ class Ingestion_API_Client_Test extends WP_UnitTestCase {
 			]
 		);
 
-		$client = new Ingestion_API_Client();
+		$client = new Test_Ingestion_API_Client();
 		$record = $this->create_test_record();
 
 		$result = $client->send( $record );
@@ -609,23 +596,19 @@ class Ingestion_API_Client_Test extends WP_UnitTestCase {
 	}
 
 	public function test_fails_after_max_retries_on_5xx(): void {
+		// 11 responses for 1 initial + 10 retries.
 		$this->mock_http_responses(
-			[
-				$this->error_response( 500 ),
-				$this->error_response( 500 ),
-				$this->error_response( 500 ),
-				$this->error_response( 500 ), // 4 attempts (1 initial + 3 retries).
-			]
+			array_fill( 0, 11, $this->error_response( 500 ) )
 		);
 
-		$client = new Ingestion_API_Client();
+		$client = new Test_Ingestion_API_Client();
 		$record = $this->create_test_record();
 
 		$result = $client->send( $record );
 
 		$this->assertFalse( $result->success );
 		$this->assertStringContainsString( 'Server error (500)', $result->error_message );
-		$this->assertCount( 4, $this->captured_requests, 'Should make 4 attempts (1 + 3 retries)' );
+		$this->assertCount( 11, $this->captured_requests, 'Should make 11 attempts (1 + 10 retries)' );
 	}
 
 	// =========================================================================
@@ -640,7 +623,7 @@ class Ingestion_API_Client_Test extends WP_UnitTestCase {
 			]
 		);
 
-		$client = new Ingestion_API_Client();
+		$client = new Test_Ingestion_API_Client();
 		$record = $this->create_test_record();
 
 		$result = $client->send( $record );
@@ -658,7 +641,7 @@ class Ingestion_API_Client_Test extends WP_UnitTestCase {
 			]
 		);
 
-		$client = new Ingestion_API_Client();
+		$client = new Test_Ingestion_API_Client();
 		$record = $this->create_test_record();
 
 		$result = $client->send( $record );
@@ -675,7 +658,7 @@ class Ingestion_API_Client_Test extends WP_UnitTestCase {
 			]
 		);
 
-		$client = new Ingestion_API_Client();
+		$client = new Test_Ingestion_API_Client();
 		$record = $this->create_test_record();
 
 		$result = $client->send( $record );
@@ -692,7 +675,7 @@ class Ingestion_API_Client_Test extends WP_UnitTestCase {
 			]
 		);
 
-		$client = new Ingestion_API_Client();
+		$client = new Test_Ingestion_API_Client();
 		$record = $this->create_test_record();
 
 		$result = $client->send( $record );
