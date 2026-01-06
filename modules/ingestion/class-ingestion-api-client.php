@@ -10,6 +10,7 @@
 namespace Automattic\VIP\Salesforce\Agentforce\Ingestion;
 
 use Automattic\VIP\Salesforce\Agentforce\Utils\Configs;
+use Automattic\VIP\Salesforce\Agentforce\Utils\Logger;
 
 /**
  * Client for making API calls to the Salesforce Data Cloud Ingestion API.
@@ -46,7 +47,7 @@ class Ingestion_API_Client {
 	/**
 	 * Request timeout in seconds.
 	 */
-	private const REQUEST_TIMEOUT = 3;
+	private const REQUEST_TIMEOUT = 10;
 
 	/**
 	 * Send a record to the Salesforce Data Cloud Ingestion API.
@@ -128,6 +129,17 @@ class Ingestion_API_Client {
 					continue;
 				}
 
+				Logger::error(
+					'ingestion-api',
+					'Rate limited after max retries',
+					[
+						'record_id'     => $record_id,
+						'attempts'      => $attempt,
+						'status_code'   => $status_code,
+						'response_body' => wp_remote_retrieve_body( $response ),
+					]
+				);
+
 				return Ingestion_API_Result::failure(
 					'Rate limited after ' . self::MAX_RETRIES . ' retries',
 					$response,
@@ -148,6 +160,17 @@ class Ingestion_API_Client {
 					continue;
 				}
 
+				Logger::error(
+					'ingestion-api',
+					'Server error after max retries',
+					[
+						'record_id'     => $record_id,
+						'attempts'      => $attempt,
+						'status_code'   => $status_code,
+						'response_body' => wp_remote_retrieve_body( $response ),
+					]
+				);
+
 				return Ingestion_API_Result::failure(
 					'Server error (' . $status_code . ') after ' . self::MAX_RETRIES . ' retries',
 					$response,
@@ -156,6 +179,17 @@ class Ingestion_API_Client {
 			}
 
 			// Non-retryable error (4xx client errors) - fail immediately.
+			// This should not happen in normal operation - indicates a bug or misconfiguration.
+			Logger::error(
+				'ingestion-api',
+				'Unexpected non-retryable error',
+				[
+					'record_id'     => $record_id,
+					'status_code'   => $status_code,
+					'response_body' => wp_remote_retrieve_body( $response ),
+				]
+			);
+
 			return Ingestion_API_Result::failure(
 				'Unexpected response code: ' . $status_code,
 				$response,

@@ -3,6 +3,7 @@
 use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_API_Client;
 use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_Post_Record;
 use Automattic\VIP\Salesforce\Agentforce\Utils\Configs;
+use Automattic\VIP\Salesforce\Agentforce\Utils\Logger;
 
 class Ingestion_API_Client_Test extends WP_UnitTestCase {
 
@@ -29,6 +30,7 @@ class Ingestion_API_Client_Test extends WP_UnitTestCase {
 
 	public function setUp(): void {
 		parent::setUp();
+		Logger::disable();
 
 		$this->prime_configs_cache(
 			[
@@ -45,6 +47,7 @@ class Ingestion_API_Client_Test extends WP_UnitTestCase {
 
 	public function tearDown(): void {
 		parent::tearDown();
+		Logger::enable();
 		remove_all_filters( 'pre_http_request' );
 		Configs::flush_cache();
 		$this->captured_requests = [];
