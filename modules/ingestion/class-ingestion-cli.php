@@ -69,11 +69,12 @@ class Ingestion_CLI extends WP_CLI_Command {
 
 		WP_CLI::log( sprintf( 'Starting sync for post types: %s', implode( ', ', $post_types ) ) );
 
-		$success_count = 0;
-		$failure_count = 0;
-		$skipped_count = 0;
-		$total_queried = 0;
-		$page          = 1;
+		$ingested_count = 0;
+		$deleted_count  = 0;
+		$skipped_count  = 0;
+		$failure_count  = 0;
+		$total_queried  = 0;
+		$page           = 1;
 
 		do {
 			$query = new \WP_Query(
@@ -97,38 +98,44 @@ class Ingestion_CLI extends WP_CLI_Command {
 			foreach ( $query->posts as $post ) {
 				++$total_queried;
 
-				// Apply the should_ingest filter - this respects all configured filters.
-				if ( ! Ingestion::should_ingest_post( $post ) ) {
-					++$skipped_count;
-					continue;
-				}
-
-				// Transform the post using the configured transformer.
-				$record = Ingestion::transform_post( $post );
-				if ( null === $record ) {
-					WP_CLI::warning( sprintf( 'Post %d: Transform failed, skipping.', $post->ID ) );
-					++$failure_count;
-					continue;
-				}
-
 				if ( $dry_run ) {
-					WP_CLI::log( sprintf( 'Post %d: Would sync "%s"', $post->ID, $post->post_title ) );
-					++$success_count;
+					// For dry run, just check if it would be ingested.
+					if ( Ingestion::should_ingest_post( $post ) ) {
+						WP_CLI::log( sprintf( 'Post %d: Would sync "%s"', $post->ID, $post->post_title ) );
+						++$ingested_count;
+					} else {
+						++$skipped_count;
+					}
 					continue;
 				}
 
-				// Mark that we're attempting to ingest this post (same as handle_save_post does).
-				update_post_meta( $post->ID, Ingestion::META_KEY_INGESTION_ATTEMPTED, time() );
+				// Use shared sync logic - handles ingest, delete, or skip.
+				$result = Ingestion::sync_post( $post );
 
-				// Send to API.
-				$result = Ingestion::send_to_api( $record );
+				switch ( $result->status ) {
+					case Sync_Result::INGESTED:
+						WP_CLI::log( sprintf( 'Post %d: Synced successfully.', $post->ID ) );
+						++$ingested_count;
+						break;
 
-				if ( $result->success ) {
-					WP_CLI::log( sprintf( 'Post %d: Synced successfully.', $post->ID ) );
-					++$success_count;
-				} else {
-					WP_CLI::warning( sprintf( 'Post %d: API error - %s', $post->ID, $result->error_message ?? 'Unknown error' ) );
-					++$failure_count;
+					case Sync_Result::DELETED:
+						WP_CLI::log( sprintf( 'Post %d: Deleted from Salesforce (no longer matches filter).', $post->ID ) );
+						++$deleted_count;
+						break;
+
+					case Sync_Result::SKIPPED:
+						++$skipped_count;
+						break;
+
+					case Sync_Result::FAILED_TRANSFORM:
+						WP_CLI::warning( sprintf( 'Post %d: Transform failed, skipping.', $post->ID ) );
+						++$failure_count;
+						break;
+
+					case Sync_Result::FAILED_API:
+						WP_CLI::warning( sprintf( 'Post %d: API error - %s', $post->ID, $result->error_message ?? 'Unknown error' ) );
+						++$failure_count;
+						break;
 				}
 			}
 
@@ -139,8 +146,9 @@ class Ingestion_CLI extends WP_CLI_Command {
 		WP_CLI::log( '' );
 		WP_CLI::log( '=== Sync Summary ===' );
 		WP_CLI::log( sprintf( 'Total posts evaluated: %d', $total_queried ) );
+		WP_CLI::log( sprintf( 'Ingested: %d', $ingested_count ) );
+		WP_CLI::log( sprintf( 'Deleted: %d', $deleted_count ) );
 		WP_CLI::log( sprintf( 'Skipped (did not pass filters): %d', $skipped_count ) );
-		WP_CLI::log( sprintf( 'Synced successfully: %d', $success_count ) );
 		WP_CLI::log( sprintf( 'Failed: %d', $failure_count ) );
 
 		if ( $dry_run ) {

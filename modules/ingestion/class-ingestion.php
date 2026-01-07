@@ -40,14 +40,30 @@ class Ingestion {
 	 * @param \WP_Post $post    Post object.
 	 */
 	public static function handle_save_post( int $post_id, \WP_Post $post ): void {
+		self::sync_post( $post );
+	}
+
+	/**
+	 * Sync a single post to Salesforce - ingest or delete as appropriate.
+	 *
+	 * This is the core sync logic used by both handle_save_post and CLI sync.
+	 * - If the post passes the filter, it will be ingested.
+	 * - If it doesn't pass but was previously ingested, it will be deleted.
+	 * - If it doesn't pass and wasn't ingested, it will be skipped.
+	 *
+	 * @param \WP_Post $post The post to sync.
+	 * @return Sync_Result The result of the sync operation.
+	 */
+	public static function sync_post( \WP_Post $post ): Sync_Result {
 		$should_ingest = self::should_ingest_post( $post );
 
 		if ( ! $should_ingest ) {
 			// If this post was previously ingested, delete it from Salesforce.
 			if ( self::was_post_ingested( $post ) ) {
 				self::delete_post_from_salesforce( $post );
+				return new Sync_Result( Sync_Result::DELETED, $post );
 			}
-			return;
+			return new Sync_Result( Sync_Result::SKIPPED, $post );
 		}
 
 		// Mark that we're attempting to ingest this post.
@@ -55,20 +71,22 @@ class Ingestion {
 		// - the filter changes later.
 		// - an ingestion succeeded despite the API returning an error
 		// - if we mark it after a successful ingestion, the marking step might have failed, and we wouldn't know it was actually ingested.
-		update_post_meta( $post_id, self::META_KEY_INGESTION_ATTEMPTED, time() );
+		update_post_meta( $post->ID, self::META_KEY_INGESTION_ATTEMPTED, time() );
 
 		$record = self::transform_post( $post );
 		if ( null === $record ) {
-			self::fire_ingestion_failure( $post_id, Ingestion_Failure::CODE_TRANSFORM_FAILED );
-			return;
+			self::fire_ingestion_failure( $post->ID, Ingestion_Failure::CODE_TRANSFORM_FAILED );
+			return new Sync_Result( Sync_Result::FAILED_TRANSFORM, $post );
 		}
 
 		$result = static::send_to_api( $record );
 
 		if ( ! $result->success ) {
-			self::fire_ingestion_failure( $post_id, Ingestion_Failure::CODE_API_ERROR, [ 'result' => $result ] );
-			return;
+			self::fire_ingestion_failure( $post->ID, Ingestion_Failure::CODE_API_ERROR, [ 'result' => $result ] );
+			return new Sync_Result( Sync_Result::FAILED_API, $post, $result->error_message );
 		}
+
+		return new Sync_Result( Sync_Result::INGESTED, $post );
 	}
 
 	/**
