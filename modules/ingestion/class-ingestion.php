@@ -26,26 +26,32 @@ class Ingestion {
 	 * Initialize the module.
 	 */
 	public static function init(): void {
-		add_action( 'save_post', [ __CLASS__, 'ingest_post' ], 10, 2 );
-		add_action( 'transition_post_status', [ __CLASS__, 'handle_post_unpublished' ], 10, 3 );
-		add_action( 'before_delete_post', [ __CLASS__, 'handle_post_deleted' ], 10, 2 );
+		add_action( 'save_post', [ __CLASS__, 'handle_save_post' ], 10, 2 );
+		add_action( 'before_delete_post', [ __CLASS__, 'handle_before_delete_post' ], 10, 2 );
 	}
 
 	/**
-	 * Attempts to ingest a post if it passes the filter.
+	 * Handle post save - ingest or delete from Salesforce as appropriate.
+	 *
+	 * If the post passes the filter, it will be ingested.
+	 * If it doesn't pass but was previously ingested, it will be deleted.
 	 *
 	 * @param int      $post_id Post ID.
 	 * @param \WP_Post $post    Post object.
 	 */
-	public static function ingest_post( int $post_id, \WP_Post $post ): void {
+	public static function handle_save_post( int $post_id, \WP_Post $post ): void {
 		$should_ingest = self::should_ingest_post( $post );
 
 		if ( ! $should_ingest ) {
+			// If this post was previously ingested, delete it from Salesforce.
+			if ( self::was_post_ingested( $post ) ) {
+				self::delete_post_from_salesforce( $post );
+			}
 			return;
 		}
 
 		// Mark that we're attempting to ingest this post.
-		// This allows us to track posts for deletion even if: 
+		// This allows us to track posts for deletion even if:
 		// - the filter changes later.
 		// - an ingestion succeeded despite the API returning an error
 		// - if we mark it after a successful ingestion, the marking step might have failed, and we wouldn't know it was actually ingested.
@@ -57,10 +63,10 @@ class Ingestion {
 			return;
 		}
 
-		$response = static::send_to_api( $record );
+		$result = static::send_to_api( $record );
 
-		if ( ! $response['success'] ) {
-			self::fire_ingestion_failure( $post_id, Ingestion_Failure::CODE_API_ERROR, [ 'response' => $response ] );
+		if ( ! $result->success ) {
+			self::fire_ingestion_failure( $post_id, Ingestion_Failure::CODE_API_ERROR, [ 'result' => $result ] );
 			return;
 		}
 	}
@@ -119,9 +125,24 @@ class Ingestion {
 	 * Send record to Salesforce Data Cloud Ingestion API.
 	 *
 	 * @param Ingestion_Post_Record $record The record to send.
-	 * @return array<string, mixed> Response with 'success' key (true/false) and error details if failed.
+	 * @return Ingestion_API_Result The API result.
 	 */
-	public static function send_to_api( Ingestion_Post_Record $record ): array {
+	public static function send_to_api( Ingestion_Post_Record $record ): Ingestion_API_Result {
+		$record_id = $record->to_array()['site_id_blog_id_post_id'];
+
+		return self::make_api_request(
+			'POST',
+			wp_json_encode( [ 'data' => [ $record->to_array() ] ] ),
+			$record_id
+		);
+	}
+
+	/**
+	 * Validate that required API configuration fields are present.
+	 *
+	 * @return string|null Error message if validation fails, null if valid.
+	 */
+	private static function validate_api_config(): ?string {
 		$config = Configs::get_config();
 
 		$fields_to_check = [
@@ -139,53 +160,73 @@ class Ingestion {
 		}
 
 		if ( ! empty( $empty_fields ) ) {
-			return [
-				'success'       => false,
-				'error_message' => 'Missing required API configuration: ' . implode( ', ', $empty_fields ),
-			];
+			return 'Missing required API configuration: ' . implode( ', ', $empty_fields );
 		}
 
+		return null;
+	}
+
+	/**
+	 * Build the Ingestion API URL.
+	 *
+	 * @return string The full API URL.
+	 */
+	private static function build_api_url(): string {
+		$config = Configs::get_config();
+
 		$base_url    = $config['ingestion_api_instance_url'] ?? '';
-		$token       = $config['ingestion_api_token'] ?? '';
 		$source_name = $config['ingestion_api_source_name'] ?? '';
 		$object_name = $config['ingestion_api_object_name'] ?? '';
 
-		$url = rtrim( $base_url, '/' ) . '/api/v1/ingest/sources/' . rawurlencode( $source_name ) . '/' . rawurlencode( $object_name );
+		return rtrim( $base_url, '/' ) . '/api/v1/ingest/sources/' . rawurlencode( $source_name ) . '/' . rawurlencode( $object_name );
+	}
 
-		$response = wp_remote_post(
+	/**
+	 * Make an API request to the Salesforce Data Cloud Ingestion API.
+	 *
+	 * @param string $method    HTTP method ('POST' or 'DELETE').
+	 * @param string $body      JSON-encoded request body.
+	 * @param string $record_id The record ID for the result.
+	 * @return Ingestion_API_Result The API result.
+	 */
+	private static function make_api_request( string $method, string $body, string $record_id ): Ingestion_API_Result {
+		$config_error = self::validate_api_config();
+		if ( null !== $config_error ) {
+			return Ingestion_API_Result::failure( $config_error, null, $record_id );
+		}
+
+		$config = Configs::get_config();
+		$token  = $config['ingestion_api_token'] ?? '';
+		$url    = self::build_api_url();
+
+		$response = wp_remote_request(
 			$url,
 			[
+				'method'  => $method,
 				'headers' => [
 					'Content-Type'  => 'application/json',
 					'Authorization' => 'Bearer ' . $token,
 				],
-				'body'    => wp_json_encode( [ 'data' => [ $record->to_array() ] ] ),
+				'body'    => $body,
 				'timeout' => 3,
 			]
 		);
 
 		if ( is_wp_error( $response ) ) {
-			return [
-				'success'       => false,
-				'error_message' => $response->get_error_message(),
-			];
+			return Ingestion_API_Result::failure( $response->get_error_message(), $response, $record_id );
 		}
 
 		$status_code = wp_remote_retrieve_response_code( $response );
 
 		if ( 202 !== $status_code ) {
-			return [
-				'success'       => false,
-				'error_message' => 'Unexpected response code: ' . $status_code,
-				'response_body' => wp_remote_retrieve_body( $response ),
-			];
+			return Ingestion_API_Result::failure(
+				'Unexpected response code: ' . $status_code,
+				$response,
+				$record_id
+			);
 		}
 
-		return [
-			'success'   => true,
-			'record_id' => $record->to_array()['site_id_blog_id_post_id'],
-			'timestamp' => gmdate( 'c' ),
-		];
+		return Ingestion_API_Result::success( $record_id, $response );
 	}
 
 	/**
@@ -244,44 +285,6 @@ class Ingestion {
 	}
 
 	/**
-	 * Handle post status transitions that result in unpublishing.
-	 *
-	 * When a post transitions from 'publish' to any other status,
-	 * we delete it from Salesforce if it was previously ingestible.
-	 *
-	 * @param string   $new_status New post status.
-	 * @param string   $old_status Old post status.
-	 * @param \WP_Post $post       Post object.
-	 */
-	public static function handle_post_unpublished( string $new_status, string $old_status, \WP_Post $post ): void {
-		// Skip revisions and autosaves.
-		if ( wp_is_post_revision( $post ) || wp_is_post_autosave( $post ) ) {
-			return;
-		}
-
-		// Only act if transitioning FROM 'publish' to a non-publish status.
-		if ( 'publish' !== $old_status || 'publish' === $new_status ) {
-			return;
-		}
-
-		// Check if the post was previously ingested (has tracking meta).
-		if ( ! self::was_post_ingestible( $post ) ) {
-			Logger::info(
-				'ingestion',
-				'Post was not previously ingested, skipping deletion',
-				[
-					'post_id'    => $post->ID,
-					'old_status' => $old_status,
-					'new_status' => $new_status,
-				]
-			);
-			return;
-		}
-
-		self::delete_post_from_salesforce( $post, 'unpublished' );
-	}
-
-	/**
 	 * Handle permanent post deletion.
 	 *
 	 * When a published post is permanently deleted, we delete it from Salesforce
@@ -290,36 +293,18 @@ class Ingestion {
 	 * @param int      $post_id Post ID.
 	 * @param \WP_Post $post    Post object.
 	 */
-	public static function handle_post_deleted( int $post_id, \WP_Post $post ): void {
-		// Skip revisions and autosaves.
-		if ( wp_is_post_revision( $post ) || wp_is_post_autosave( $post ) ) {
-			return;
-		}
-
+	public static function handle_before_delete_post( int $post_id, \WP_Post $post ): void {
 		// Only act if the post was published (otherwise it wouldn't be in Salesforce).
 		if ( 'publish' !== $post->post_status ) {
-			Logger::info(
-				'ingestion',
-				'Deleted post was not published, skipping Salesforce deletion',
-				[
-					'post_id'     => $post_id,
-					'post_status' => $post->post_status,
-				]
-			);
 			return;
 		}
 
 		// Check if the post was previously ingested (has tracking meta).
-		if ( ! self::was_post_ingestible( $post ) ) {
-			Logger::info(
-				'ingestion',
-				'Deleted post was not previously ingested, skipping deletion',
-				[ 'post_id' => $post_id ]
-			);
+		if ( ! self::was_post_ingested( $post ) ) {
 			return;
 		}
 
-		self::delete_post_from_salesforce( $post, 'deleted' );
+		self::delete_post_from_salesforce( $post );
 	}
 
 	/**
@@ -328,11 +313,17 @@ class Ingestion {
 	 * This checks for the ingestion meta first - if it exists, we know we attempted
 	 * to ingest this post. This is more reliable than checking the filter, as filters
 	 * can change over time.
+	 * 
+	 * Post revisions and autosaves are never considered ingested, even if they have the meta.
 	 *
 	 * @param \WP_Post $post The post to check.
 	 * @return bool Whether the post was previously ingested.
 	 */
-	private static function was_post_ingestible( \WP_Post $post ): bool {
+	private static function was_post_ingested( \WP_Post $post ): bool {
+		if ( wp_is_post_revision( $post ) || wp_is_post_autosave( $post ) ) {
+			return false;
+		}
+
 		// Check if we have a record of attempting to ingest this post.
 		$ingestion_attempted = get_post_meta( $post->ID, self::META_KEY_INGESTION_ATTEMPTED, true );
 
@@ -346,79 +337,35 @@ class Ingestion {
 	/**
 	 * Delete a post from Salesforce.
 	 *
-	 * @param \WP_Post $post   The post to delete.
-	 * @param string   $reason The reason for deletion ('unpublished' or 'deleted').
+	 * @param \WP_Post $post The post to delete.
 	 */
-	private static function delete_post_from_salesforce( \WP_Post $post, string $reason ): void {
+	private static function delete_post_from_salesforce( \WP_Post $post ): void {
 		$record_id = self::build_record_id( $post );
+		$result    = static::delete_from_api( $post );
 
-		Logger::info(
-			'ingestion',
-			'Attempting to delete post from Salesforce',
-			[
-				'post_id'   => $post->ID,
-				'record_id' => $record_id,
-				'reason'    => $reason,
-			]
-		);
-
-		$response = static::delete_from_api( $post );
-
-		if ( ! $response['success'] ) {
-			Logger::info(
-				'ingestion',
-				'Delete API call failed',
-				[
-					'post_id'   => $post->ID,
-					'record_id' => $record_id,
-					'response'  => $response,
-				]
-			);
-
+		if ( ! $result->success ) {
 			self::fire_deletion_failure(
-				new Deletion_Failure(
-					[
-						'failure_code' => Deletion_Failure::CODE_DELETE_API_ERROR,
-						'post'         => $post,
-						'record_id'    => $record_id,
-						'error'        => new \WP_Error(
-							'vip_agentforce_delete_api_error',
-							$response['error_message'] ?? 'Delete API call failed',
-							[
-								'post_id'   => $post->ID,
-								'record_id' => $record_id,
-								'response'  => $response,
-								// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_debug_backtrace -- Intentional for error tracing.
-								'backtrace' => debug_backtrace( DEBUG_BACKTRACE_IGNORE_ARGS, 5 ),
-							]
-						),
-					]
-				)
+				$post->ID,
+				$record_id,
+				Deletion_Failure::CODE_DELETE_API_ERROR,
+				[
+					'result' => $result,
+				]
 			);
 			return;
 		}
 
 		// Clear the ingestion tracking meta since the post is no longer in Salesforce.
 		delete_post_meta( $post->ID, self::META_KEY_INGESTION_ATTEMPTED );
-
-		Logger::info(
-			'ingestion',
-			'Post deleted from Salesforce successfully',
-			[
-				'post_id'   => $post->ID,
-				'record_id' => $record_id,
-				'reason'    => $reason,
-			]
-		);
 	}
 
 	/**
 	 * Delete a post record from Salesforce API.
 	 *
 	 * @param \WP_Post $post The post to delete.
-	 * @return array<string, mixed> Response with 'success' key (true/false) and error details if failed.
+	 * @return Ingestion_API_Result The API result.
 	 */
-	public static function delete_from_api( \WP_Post $post ): array {
+	public static function delete_from_api( \WP_Post $post ): Ingestion_API_Result {
 		$record_id = self::build_record_id( $post );
 
 		return self::delete_record_id_from_api( $record_id );
@@ -431,15 +378,14 @@ class Ingestion {
 	 * where the post may not exist in WordPress.
 	 *
 	 * @param string $record_id The record ID in format site_id_blog_id_post_id.
-	 * @return array<string, mixed> Response with 'success' key (true/false) and error details if failed.
+	 * @return Ingestion_API_Result The API result.
 	 */
-	public static function delete_record_id_from_api( string $record_id ): array {
-		// TODO: Implement actual Salesforce delete API call.
-		return [
-			'success'   => true,
-			'record_id' => $record_id,
-			'timestamp' => gmdate( 'c' ),
-		];
+	public static function delete_record_id_from_api( string $record_id ): Ingestion_API_Result {
+		return self::make_api_request(
+			'DELETE',
+			wp_json_encode( [ 'ids' => [ $record_id ] ] ),
+			$record_id
+		);
 	}
 
 	/**
@@ -459,9 +405,43 @@ class Ingestion {
 	/**
 	 * Fire the deletion failure action.
 	 *
-	 * @param Deletion_Failure $failure The deletion failure.
+	 * @param int                  $post_id      The post ID that failed deletion.
+	 * @param string               $record_id    The Salesforce record ID.
+	 * @param string               $failure_code One of the Deletion_Failure::CODE_* constants.
+	 * @param array<string, mixed> $details      Optional additional details about the failure.
 	 */
-	private static function fire_deletion_failure( Deletion_Failure $failure ): void {
+	private static function fire_deletion_failure( int $post_id, string $record_id, string $failure_code, array $details = [] ): void {
+		$post = get_post( $post_id );
+
+		$error_codes = [
+			Deletion_Failure::CODE_DELETE_API_ERROR => 'vip_agentforce_delete_api_error',
+		];
+
+		$error_messages = [
+			Deletion_Failure::CODE_DELETE_API_ERROR => 'Delete API call failed',
+		];
+
+		$error_data = array_merge(
+			[
+				'post_id'   => $post_id,
+				'record_id' => $record_id,
+			],
+			$details
+		);
+
+		$failure = new Deletion_Failure(
+			[
+				'failure_code' => $failure_code,
+				'post'         => $post,
+				'record_id'    => $record_id,
+				'error'        => new \WP_Error(
+					$error_codes[ $failure_code ] ?? 'vip_agentforce_deletion_failed',
+					$error_messages[ $failure_code ] ?? 'Deletion failed',
+					$error_data
+				),
+			]
+		);
+
 		/**
 		 * Fires when a post deletion from Salesforce fails.
 		 *
