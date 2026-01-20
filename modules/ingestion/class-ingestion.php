@@ -299,7 +299,7 @@ class Ingestion {
 		 * @param \WP_Post $post          The post being evaluated.
 		 * @return bool Whether to ingest the post.
 		 */
-		return (bool) apply_filters( 'vip_agentforce_should_ingest_post', false, $post );
+		return (bool) apply_filters( 'vip_agentforce_should_ingest_post', true, $post );
 	}
 
 	/**
@@ -337,7 +337,7 @@ class Ingestion {
 	 * @param \WP_Post $post The post to check.
 	 * @return bool Whether the post was previously ingested.
 	 */
-	private static function was_post_ingested( \WP_Post $post ): bool {
+	public static function was_post_ingested( \WP_Post $post ): bool {
 		if ( wp_is_post_revision( $post ) || wp_is_post_autosave( $post ) ) {
 			return false;
 		}

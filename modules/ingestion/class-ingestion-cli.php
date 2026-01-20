@@ -24,9 +24,6 @@ class Ingestion_CLI extends WP_CLI_Command {
 	 *
 	 * ## OPTIONS
 	 *
-	 * [--dry-run]
-	 * : Preview what would be synced without actually sending to Salesforce.
-	 *
 	 * [--batch-size=<number>]
 	 * : Number of posts to process per batch. Default: 100.
 	 *
@@ -34,9 +31,6 @@ class Ingestion_CLI extends WP_CLI_Command {
 	 * : Limit sync to a specific post type. Default: all public post types.
 	 *
 	 * ## EXAMPLES
-	 *
-	 *     # Preview what would be synced
-	 *     wp vip-agentforce ingestion sync --dry-run
 	 *
 	 *     # Sync all eligible posts
 	 *     wp vip-agentforce ingestion sync
@@ -50,7 +44,6 @@ class Ingestion_CLI extends WP_CLI_Command {
 	 * @param array<string, string> $assoc_args Associative arguments.
 	 */
 	public function sync( array $args, array $assoc_args ): void {
-		$dry_run    = isset( $assoc_args['dry-run'] );
 		$batch_size = (int) ( $assoc_args['batch-size'] ?? 100 );
 		$post_type  = $assoc_args['post-type'] ?? null;
 
@@ -62,10 +55,6 @@ class Ingestion_CLI extends WP_CLI_Command {
 
 		// Determine post types to query.
 		$post_types = $post_type ? [ $post_type ] : get_post_types( [ 'public' => true ] );
-
-		if ( $dry_run ) {
-			WP_CLI::log( 'DRY RUN: No changes will be made.' );
-		}
 
 		WP_CLI::log( sprintf( 'Starting sync for post types: %s', implode( ', ', $post_types ) ) );
 
@@ -97,17 +86,6 @@ class Ingestion_CLI extends WP_CLI_Command {
 
 			foreach ( $query->posts as $post ) {
 				++$total_queried;
-
-				if ( $dry_run ) {
-					// For dry run, just check if it would be ingested.
-					if ( Ingestion::should_ingest_post( $post ) ) {
-						WP_CLI::log( sprintf( 'Post %d: Would sync "%s"', $post->ID, $post->post_title ) );
-						++$ingested_count;
-					} else {
-						++$skipped_count;
-					}
-					continue;
-				}
 
 				// Use shared sync logic - handles ingest, delete, or skip.
 				$result = Ingestion::sync_post( $post );
@@ -151,9 +129,7 @@ class Ingestion_CLI extends WP_CLI_Command {
 		WP_CLI::log( sprintf( 'Skipped (did not pass filters): %d', $skipped_count ) );
 		WP_CLI::log( sprintf( 'Failed: %d', $failure_count ) );
 
-		if ( $dry_run ) {
-			WP_CLI::success( 'Dry run complete. No changes were made.' );
-		} elseif ( $failure_count > 0 ) {
+		if ( $failure_count > 0 ) {
 			WP_CLI::warning( sprintf( 'Sync completed with %d failure(s).', $failure_count ) );
 		} else {
 			WP_CLI::success( 'Sync completed successfully.' );
