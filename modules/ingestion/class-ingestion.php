@@ -200,6 +200,19 @@ class Ingestion {
 	}
 
 	/**
+	 * Get the API request timeout in seconds.
+	 *
+	 * Uses a longer timeout when running in WP-CLI context for bulk operations.
+	 *
+	 * @return int Timeout in seconds.
+	 */
+	private static function get_api_timeout(): int {
+		$default = ( defined( 'WP_CLI' ) && WP_CLI ) ? 15 : 3;
+
+		return (int) apply_filters( 'vip_agentforce_api_timeout', $default );
+	}
+
+	/**
 	 * Make an API request to the Salesforce Data Cloud Ingestion API.
 	 *
 	 * @param string $method    HTTP method ('POST' or 'DELETE').
@@ -226,7 +239,7 @@ class Ingestion {
 					'Authorization' => 'Bearer ' . $token,
 				],
 				'body'    => $body,
-				'timeout' => 3,
+				'timeout' => self::get_api_timeout(),
 			]
 		);
 
@@ -299,7 +312,7 @@ class Ingestion {
 		 * @param \WP_Post $post          The post being evaluated.
 		 * @return bool Whether to ingest the post.
 		 */
-		return (bool) apply_filters( 'vip_agentforce_should_ingest_post', true, $post );
+		return (bool) apply_filters( 'vip_agentforce_should_ingest_post', false, $post );
 	}
 
 	/**
@@ -331,7 +344,7 @@ class Ingestion {
 	 * This checks for the ingestion meta first - if it exists, we know we attempted
 	 * to ingest this post. This is more reliable than checking the filter, as filters
 	 * can change over time.
-	 * 
+	 *
 	 * Post revisions and autosaves are never considered ingested, even if they have the meta.
 	 *
 	 * @param \WP_Post $post The post to check.
