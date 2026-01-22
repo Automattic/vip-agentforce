@@ -68,6 +68,7 @@ require_once __DIR__ . '/modules/ingestion/class-sync-result.php';
 require_once __DIR__ . '/modules/ingestion/class-ingestion.php';
 require_once __DIR__ . '/modules/ingestion/class-ingestion-failure.php';
 require_once __DIR__ . '/modules/ingestion/class-deletion-failure.php';
+require_once __DIR__ . '/modules/ingestion/class-ingestion-config-filters.php';
 
 // Load WP-CLI commands.
 if ( defined( 'WP_CLI' ) && WP_CLI ) {

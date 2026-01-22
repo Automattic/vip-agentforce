@@ -52,6 +52,8 @@ class Configs {
 	 *     ingestion_api_endpoint?: string,
 	 *     ingestion_api_source_name?: string,
 	 *     ingestion_api_object_name?: string,
+	 *     ingestion_api_sync_all_posts?: bool,
+	 *     ingestion_api_categories?: string[],
 	 *     agentforce_js_sdk_url?: string,
 	 *     agentforce_js_sdk_activated?: bool
 	 * } The module configs. Returns an empty array if configs are not found, not defined, or if JSON parsing fails.
@@ -107,5 +109,55 @@ class Configs {
 
 	public static function is_production_env(): bool {
 		return defined( 'VIP_GO_APP_ENVIRONMENT' ) && 'production' === constant( 'VIP_GO_APP_ENVIRONMENT' );
+	}
+
+	/**
+	 * Returns whether all posts should be synced to the Ingestion API.
+	 *
+	 * When true, all published posts will be ingested regardless of other filters.
+	 *
+	 * @return bool
+	 */
+	public static function should_sync_all_posts(): bool {
+		$config = self::get_config();
+
+		if ( ! array_key_exists( 'ingestion_api_sync_all_posts', $config ) ) {
+			return false;
+		}
+
+		$sync_all = filter_var( $config['ingestion_api_sync_all_posts'], FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE );
+		return null === $sync_all ? false : $sync_all;
+	}
+
+	/**
+	 * Returns the list of category slugs or IDs to sync to the Ingestion API.
+	 *
+	 * Posts in any of these categories will be ingested.
+	 *
+	 * @return string[] Array of category slugs or IDs.
+	 */
+	public static function get_ingestion_categories(): array {
+		$config = self::get_config();
+
+		if ( ! array_key_exists( 'ingestion_api_categories', $config ) ) {
+			return [];
+		}
+
+		$categories = $config['ingestion_api_categories'];
+
+		if ( ! is_array( $categories ) ) {
+			return [];
+		}
+
+		// Filter out non-string/int values and ensure strings.
+		$result = [];
+		foreach ( $categories as $cat ) {
+			if ( is_int( $cat ) ) {
+				$result[] = (string) $cat;
+			} elseif ( is_string( $cat ) && '' !== $cat ) {
+				$result[] = $cat;
+			}
+		}
+		return $result;
 	}
 }
