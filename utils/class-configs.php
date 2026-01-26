@@ -130,12 +130,12 @@ class Configs {
 	}
 
 	/**
-	 * Returns the list of category names or IDs to sync to the Ingestion API.
+	 * Returns the list of category names to sync to the Ingestion API.
 	 *
 	 * Posts in any of these categories will be ingested.
 	 * Uses category name (not slug) for human readability and resilience to slug changes.
 	 *
-	 * @return string[] Array of category names or IDs.
+	 * @return string[] Array of category names.
 	 */
 	public static function get_ingestion_categories(): array {
 		$config = self::get_config();

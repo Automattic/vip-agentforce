@@ -178,18 +178,6 @@ class Ingestion_Config_Filters_Test extends WP_UnitTestCase {
 		$this->assertFalse( Ingestion::should_ingest_post( $post ) );
 	}
 
-	public function test_categories_filter_matches_by_category_id(): void {
-		$category = wp_insert_term( 'News', 'category' );
-		$this->prime_configs_cache( [ 'ingestion_api_categories' => [ (string) $category['term_id'] ] ] );
-
-		Ingestion_Config_Filters::init();
-
-		$post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
-		wp_set_post_categories( $post->ID, [ $category['term_id'] ] );
-
-		$this->assertTrue( Ingestion::should_ingest_post( $post ) );
-	}
-
 	public function test_categories_filter_matches_any_configured_category(): void {
 		$category1 = wp_insert_term( 'News', 'category' );
 		$category2 = wp_insert_term( 'Blog', 'category' );

@@ -16,7 +16,7 @@ use Automattic\VIP\Salesforce\Agentforce\Utils\Configs;
  *
  * Supports:
  * - `ingestion_api_sync_all_posts`: When true, all published posts will be ingested.
- * - `ingestion_api_categories`: Array of category names/IDs - posts in any of these categories will be ingested.
+ * - `ingestion_api_categories`: Array of category names - posts in any of these categories will be ingested.
  */
 class Ingestion_Config_Filters {
 	/**
@@ -82,10 +82,9 @@ class Ingestion_Config_Filters {
 
 		// Check if any post category matches the configured categories.
 		foreach ( $post_categories as $category ) {
-			// Match by name or ID. Using name (not slug) so config is human-readable
+			// Match by name (not slug) so config is human-readable
 			// and survives slug changes as long as the display name stays the same.
-			if ( in_array( $category->name, $configured_categories, true ) ||
-				in_array( (string) $category->term_id, $configured_categories, true ) ) {
+			if ( in_array( $category->name, $configured_categories, true ) ) {
 				return true;
 			}
 		}
