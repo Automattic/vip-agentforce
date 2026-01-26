@@ -364,11 +364,14 @@ class Ingestion_Config_Filters_Test extends WP_UnitTestCase {
 	}
 
 	// =========================================================================
-	// End-to-end tests: sync_all_posts triggers actual ingestion
+	// Tests: sync_all_posts triggers actual ingestion
 	// =========================================================================
 
-	public function test_e2e_sync_all_posts_triggers_ingestion_on_post_save(): void {
+	public function test_sync_all_posts_registers_filter_and_triggers_ingestion(): void {
 		$this->setup_full_ingestion_pipeline( [ 'ingestion_api_sync_all_posts' => true ] );
+
+		// Verify filter was registered.
+		$this->assertNotFalse( has_filter( 'vip_agentforce_should_ingest_post' ), 'Filter should be registered when sync_all_posts is enabled.' );
 
 		// Create and publish a post - should trigger ingestion via save_post hook.
 		$this->factory()->post->create_and_get(
@@ -383,8 +386,11 @@ class Ingestion_Config_Filters_Test extends WP_UnitTestCase {
 		$this->assertCount( 1, $requests, 'Exactly 1 ingestion API call should be made when sync_all_posts is enabled.' );
 	}
 
-	public function test_e2e_sync_all_posts_disabled_does_not_trigger_ingestion(): void {
+	public function test_sync_all_posts_disabled_does_not_register_filter(): void {
 		$this->setup_full_ingestion_pipeline( [ 'ingestion_api_sync_all_posts' => false ] );
+
+		// Verify no should_ingest filter was registered (only transform filter from setup).
+		$this->assertFalse( has_filter( 'vip_agentforce_should_ingest_post' ), 'No should_ingest filter should be registered when sync_all_posts is disabled.' );
 
 		// Create and publish a post.
 		$this->factory()->post->create_and_get(
@@ -394,21 +400,24 @@ class Ingestion_Config_Filters_Test extends WP_UnitTestCase {
 			]
 		);
 
-		// Verify no API call was made (no filter registered).
+		// Verify no API call was made.
 		$requests = $this->get_ingestion_requests();
 		$this->assertCount( 0, $requests, 'No ingestion should happen when sync_all_posts is disabled and no other filter.' );
 	}
 
 	// =========================================================================
-	// End-to-end tests: category filter triggers actual ingestion
+	// Tests: category filter triggers actual ingestion
 	// =========================================================================
 
-	public function test_e2e_category_filter_triggers_ingestion_for_matching_post(): void {
+	public function test_category_filter_registers_and_triggers_ingestion_for_matching_post(): void {
 		$category = wp_insert_term( 'News', 'category' );
 		$this->setup_full_ingestion_pipeline( [ 'ingestion_api_categories' => [ 'news' ] ] );
 
+		// Verify filter was registered.
+		$this->assertNotFalse( has_filter( 'vip_agentforce_should_ingest_post' ), 'Filter should be registered when categories are configured.' );
+
 		// Create post with matching category.
-		$post = $this->factory()->post->create_and_get(
+		$this->factory()->post->create_and_get(
 			[
 				'post_status'   => 'publish',
 				'post_title'    => 'News Article',
@@ -421,7 +430,7 @@ class Ingestion_Config_Filters_Test extends WP_UnitTestCase {
 		$this->assertCount( 1, $requests, 'Post with matching category should be ingested.' );
 	}
 
-	public function test_e2e_category_filter_does_not_ingest_non_matching_post(): void {
+	public function test_category_filter_does_not_ingest_non_matching_post(): void {
 		wp_insert_term( 'News', 'category' );
 		$sports = wp_insert_term( 'Sports', 'category' );
 		$this->setup_full_ingestion_pipeline( [ 'ingestion_api_categories' => [ 'news' ] ] );
@@ -440,7 +449,7 @@ class Ingestion_Config_Filters_Test extends WP_UnitTestCase {
 		$this->assertCount( 0, $requests, 'Post without matching category should not be ingested.' );
 	}
 
-	public function test_e2e_category_filter_triggers_when_category_added_to_existing_post(): void {
+	public function test_category_filter_triggers_when_category_added_to_existing_post(): void {
 		$category = wp_insert_term( 'News', 'category' );
 		$this->setup_full_ingestion_pipeline( [ 'ingestion_api_categories' => [ 'news' ] ] );
 
@@ -465,10 +474,10 @@ class Ingestion_Config_Filters_Test extends WP_UnitTestCase {
 	}
 
 	// =========================================================================
-	// End-to-end tests: sync_all_posts precedence
+	// Tests: sync_all_posts precedence
 	// =========================================================================
 
-	public function test_e2e_sync_all_posts_ingests_post_regardless_of_category(): void {
+	public function test_sync_all_posts_ingests_post_regardless_of_category(): void {
 		wp_insert_term( 'News', 'category' );
 		$sports = wp_insert_term( 'Sports', 'category' );
 		$this->setup_full_ingestion_pipeline(
