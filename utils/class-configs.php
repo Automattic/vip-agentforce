@@ -132,27 +132,13 @@ class Configs {
 	 * @return string[] Array of category names.
 	 */
 	public static function get_ingestion_categories(): array {
-		$config = self::get_config();
-
-		if ( ! array_key_exists( 'ingestion_api_categories', $config ) ) {
-			return [];
-		}
-
-		$categories = $config['ingestion_api_categories'];
+		$categories = self::get_config()['ingestion_api_categories'] ?? [];
 
 		if ( ! is_array( $categories ) ) {
 			return [];
 		}
 
-		// Filter out non-string/int values and ensure strings.
-		$result = [];
-		foreach ( $categories as $cat ) {
-			if ( is_int( $cat ) ) {
-				$result[] = (string) $cat;
-			} elseif ( is_string( $cat ) && '' !== $cat ) {
-				$result[] = $cat;
-			}
-		}
-		return $result;
+		// Filter to non-empty strings only.
+		return array_values( array_filter( $categories, fn( $cat ) => is_string( $cat ) && '' !== $cat ) );
 	}
 }

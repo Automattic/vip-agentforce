@@ -93,12 +93,6 @@ class Ingestion_Config_Filters_Test extends WP_UnitTestCase {
 		$this->assertSame( [ 'News', 'Blog' ], Configs::get_ingestion_categories() );
 	}
 
-	public function test_get_ingestion_categories_converts_int_ids_to_strings(): void {
-		$this->prime_configs_cache( [ 'ingestion_api_categories' => [ 1, 2, 'News' ] ] );
-
-		$this->assertSame( [ '1', '2', 'News' ], Configs::get_ingestion_categories() );
-	}
-
 	public function test_get_ingestion_categories_returns_empty_for_non_array(): void {
 		$this->prime_configs_cache( [ 'ingestion_api_categories' => 'not-an-array' ] );
 
