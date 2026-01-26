@@ -41,13 +41,13 @@ class Ingestion_Config_Filters {
 	 *
 	 * Returns true if the post is in any of the configured categories.
 	 *
-	 * @param bool     $should_ingest Current filter value.
-	 * @param \WP_Post $post          The post being evaluated.
+	 * @param bool|null $should_ingest Current filter value. Null means no filter has decided yet.
+	 * @param \WP_Post  $post          The post being evaluated.
 	 * @return bool Whether to ingest the post.
 	 */
-	public static function filter_by_categories( bool $should_ingest, \WP_Post $post ): bool {
+	public static function filter_by_categories( ?bool $should_ingest, \WP_Post $post ): bool {
 		// If already approved by another filter, keep it.
-		if ( $should_ingest ) {
+		if ( true === $should_ingest ) {
 			return true;
 		}
 

@@ -53,7 +53,7 @@ class Configs {
 	 *     ingestion_api_source_name?: string,
 	 *     ingestion_api_object_name?: string,
 	 *     ingestion_api_sync_all_posts?: bool,
-	 *     ingestion_api_categories?: string[],
+	 *     ingestion_api_categories?: array<mixed>,
 	 *     agentforce_js_sdk_url?: string,
 	 *     agentforce_js_sdk_activated?: bool
 	 * } The module configs. Returns an empty array if configs are not found, not defined, or if JSON parsing fails.
@@ -149,7 +149,15 @@ class Configs {
 			return [];
 		}
 
-		// Filter out empty strings.
-		return array_values( array_filter( $categories, fn( $cat ) => '' !== $cat ) );
+		// Filter out non-string/int values and ensure strings.
+		$result = [];
+		foreach ( $categories as $cat ) {
+			if ( is_int( $cat ) ) {
+				$result[] = (string) $cat;
+			} elseif ( is_string( $cat ) && '' !== $cat ) {
+				$result[] = $cat;
+			}
+		}
+		return $result;
 	}
 }

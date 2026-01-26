@@ -308,11 +308,13 @@ class Ingestion {
 		/**
 		 * Filter whether a post should be ingested into Salesforce.
 		 *
-		 * @param bool     $should_ingest Default false - must explicitly return true to ingest.
-		 * @param \WP_Post $post          The post being evaluated.
+		 * @param bool|null $should_ingest Default null indicates no filter has decided yet.
+		 *                                 Filters can check for null to see if a prior filter
+		 *                                 already made a decision, useful for conditional overrides.
+		 * @param \WP_Post  $post          The post being evaluated.
 		 * @return bool Whether to ingest the post.
 		 */
-		return (bool) apply_filters( 'vip_agentforce_should_ingest_post', false, $post );
+		return (bool) apply_filters( 'vip_agentforce_should_ingest_post', null, $post );
 	}
 
 	/**
