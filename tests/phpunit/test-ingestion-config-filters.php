@@ -94,15 +94,15 @@ class Ingestion_Config_Filters_Test extends WP_UnitTestCase {
 	}
 
 	public function test_get_ingestion_categories_returns_categories_array(): void {
-		$this->prime_configs_cache( [ 'ingestion_api_categories' => [ 'news', 'blog' ] ] );
+		$this->prime_configs_cache( [ 'ingestion_api_categories' => [ 'News', 'Blog' ] ] );
 
-		$this->assertSame( [ 'news', 'blog' ], Configs::get_ingestion_categories() );
+		$this->assertSame( [ 'News', 'Blog' ], Configs::get_ingestion_categories() );
 	}
 
 	public function test_get_ingestion_categories_converts_int_ids_to_strings(): void {
-		$this->prime_configs_cache( [ 'ingestion_api_categories' => [ 1, 2, 'news' ] ] );
+		$this->prime_configs_cache( [ 'ingestion_api_categories' => [ 1, 2, 'News' ] ] );
 
-		$this->assertSame( [ '1', '2', 'news' ], Configs::get_ingestion_categories() );
+		$this->assertSame( [ '1', '2', 'News' ], Configs::get_ingestion_categories() );
 	}
 
 	public function test_get_ingestion_categories_returns_empty_for_non_array(): void {
@@ -115,16 +115,16 @@ class Ingestion_Config_Filters_Test extends WP_UnitTestCase {
 		$this->prime_configs_cache(
 			[
 				'ingestion_api_categories' => [
-					'news',
+					'News',
 					null,
 					'',
 					[ 'nested' ],
-					'blog',
+					'Blog',
 				],
 			]
 		);
 
-		$this->assertSame( [ 'news', 'blog' ], Configs::get_ingestion_categories() );
+		$this->assertSame( [ 'News', 'Blog' ], Configs::get_ingestion_categories() );
 	}
 
 	// =========================================================================
@@ -155,7 +155,7 @@ class Ingestion_Config_Filters_Test extends WP_UnitTestCase {
 
 	public function test_init_registers_categories_filter_when_configured(): void {
 		$category = wp_insert_term( 'News', 'category' );
-		$this->prime_configs_cache( [ 'ingestion_api_categories' => [ 'news' ] ] );
+		$this->prime_configs_cache( [ 'ingestion_api_categories' => [ 'News' ] ] );
 
 		Ingestion_Config_Filters::init();
 
@@ -168,7 +168,7 @@ class Ingestion_Config_Filters_Test extends WP_UnitTestCase {
 	public function test_categories_filter_rejects_post_without_matching_category(): void {
 		$category       = wp_insert_term( 'News', 'category' );
 		$other_category = wp_insert_term( 'Sports', 'category' );
-		$this->prime_configs_cache( [ 'ingestion_api_categories' => [ 'news' ] ] );
+		$this->prime_configs_cache( [ 'ingestion_api_categories' => [ 'News' ] ] );
 
 		Ingestion_Config_Filters::init();
 
@@ -193,7 +193,7 @@ class Ingestion_Config_Filters_Test extends WP_UnitTestCase {
 	public function test_categories_filter_matches_any_configured_category(): void {
 		$category1 = wp_insert_term( 'News', 'category' );
 		$category2 = wp_insert_term( 'Blog', 'category' );
-		$this->prime_configs_cache( [ 'ingestion_api_categories' => [ 'news', 'blog' ] ] );
+		$this->prime_configs_cache( [ 'ingestion_api_categories' => [ 'News', 'Blog' ] ] );
 
 		Ingestion_Config_Filters::init();
 
@@ -206,7 +206,7 @@ class Ingestion_Config_Filters_Test extends WP_UnitTestCase {
 
 	public function test_categories_filter_returns_false_for_post_without_categories(): void {
 		wp_insert_term( 'News', 'category' );
-		$this->prime_configs_cache( [ 'ingestion_api_categories' => [ 'news' ] ] );
+		$this->prime_configs_cache( [ 'ingestion_api_categories' => [ 'News' ] ] );
 
 		Ingestion_Config_Filters::init();
 
@@ -245,7 +245,7 @@ class Ingestion_Config_Filters_Test extends WP_UnitTestCase {
 
 	public function test_categories_filter_respects_prior_rejection(): void {
 		$category = wp_insert_term( 'News', 'category' );
-		$this->prime_configs_cache( [ 'ingestion_api_categories' => [ 'news' ] ] );
+		$this->prime_configs_cache( [ 'ingestion_api_categories' => [ 'News' ] ] );
 
 		// Add a filter that returns false first.
 		add_filter( 'vip_agentforce_should_ingest_post', '__return_false', 5 );
@@ -260,7 +260,7 @@ class Ingestion_Config_Filters_Test extends WP_UnitTestCase {
 	}
 
 	public function test_categories_filter_does_not_blindly_trust_prior_approval(): void {
-		$this->prime_configs_cache( [ 'ingestion_api_categories' => [ 'news' ] ] );
+		$this->prime_configs_cache( [ 'ingestion_api_categories' => [ 'News' ] ] );
 
 		// Add a filter that returns true first.
 		add_filter( 'vip_agentforce_should_ingest_post', '__return_true', 5 );
@@ -440,7 +440,7 @@ class Ingestion_Config_Filters_Test extends WP_UnitTestCase {
 
 	public function test_category_filter_registers_and_triggers_ingestion_for_matching_post(): void {
 		$category = wp_insert_term( 'News', 'category' );
-		$this->setup_full_ingestion_pipeline( [ 'ingestion_api_categories' => [ 'news' ] ] );
+		$this->setup_full_ingestion_pipeline( [ 'ingestion_api_categories' => [ 'News' ] ] );
 
 		// Verify filter was registered.
 		$this->assertNotFalse( has_filter( 'vip_agentforce_should_ingest_post' ), 'Filter should be registered when categories are configured.' );
@@ -462,7 +462,7 @@ class Ingestion_Config_Filters_Test extends WP_UnitTestCase {
 	public function test_category_filter_does_not_ingest_non_matching_post(): void {
 		wp_insert_term( 'News', 'category' );
 		$sports = wp_insert_term( 'Sports', 'category' );
-		$this->setup_full_ingestion_pipeline( [ 'ingestion_api_categories' => [ 'news' ] ] );
+		$this->setup_full_ingestion_pipeline( [ 'ingestion_api_categories' => [ 'News' ] ] );
 
 		// Create post with non-matching category.
 		$this->factory()->post->create_and_get(
@@ -480,7 +480,7 @@ class Ingestion_Config_Filters_Test extends WP_UnitTestCase {
 
 	public function test_category_filter_triggers_when_category_added_to_existing_post(): void {
 		$category = wp_insert_term( 'News', 'category' );
-		$this->setup_full_ingestion_pipeline( [ 'ingestion_api_categories' => [ 'news' ] ] );
+		$this->setup_full_ingestion_pipeline( [ 'ingestion_api_categories' => [ 'News' ] ] );
 
 		// Create post without matching category (won't be ingested).
 		$post = $this->factory()->post->create_and_get(
