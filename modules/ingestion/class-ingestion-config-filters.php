@@ -25,7 +25,7 @@ class Ingestion_Config_Filters {
 	public static function init(): void {
 		// Register sync_all_posts filter if enabled.
 		if ( Configs::should_sync_all_posts() ) {
-			add_filter( 'vip_agentforce_should_ingest_post', '__return_true' );
+			add_filter( 'vip_agentforce_should_ingest_post', [ __CLASS__, 'filter_sync_all_posts' ] );
 			return; // If syncing all posts, no need to check categories.
 		}
 
@@ -34,6 +34,25 @@ class Ingestion_Config_Filters {
 		if ( ! empty( $categories ) ) {
 			add_filter( 'vip_agentforce_should_ingest_post', [ __CLASS__, 'filter_by_categories' ], 10, 2 );
 		}
+	}
+
+	/**
+	 * Filter for sync_all_posts config.
+	 *
+	 * Only returns true if no prior filter has made a decision (null).
+	 * This prevents accidentally overriding a filter that explicitly returned false.
+	 *
+	 * @param bool|null $should_ingest Current filter value. Null means no filter has decided yet.
+	 * @return bool Whether to ingest the post.
+	 */
+	public static function filter_sync_all_posts( ?bool $should_ingest ): bool {
+		// Only ingest if no prior filter has decided.
+		if ( null === $should_ingest ) {
+			return true;
+		}
+
+		// Respect prior filter's decision.
+		return $should_ingest;
 	}
 
 	/**
