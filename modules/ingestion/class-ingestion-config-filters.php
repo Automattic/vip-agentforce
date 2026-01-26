@@ -39,36 +39,35 @@ class Ingestion_Config_Filters {
 	/**
 	 * Filter for sync_all_posts config.
 	 *
-	 * Only returns true if no prior filter has made a decision (null).
-	 * This prevents accidentally overriding a filter that explicitly returned false.
+	 * Fail-close: respects prior rejections (false), but doesn't blindly trust approvals.
 	 *
 	 * @param bool|null $should_ingest Current filter value. Null means no filter has decided yet.
 	 * @return bool Whether to ingest the post.
 	 */
 	public static function filter_sync_all_posts( ?bool $should_ingest ): bool {
-		// Only ingest if no prior filter has decided.
-		if ( null === $should_ingest ) {
-			return true;
+		// Fail-close: respect explicit rejection.
+		if ( false === $should_ingest ) {
+			return false;
 		}
 
-		// Respect prior filter's decision.
-		return $should_ingest;
+		// sync_all_posts means ingest everything (unless explicitly rejected above).
+		return true;
 	}
 
 	/**
 	 * Filter posts by configured categories.
 	 *
-	 * Only makes a decision if no prior filter has decided (null).
-	 * This prevents accidentally overriding customer-defined filters.
+	 * Fail-close: respects prior rejections (false), but doesn't blindly trust approvals.
+	 * Post must be in configured categories regardless of prior approval.
 	 *
 	 * @param bool|null $should_ingest Current filter value. Null means no filter has decided yet.
 	 * @param \WP_Post  $post          The post being evaluated.
 	 * @return bool Whether to ingest the post.
 	 */
 	public static function filter_by_categories( ?bool $should_ingest, \WP_Post $post ): bool {
-		// Respect prior filter's decision.
-		if ( null !== $should_ingest ) {
-			return $should_ingest;
+		// Fail-close: respect explicit rejection.
+		if ( false === $should_ingest ) {
+			return false;
 		}
 
 		$configured_categories = Configs::get_ingestion_categories();

@@ -240,10 +240,26 @@ class Ingestion_Config_Filters_Test extends WP_UnitTestCase {
 	}
 
 	// =========================================================================
-	// Tests for filter_by_categories preserving existing true values
+	// Tests for fail-close behavior
 	// =========================================================================
 
-	public function test_categories_filter_preserves_existing_true_value(): void {
+	public function test_categories_filter_respects_prior_rejection(): void {
+		$category = wp_insert_term( 'News', 'category' );
+		$this->prime_configs_cache( [ 'ingestion_api_categories' => [ 'news' ] ] );
+
+		// Add a filter that returns false first.
+		add_filter( 'vip_agentforce_should_ingest_post', '__return_false', 5 );
+
+		Ingestion_Config_Filters::init();
+
+		// Post WITH matching category should NOT be ingested due to prior rejection.
+		$post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
+		wp_set_post_categories( $post->ID, [ $category['term_id'] ] );
+
+		$this->assertFalse( Ingestion::should_ingest_post( $post ), 'Fail-close: prior rejection should be respected.' );
+	}
+
+	public function test_categories_filter_does_not_blindly_trust_prior_approval(): void {
 		$this->prime_configs_cache( [ 'ingestion_api_categories' => [ 'news' ] ] );
 
 		// Add a filter that returns true first.
@@ -251,10 +267,23 @@ class Ingestion_Config_Filters_Test extends WP_UnitTestCase {
 
 		Ingestion_Config_Filters::init();
 
-		// Post without matching category should still be ingested due to earlier filter.
+		// Post without matching category should NOT be ingested despite prior approval.
 		$post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
 
-		$this->assertTrue( Ingestion::should_ingest_post( $post ) );
+		$this->assertFalse( Ingestion::should_ingest_post( $post ), 'Fail-close: prior approval should not bypass category check.' );
+	}
+
+	public function test_sync_all_posts_respects_prior_rejection(): void {
+		$this->prime_configs_cache( [ 'ingestion_api_sync_all_posts' => true ] );
+
+		// Add a filter that returns false first.
+		add_filter( 'vip_agentforce_should_ingest_post', '__return_false', 5 );
+
+		Ingestion_Config_Filters::init();
+
+		$post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
+
+		$this->assertFalse( Ingestion::should_ingest_post( $post ), 'Fail-close: prior rejection should be respected even with sync_all_posts.' );
 	}
 
 	// =========================================================================
