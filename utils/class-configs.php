@@ -120,13 +120,7 @@ class Configs {
 	 */
 	public static function should_sync_all_posts(): bool {
 		$config = self::get_config();
-
-		if ( ! array_key_exists( 'ingestion_api_sync_all_posts', $config ) ) {
-			return false;
-		}
-
-		$sync_all = filter_var( $config['ingestion_api_sync_all_posts'], FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE );
-		return null === $sync_all ? false : $sync_all;
+		return true === ( $config['ingestion_api_sync_all_posts'] ?? false );
 	}
 
 	/**

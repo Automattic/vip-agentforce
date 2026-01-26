@@ -65,12 +65,6 @@ class Ingestion_Config_Filters_Test extends WP_UnitTestCase {
 		$this->assertTrue( Configs::should_sync_all_posts() );
 	}
 
-	public function test_should_sync_all_posts_returns_true_for_string_true(): void {
-		$this->prime_configs_cache( [ 'ingestion_api_sync_all_posts' => 'true' ] );
-
-		$this->assertTrue( Configs::should_sync_all_posts() );
-	}
-
 	public function test_should_sync_all_posts_returns_false_when_disabled(): void {
 		$this->prime_configs_cache( [ 'ingestion_api_sync_all_posts' => false ] );
 
