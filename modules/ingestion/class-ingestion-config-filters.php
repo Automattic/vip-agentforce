@@ -58,16 +58,17 @@ class Ingestion_Config_Filters {
 	/**
 	 * Filter posts by configured categories.
 	 *
-	 * Returns true if the post is in any of the configured categories.
+	 * Only makes a decision if no prior filter has decided (null).
+	 * This prevents accidentally overriding customer-defined filters.
 	 *
 	 * @param bool|null $should_ingest Current filter value. Null means no filter has decided yet.
 	 * @param \WP_Post  $post          The post being evaluated.
 	 * @return bool Whether to ingest the post.
 	 */
 	public static function filter_by_categories( ?bool $should_ingest, \WP_Post $post ): bool {
-		// If already approved by another filter, keep it.
-		if ( true === $should_ingest ) {
-			return true;
+		// Respect prior filter's decision.
+		if ( null !== $should_ingest ) {
+			return $should_ingest;
 		}
 
 		$configured_categories = Configs::get_ingestion_categories();
