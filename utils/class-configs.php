@@ -149,15 +149,7 @@ class Configs {
 			return [];
 		}
 
-		// Filter out non-string/int values and ensure strings.
-		$result = [];
-		foreach ( $categories as $cat ) {
-			if ( is_int( $cat ) ) {
-				$result[] = (string) $cat;
-			} elseif ( is_string( $cat ) && '' !== $cat ) {
-				$result[] = $cat;
-			}
-		}
-		return $result;
+		// Filter out empty strings.
+		return array_values( array_filter( $categories, fn( $cat ) => '' !== $cat ) );
 	}
 }
