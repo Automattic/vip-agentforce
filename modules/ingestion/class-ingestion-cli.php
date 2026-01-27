@@ -17,6 +17,111 @@ use WP_CLI_Command;
 class Ingestion_CLI extends WP_CLI_Command {
 
 	/**
+	 * Sync all eligible published posts to Salesforce.
+	 *
+	 * This command queries all published posts, applies the configured filters,
+	 * and syncs matching posts to Salesforce. It does NOT trigger WordPress save hooks.
+	 *
+	 * ## EXAMPLES
+	 *
+	 *     # Sync all eligible posts
+	 *     wp vip-agentforce ingestion sync
+	 *
+	 * @subcommand sync
+	 */
+	public function sync(): void {
+		$batch_size = 100;
+
+		// Check that filters are registered.
+		if ( ! has_filter( 'vip_agentforce_should_ingest_post' ) ) {
+			WP_CLI::error( 'No vip_agentforce_should_ingest_post filter registered. Cannot determine which posts to sync.', false );
+			return;
+		}
+
+		// Determine post types to query.
+		$post_types = get_post_types( [ 'public' => true ] );
+
+		WP_CLI::log( sprintf( 'Starting sync for post types: %s', implode( ', ', $post_types ) ) );
+
+		$ingested_count = 0;
+		$deleted_count  = 0;
+		$skipped_count  = 0;
+		$failure_count  = 0;
+		$total_queried  = 0;
+		$page           = 1;
+
+		do {
+			$query = new \WP_Query(
+				[
+					'post_type'      => $post_types,
+					'post_status'    => 'publish',
+					'posts_per_page' => $batch_size,
+					'paged'          => $page,
+					'orderby'        => 'ID',
+					'order'          => 'ASC',
+					'no_found_rows'  => false,
+				]
+			);
+
+			$total_posts = $query->found_posts;
+
+			if ( 1 === $page ) {
+				WP_CLI::log( sprintf( 'Found %d published posts to evaluate.', $total_posts ) );
+			}
+
+			foreach ( $query->posts as $post ) {
+				++$total_queried;
+
+				// Use shared sync logic - handles ingest, delete, or skip.
+				$result = Ingestion::sync_post( $post );
+
+				switch ( $result->status ) {
+					case Sync_Result::INGESTED:
+						WP_CLI::log( sprintf( 'Post %d: Synced successfully.', $post->ID ) );
+						++$ingested_count;
+						break;
+
+					case Sync_Result::DELETED:
+						WP_CLI::log( sprintf( 'Post %d: Deleted from Salesforce (no longer matches filter).', $post->ID ) );
+						++$deleted_count;
+						break;
+
+					case Sync_Result::SKIPPED:
+						++$skipped_count;
+						break;
+
+					case Sync_Result::FAILED_TRANSFORM:
+						WP_CLI::warning( sprintf( 'Post %d: Transform failed, skipping.', $post->ID ) );
+						++$failure_count;
+						break;
+
+					case Sync_Result::FAILED_API:
+						WP_CLI::warning( sprintf( 'Post %d: API error - %s', $post->ID, $result->error_message ?? 'Unknown error' ) );
+						++$failure_count;
+						break;
+				}
+			}
+
+			++$page;
+		} while ( $total_queried < $total_posts );
+
+		// Summary.
+		WP_CLI::log( '' );
+		WP_CLI::log( '=== Sync Summary ===' );
+		WP_CLI::log( sprintf( 'Total posts evaluated: %d', $total_queried ) );
+		WP_CLI::log( sprintf( 'Ingested: %d', $ingested_count ) );
+		WP_CLI::log( sprintf( 'Deleted: %d', $deleted_count ) );
+		WP_CLI::log( sprintf( 'Skipped (did not pass filters): %d', $skipped_count ) );
+		WP_CLI::log( sprintf( 'Failed: %d', $failure_count ) );
+
+		if ( $failure_count > 0 ) {
+			WP_CLI::warning( sprintf( 'Sync completed with %d failure(s).', $failure_count ) );
+		} else {
+			WP_CLI::success( 'Sync completed successfully.' );
+		}
+	}
+
+	/**
 	 * Force delete posts from Salesforce by record ID.
 	 *
 	 * This command bypasses normal checks - it will attempt to delete even if:

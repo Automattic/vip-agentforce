@@ -40,14 +40,30 @@ class Ingestion {
 	 * @param \WP_Post $post    Post object.
 	 */
 	public static function handle_save_post( int $post_id, \WP_Post $post ): void {
+		self::sync_post( $post );
+	}
+
+	/**
+	 * Sync a single post to Salesforce - ingest or delete as appropriate.
+	 *
+	 * This is the core sync logic used by both handle_save_post and CLI sync.
+	 * - If the post passes the filter, it will be ingested.
+	 * - If it doesn't pass but was previously ingested, it will be deleted.
+	 * - If it doesn't pass and wasn't ingested, it will be skipped.
+	 *
+	 * @param \WP_Post $post The post to sync.
+	 * @return Sync_Result The result of the sync operation.
+	 */
+	public static function sync_post( \WP_Post $post ): Sync_Result {
 		$should_ingest = self::should_ingest_post( $post );
 
 		if ( ! $should_ingest ) {
 			// If this post was previously ingested, delete it from Salesforce.
 			if ( self::was_post_ingested( $post ) ) {
-				self::delete_post_from_salesforce( $post );
+				$deleted = self::delete_post_from_salesforce( $post );
+				return new Sync_Result( $deleted ? Sync_Result::DELETED : Sync_Result::FAILED_API, $post );
 			}
-			return;
+			return new Sync_Result( Sync_Result::SKIPPED, $post );
 		}
 
 		// Mark that we're attempting to ingest this post.
@@ -55,20 +71,22 @@ class Ingestion {
 		// - the filter changes later.
 		// - an ingestion succeeded despite the API returning an error
 		// - if we mark it after a successful ingestion, the marking step might have failed, and we wouldn't know it was actually ingested.
-		update_post_meta( $post_id, self::META_KEY_INGESTION_ATTEMPTED, time() );
+		update_post_meta( $post->ID, self::META_KEY_INGESTION_ATTEMPTED, time() );
 
 		$record = self::transform_post( $post );
 		if ( null === $record ) {
-			self::fire_ingestion_failure( $post_id, Ingestion_Failure::CODE_TRANSFORM_FAILED );
-			return;
+			self::fire_ingestion_failure( $post->ID, Ingestion_Failure::CODE_TRANSFORM_FAILED );
+			return new Sync_Result( Sync_Result::FAILED_TRANSFORM, $post );
 		}
 
 		$result = static::send_to_api( $record );
 
 		if ( ! $result->success ) {
-			self::fire_ingestion_failure( $post_id, Ingestion_Failure::CODE_API_ERROR, [ 'result' => $result ] );
-			return;
+			self::fire_ingestion_failure( $post->ID, Ingestion_Failure::CODE_API_ERROR, [ 'result' => $result ] );
+			return new Sync_Result( Sync_Result::FAILED_API, $post, $result->error_message );
 		}
+
+		return new Sync_Result( Sync_Result::INGESTED, $post );
 	}
 
 	/**
@@ -182,6 +200,19 @@ class Ingestion {
 	}
 
 	/**
+	 * Get the API request timeout in seconds.
+	 *
+	 * Uses a longer timeout when running in WP-CLI context for bulk operations.
+	 *
+	 * @return int Timeout in seconds.
+	 */
+	private static function get_api_timeout(): int {
+		$default = ( defined( 'WP_CLI' ) && WP_CLI ) ? 15 : 3;
+
+		return (int) apply_filters( 'vip_agentforce_api_timeout', $default );
+	}
+
+	/**
 	 * Make an API request to the Salesforce Data Cloud Ingestion API.
 	 *
 	 * @param string $method    HTTP method ('POST' or 'DELETE').
@@ -208,7 +239,7 @@ class Ingestion {
 					'Authorization' => 'Bearer ' . $token,
 				],
 				'body'    => $body,
-				'timeout' => 3,
+				'timeout' => self::get_api_timeout(),
 			]
 		);
 
@@ -313,13 +344,13 @@ class Ingestion {
 	 * This checks for the ingestion meta first - if it exists, we know we attempted
 	 * to ingest this post. This is more reliable than checking the filter, as filters
 	 * can change over time.
-	 * 
+	 *
 	 * Post revisions and autosaves are never considered ingested, even if they have the meta.
 	 *
 	 * @param \WP_Post $post The post to check.
 	 * @return bool Whether the post was previously ingested.
 	 */
-	private static function was_post_ingested( \WP_Post $post ): bool {
+	public static function was_post_ingested( \WP_Post $post ): bool {
 		if ( wp_is_post_revision( $post ) || wp_is_post_autosave( $post ) ) {
 			return false;
 		}
@@ -338,8 +369,9 @@ class Ingestion {
 	 * Delete a post from Salesforce.
 	 *
 	 * @param \WP_Post $post The post to delete.
+	 * @return bool True if deletion succeeded, false if it failed.
 	 */
-	private static function delete_post_from_salesforce( \WP_Post $post ): void {
+	private static function delete_post_from_salesforce( \WP_Post $post ): bool {
 		$record_id = self::build_record_id( $post );
 		$result    = static::delete_from_api( $post );
 
@@ -352,11 +384,13 @@ class Ingestion {
 					'result' => $result,
 				]
 			);
-			return;
+			return false;
 		}
 
 		// Clear the ingestion tracking meta since the post is no longer in Salesforce.
 		delete_post_meta( $post->ID, self::META_KEY_INGESTION_ATTEMPTED );
+
+		return true;
 	}
 
 	/**

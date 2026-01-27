@@ -100,12 +100,16 @@ fi
 export MYSQL_HOST
 
 cleanup() {
+    # Redirect stdout/stderr to /dev/null because docker rm/network rm print
+    # container IDs to stdout. This cleanup runs via trap EXIT while PHPUnit
+    # may still be streaming, causing Docker output to interleave with PHPUnit's
+    # stdout and suppressing test results/error messages.
     if [ -n "${db}" ]; then
-        docker rm -f "${db}"
+        docker rm -f "${db}" > /dev/null 2>&1
     fi
 
     if [ -z "${NETWORK_NAME_OVERRIDE}" ]; then
-        docker network rm "${NETWORK_NAME}"
+        docker network rm "${NETWORK_NAME}" > /dev/null 2>&1
     fi
 }
 
