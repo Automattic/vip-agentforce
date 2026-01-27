@@ -60,8 +60,8 @@ class Ingestion {
 		if ( ! $should_ingest ) {
 			// If this post was previously ingested, delete it from Salesforce.
 			if ( self::was_post_ingested( $post ) ) {
-				self::delete_post_from_salesforce( $post );
-				return new Sync_Result( Sync_Result::DELETED, $post );
+				$deleted = self::delete_post_from_salesforce( $post );
+				return new Sync_Result( $deleted ? Sync_Result::DELETED : Sync_Result::FAILED_API, $post );
 			}
 			return new Sync_Result( Sync_Result::SKIPPED, $post );
 		}
@@ -369,8 +369,9 @@ class Ingestion {
 	 * Delete a post from Salesforce.
 	 *
 	 * @param \WP_Post $post The post to delete.
+	 * @return bool True if deletion succeeded, false if it failed.
 	 */
-	private static function delete_post_from_salesforce( \WP_Post $post ): void {
+	private static function delete_post_from_salesforce( \WP_Post $post ): bool {
 		$record_id = self::build_record_id( $post );
 		$result    = static::delete_from_api( $post );
 
@@ -383,11 +384,13 @@ class Ingestion {
 					'result' => $result,
 				]
 			);
-			return;
+			return false;
 		}
 
 		// Clear the ingestion tracking meta since the post is no longer in Salesforce.
 		delete_post_meta( $post->ID, self::META_KEY_INGESTION_ATTEMPTED );
+
+		return true;
 	}
 
 	/**
