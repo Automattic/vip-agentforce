@@ -101,11 +101,11 @@ export MYSQL_HOST
 
 cleanup() {
     if [ -n "${db}" ]; then
-        docker rm -f "${db}"
+        docker rm -f "${db}" > /dev/null 2>&1
     fi
 
     if [ -z "${NETWORK_NAME_OVERRIDE}" ]; then
-        docker network rm "${NETWORK_NAME}"
+        docker network rm "${NETWORK_NAME}" > /dev/null 2>&1
     fi
 }
 

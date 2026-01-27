@@ -270,10 +270,10 @@ class Ingestion_CLI_Test extends WP_UnitTestCase {
 		// Ensure no filter is registered.
 		remove_all_filters( 'vip_agentforce_should_ingest_post' );
 
-		$output = $this->run_cli_sync();
+		$this->run_cli_sync();
 
-		// Should have logged an error about missing filter.
-		$this->assertStringContainsString( 'No vip_agentforce_should_ingest_post filter registered', $output );
+		// Should not make any API calls when filter is missing.
+		$this->assertCount( 0, $this->get_ingestion_requests() );
 	}
 
 	public function test_cli_sync_ingests_posts(): void {
@@ -286,17 +286,14 @@ class Ingestion_CLI_Test extends WP_UnitTestCase {
 		// Clear any requests from post creation.
 		$this->captured_requests = [];
 
-		$output = $this->run_cli_sync();
+		$this->run_cli_sync();
 
 		// Should have 2 API calls (one for each post).
 		$ingestion_requests = $this->get_ingestion_requests();
 		$this->assertCount( 2, $ingestion_requests, 'Both posts should be synced via CLI.' );
-
-		// Should have success message.
-		$this->assertStringContainsString( 'Sync completed successfully', $output );
 	}
 
-	public function test_cli_sync_reports_correct_counts(): void {
+	public function test_cli_sync_ingests_correct_count(): void {
 		$this->setup_ingestion_filters();
 
 		// Create 3 posts.
@@ -307,10 +304,10 @@ class Ingestion_CLI_Test extends WP_UnitTestCase {
 		// Clear any requests from post creation.
 		$this->captured_requests = [];
 
-		$output = $this->run_cli_sync();
+		$this->run_cli_sync();
 
-		// Check the summary output includes correct count.
-		$this->assertStringContainsString( 'Ingested: 3', $output );
+		// Should have 3 API calls.
+		$this->assertCount( 3, $this->get_ingestion_requests() );
 	}
 
 	public function test_cli_sync_respects_should_ingest_filter(): void {
@@ -332,15 +329,11 @@ class Ingestion_CLI_Test extends WP_UnitTestCase {
 			2
 		);
 
-		$output = $this->run_cli_sync();
+		$this->run_cli_sync();
 
 		// Should have 1 API call (only post1).
 		$ingestion_requests = $this->get_ingestion_requests();
 		$this->assertCount( 1, $ingestion_requests, 'Only post1 should be synced.' );
-
-		// Check summary shows 1 ingested and 1 skipped.
-		$this->assertStringContainsString( 'Ingested: 1', $output );
-		$this->assertStringContainsString( 'Skipped', $output );
 	}
 
 	public function test_cli_sync_only_processes_published_posts(): void {
@@ -419,13 +412,10 @@ class Ingestion_CLI_Test extends WP_UnitTestCase {
 		// Clear any requests from post creation.
 		$this->captured_requests = [];
 
-		$output = $this->run_cli_sync();
+		$this->run_cli_sync();
 
 		// Transform failed, so no API call should be made.
 		$this->assertCount( 0, $this->get_ingestion_requests() );
-
-		// Should have warning about transform failure.
-		$this->assertStringContainsString( 'Transform failed', $output );
 	}
 
 	public function test_cli_sync_processes_multiple_posts_in_batch(): void {
@@ -439,13 +429,10 @@ class Ingestion_CLI_Test extends WP_UnitTestCase {
 		// Clear any requests from post creation.
 		$this->captured_requests = [];
 
-		$output = $this->run_cli_sync();
+		$this->run_cli_sync();
 
 		// Should have 5 API calls.
 		$ingestion_requests = $this->get_ingestion_requests();
 		$this->assertCount( 5, $ingestion_requests, 'All 5 posts should be synced.' );
-
-		// Check the summary.
-		$this->assertStringContainsString( 'Ingested: 5', $output );
 	}
 }

@@ -34,7 +34,7 @@ class Ingestion_CLI extends WP_CLI_Command {
 
 		// Check that filters are registered.
 		if ( ! has_filter( 'vip_agentforce_should_ingest_post' ) ) {
-			WP_CLI::error( 'No vip_agentforce_should_ingest_post filter registered. Cannot determine which posts to sync.' );
+			WP_CLI::error( 'No vip_agentforce_should_ingest_post filter registered. Cannot determine which posts to sync.', false );
 			return;
 		}
 
