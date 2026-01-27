@@ -405,7 +405,7 @@ class Ingestion_CLI_Test extends WP_UnitTestCase {
 
 		// Meta should now be set.
 		$meta_value = get_post_meta( $post->ID, Ingestion::META_KEY_INGESTION_ATTEMPTED, true );
-		$this->assertNotEmpty( $meta_value, 'Ingestion meta should be set after sync.' );
+		$this->assertNotSame( '', $meta_value, 'Ingestion meta should be set after sync.' );
 		$this->assertGreaterThan( 0, (int) $meta_value, 'Ingestion meta should be a positive timestamp.' );
 	}
 
