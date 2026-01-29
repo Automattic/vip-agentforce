@@ -684,6 +684,69 @@ class Ingestion_Deletion_Test extends WP_UnitTestCase {
 	}
 
 	// =========================================================================
+	// No Filters Configured = No Deletion (incomplete setup safeguard)
+	// =========================================================================
+
+	public function test_no_deletion_when_no_filters_configured(): void {
+		// Create ingested post with filters active.
+		$this->setup_ingestion_filters();
+		$post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
+		$this->assertNotEmpty( get_post_meta( $post->ID, Ingestion::META_KEY_INGESTION_ATTEMPTED, true ) );
+
+		// Clear captured requests from ingestion.
+		$this->clear_captured_requests();
+
+		// Now remove all filters and clear config to simulate "no setup" state.
+		remove_all_filters( 'vip_agentforce_should_ingest_post' );
+		$this->prime_configs_cache(
+			[
+				'ingestion_api_instance_url' => 'https://test.salesforce.com',
+				'ingestion_api_token'        => 'test-token',
+				'ingestion_api_source_name'  => 'test-source',
+				'ingestion_api_object_name'  => 'test-object',
+				// No sync_all_posts, no categories - incomplete setup.
+			]
+		);
+
+		// Update the post - should NOT trigger deletion because setup is incomplete.
+		wp_update_post( [
+			'ID'         => $post->ID,
+			'post_title' => 'Updated Title',
+		] );
+
+		// Verify no DELETE API was called - incomplete setup means no destructive action.
+		$deletion_requests = $this->get_deletion_requests();
+		$this->assertEmpty( $deletion_requests, 'No deletion should occur when no ingestion filters are configured (incomplete setup).' );
+
+		// Meta should still exist since we didn't delete.
+		$this->assertNotEmpty( get_post_meta( $post->ID, Ingestion::META_KEY_INGESTION_ATTEMPTED, true ), 'Meta should be preserved when deletion is skipped.' );
+	}
+
+	public function test_deletion_occurs_when_filters_registered_but_post_no_longer_matches(): void {
+		// Create ingested post with filters active.
+		$this->setup_ingestion_filters();
+		$post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
+		$this->assertNotEmpty( get_post_meta( $post->ID, Ingestion::META_KEY_INGESTION_ATTEMPTED, true ) );
+
+		// Clear captured requests from ingestion.
+		$this->clear_captured_requests();
+
+		// Replace with a filter that rejects. has_filter() will return true.
+		remove_all_filters( 'vip_agentforce_should_ingest_post' );
+		add_filter( 'vip_agentforce_should_ingest_post', '__return_false' );
+
+		// Update the post - SHOULD trigger deletion because filters are registered.
+		wp_update_post( [
+			'ID'         => $post->ID,
+			'post_title' => 'Updated Title',
+		] );
+
+		// Verify DELETE API was called.
+		$deletion_requests = $this->get_deletion_requests();
+		$this->assertCount( 1, $deletion_requests, 'Deletion should occur when filters are registered and post no longer matches.' );
+	}
+
+	// =========================================================================
 	// Filter Rejection Deletion Tests (handle_save_post)
 	// =========================================================================
 

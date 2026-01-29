@@ -60,6 +60,11 @@ class Ingestion {
 		if ( ! $should_ingest ) {
 			// If this post was previously ingested, delete it from Salesforce.
 			if ( self::was_post_ingested( $post ) ) {
+				// Only delete if we have ingestion filters registered.
+				// If no filters exist, setup is incomplete - don't delete.
+				if ( ! has_filter( 'vip_agentforce_should_ingest_post' ) ) {
+					return new Sync_Result( Sync_Result::SKIPPED, $post );
+				}
 				self::delete_post_from_salesforce( $post );
 				return new Sync_Result( Sync_Result::DELETED, $post );
 			}
