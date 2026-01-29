@@ -22,39 +22,24 @@ class Ingestion_CLI extends WP_CLI_Command {
 	 * This command queries all published posts, applies the configured filters,
 	 * and syncs matching posts to Salesforce. It does NOT trigger WordPress save hooks.
 	 *
-	 * ## OPTIONS
-	 *
-	 * [--batch-size=<number>]
-	 * : Number of posts to process per batch. Default: 100.
-	 *
-	 * [--post-type=<type>]
-	 * : Limit sync to a specific post type. Default: all public post types.
-	 *
 	 * ## EXAMPLES
 	 *
 	 *     # Sync all eligible posts
 	 *     wp vip-agentforce ingestion sync
 	 *
-	 *     # Sync only 'post' post type with smaller batches
-	 *     wp vip-agentforce ingestion sync --post-type=post --batch-size=50
-	 *
 	 * @subcommand sync
-	 *
-	 * @param array<int, string>    $args       Positional arguments.
-	 * @param array<string, string> $assoc_args Associative arguments.
 	 */
-	public function sync( array $args, array $assoc_args ): void {
-		$batch_size = (int) ( $assoc_args['batch-size'] ?? 100 );
-		$post_type  = $assoc_args['post-type'] ?? null;
+	public function sync(): void {
+		$batch_size = 100;
 
 		// Check that filters are registered.
 		if ( ! has_filter( 'vip_agentforce_should_ingest_post' ) ) {
-			WP_CLI::error( 'No vip_agentforce_should_ingest_post filter registered. Cannot determine which posts to sync.' );
+			WP_CLI::error( 'No vip_agentforce_should_ingest_post filter registered. Cannot determine which posts to sync.', false );
 			return;
 		}
 
 		// Determine post types to query.
-		$post_types = $post_type ? [ $post_type ] : get_post_types( [ 'public' => true ] );
+		$post_types = get_post_types( [ 'public' => true ] );
 
 		WP_CLI::log( sprintf( 'Starting sync for post types: %s', implode( ', ', $post_types ) ) );
 

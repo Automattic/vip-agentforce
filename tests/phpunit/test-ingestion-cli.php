@@ -1,6 +1,7 @@
 <?php
 
 use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion;
+use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_CLI;
 use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_Post_Record;
 use Automattic\VIP\Salesforce\Agentforce\Utils\Configs;
 use Automattic\VIP\Salesforce\Agentforce\Utils\Logger;
@@ -250,106 +251,118 @@ class Ingestion_CLI_Test extends WP_UnitTestCase {
 	}
 
 	// =========================================================================
-	// Sync Command Behavior Tests
+	// Ingestion_CLI::sync() Tests
 	// =========================================================================
 
-	public function test_sync_respects_should_ingest_filter(): void {
+	/**
+	 * Run CLI sync command and capture output.
+	 *
+	 * @return string Captured CLI output.
+	 */
+	private function run_cli_sync(): string {
+		$cli = new Ingestion_CLI();
+		ob_start();
+		$cli->sync();
+		return ob_get_clean();
+	}
+
+	public function test_cli_sync_errors_when_no_filter_registered(): void {
+		// Ensure no filter is registered.
+		remove_all_filters( 'vip_agentforce_should_ingest_post' );
+
+		$this->run_cli_sync();
+
+		// Should not make any API calls when filter is missing.
+		$this->assertCount( 0, $this->get_ingestion_requests() );
+	}
+
+	public function test_cli_sync_ingests_posts(): void {
 		$this->setup_ingestion_filters();
 
-		// Create posts - one passes filter, one doesn't.
-		$post1 = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
-		$post2 = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
+		// Create posts.
+		$this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
+		$this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
 
-		// Clear any requests from post creation (save_post hook might fire).
+		// Clear any requests from post creation.
 		$this->captured_requests = [];
 
-		// Replace the should_ingest filter to only allow post1.
+		$this->run_cli_sync();
+
+		// Should have 2 API calls (one for each post).
+		$ingestion_requests = $this->get_ingestion_requests();
+		$this->assertCount( 2, $ingestion_requests, 'Both posts should be synced via CLI.' );
+	}
+
+	public function test_cli_sync_ingests_correct_count(): void {
+		$this->setup_ingestion_filters();
+
+		// Create 3 posts.
+		$this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
+		$this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
+		$this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
+
+		// Clear any requests from post creation.
+		$this->captured_requests = [];
+
+		$this->run_cli_sync();
+
+		// Should have 3 API calls.
+		$this->assertCount( 3, $this->get_ingestion_requests() );
+	}
+
+	public function test_cli_sync_respects_should_ingest_filter(): void {
+		$this->setup_ingestion_filters();
+
+		// Create posts.
+		$post1 = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
+		$this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
+
+		// Clear any requests from post creation.
+		$this->captured_requests = [];
+
+		// Replace filter to only allow post1.
 		remove_all_filters( 'vip_agentforce_should_ingest_post' );
 		add_filter(
 			'vip_agentforce_should_ingest_post',
-			function ( $should_ingest, $post ) use ( $post1 ) {
-				return $post->ID === $post1->ID;
-			},
+			fn( $should_ingest, $post ) => $post->ID === $post1->ID,
 			10,
 			2
 		);
 
-		// Manually run the sync logic (simulating CLI).
-		$query = new WP_Query(
-			[
-				'post_type'      => 'post',
-				'post_status'    => 'publish',
-				'posts_per_page' => 100,
-			]
-		);
+		$this->run_cli_sync();
 
-		foreach ( $query->posts as $post ) {
-			if ( ! Ingestion::should_ingest_post( $post ) ) {
-				continue;
-			}
-
-			$record = Ingestion::transform_post( $post );
-			if ( null !== $record ) {
-				update_post_meta( $post->ID, Ingestion::META_KEY_INGESTION_ATTEMPTED, time() );
-				Ingestion::send_to_api( $record );
-			}
-		}
-
-		// Should have exactly 1 API call (for post1 only).
+		// Should have 1 API call (only post1).
 		$ingestion_requests = $this->get_ingestion_requests();
-		$this->assertCount( 1, $ingestion_requests, 'Only post1 should be synced because filter rejected post2.' );
+		$this->assertCount( 1, $ingestion_requests, 'Only post1 should be synced.' );
 	}
 
-	public function test_sync_only_processes_published_posts(): void {
+	public function test_cli_sync_only_processes_published_posts(): void {
 		$this->setup_ingestion_filters();
 
 		// Create posts with different statuses.
-		$published = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
-		$draft     = $this->factory()->post->create_and_get( [ 'post_status' => 'draft' ] );
-		$pending   = $this->factory()->post->create_and_get( [ 'post_status' => 'pending' ] );
+		$this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
+		$this->factory()->post->create_and_get( [ 'post_status' => 'draft' ] );
+		$this->factory()->post->create_and_get( [ 'post_status' => 'pending' ] );
 
 		// Clear any requests from post creation.
 		$this->captured_requests = [];
 
-		// Manually run the sync logic with published-only query.
-		$query = new WP_Query(
-			[
-				'post_type'      => 'post',
-				'post_status'    => 'publish',
-				'posts_per_page' => 100,
-			]
-		);
+		$this->run_cli_sync();
 
-		$synced_ids = [];
-		foreach ( $query->posts as $post ) {
-			if ( ! Ingestion::should_ingest_post( $post ) ) {
-				continue;
-			}
-
-			$record = Ingestion::transform_post( $post );
-			if ( null !== $record ) {
-				$synced_ids[] = $post->ID;
-				update_post_meta( $post->ID, Ingestion::META_KEY_INGESTION_ATTEMPTED, time() );
-				Ingestion::send_to_api( $record );
-			}
-		}
-
-		// Only the published post should be in the query results.
-		$this->assertContains( $published->ID, $synced_ids );
-		$this->assertNotContains( $draft->ID, $synced_ids );
-		$this->assertNotContains( $pending->ID, $synced_ids );
-		$this->assertCount( 1, $this->get_ingestion_requests() );
+		// Only the published post should be synced.
+		$ingestion_requests = $this->get_ingestion_requests();
+		$this->assertCount( 1, $ingestion_requests, 'Only published post should be synced.' );
 	}
 
-	public function test_sync_does_not_trigger_save_post_hook(): void {
+	public function test_cli_sync_does_not_trigger_save_post_hook(): void {
 		$this->setup_ingestion_filters();
 
-		$post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
+		$this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
 
 		// Clear any requests from post creation.
 		$this->captured_requests = [];
 
-		// Track if save_post is called.
+		// Track if save_post is called during sync.
 		$save_post_called = false;
 		add_action(
 			'save_post',
@@ -358,13 +371,7 @@ class Ingestion_CLI_Test extends WP_UnitTestCase {
 			}
 		);
 
-		// Manually run the sync logic (which should NOT trigger save_post).
-		$record = Ingestion::transform_post( $post );
-		if ( null !== $record ) {
-			// This is what sync does - update meta and send to API.
-			update_post_meta( $post->ID, Ingestion::META_KEY_INGESTION_ATTEMPTED, time() );
-			Ingestion::send_to_api( $record );
-		}
+		$this->run_cli_sync();
 
 		// save_post should NOT have been called.
 		$this->assertFalse( $save_post_called, 'Sync should NOT trigger save_post hook.' );
@@ -373,7 +380,7 @@ class Ingestion_CLI_Test extends WP_UnitTestCase {
 		$this->assertCount( 1, $this->get_ingestion_requests() );
 	}
 
-	public function test_sync_sets_ingestion_attempted_meta(): void {
+	public function test_cli_sync_sets_ingestion_attempted_meta(): void {
 		$this->setup_ingestion_filters();
 
 		$post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
@@ -384,98 +391,45 @@ class Ingestion_CLI_Test extends WP_UnitTestCase {
 		// Verify meta is not set.
 		$this->assertEmpty( get_post_meta( $post->ID, Ingestion::META_KEY_INGESTION_ATTEMPTED, true ) );
 
-		// Manually run the sync logic.
-		$record = Ingestion::transform_post( $post );
-		if ( null !== $record ) {
-			update_post_meta( $post->ID, Ingestion::META_KEY_INGESTION_ATTEMPTED, time() );
-			Ingestion::send_to_api( $record );
-		}
+		// Clear any requests from post creation.
+		$this->captured_requests = [];
+
+		$this->run_cli_sync();
 
 		// Meta should now be set.
 		$meta_value = get_post_meta( $post->ID, Ingestion::META_KEY_INGESTION_ATTEMPTED, true );
-		$this->assertNotFalse( $meta_value, 'Ingestion meta should be set after sync.' );
+		$this->assertNotSame( '', $meta_value, 'Ingestion meta should be set after sync.' );
 		$this->assertGreaterThan( 0, (int) $meta_value, 'Ingestion meta should be a positive timestamp.' );
 	}
 
-	public function test_sync_handles_transform_failure(): void {
+	public function test_cli_sync_handles_transform_failure(): void {
 		// Set up filter that allows ingestion but transform returns null.
 		add_filter( 'vip_agentforce_should_ingest_post', '__return_true' );
 		add_filter( 'vip_agentforce_transform_post', '__return_null' );
 
-		$post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
+		$this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
 
-		// Clear any requests.
+		// Clear any requests from post creation.
 		$this->captured_requests = [];
 
-		// Manually run the sync logic.
-		$failure_count = 0;
-		if ( Ingestion::should_ingest_post( $post ) ) {
-			$record = Ingestion::transform_post( $post );
-			if ( null === $record ) {
-				++$failure_count;
-			}
-		}
+		$this->run_cli_sync();
 
 		// Transform failed, so no API call should be made.
 		$this->assertCount( 0, $this->get_ingestion_requests() );
-		$this->assertSame( 1, $failure_count );
 	}
 
-	public function test_sync_skips_posts_when_filter_returns_false(): void {
-		add_filter( 'vip_agentforce_should_ingest_post', '__return_false' );
-		$this->setup_ingestion_filters();
-
-		$post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
-
-		// Clear any requests.
-		$this->captured_requests = [];
-
-		// Replace should_ingest to return false.
-		remove_all_filters( 'vip_agentforce_should_ingest_post' );
-		add_filter( 'vip_agentforce_should_ingest_post', '__return_false' );
-
-		// Manually run the sync logic.
-		$skipped = false;
-		if ( ! Ingestion::should_ingest_post( $post ) ) {
-			$skipped = true;
-		}
-
-		$this->assertTrue( $skipped );
-		$this->assertCount( 0, $this->get_ingestion_requests(), 'No API calls when filter returns false.' );
-	}
-
-	public function test_sync_processes_multiple_posts_in_batch(): void {
+	public function test_cli_sync_processes_multiple_posts_in_batch(): void {
 		$this->setup_ingestion_filters();
 
 		// Create 5 posts.
-		$posts = [];
 		for ( $i = 0; $i < 5; $i++ ) {
-			$posts[] = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
+			$this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
 		}
 
 		// Clear any requests from post creation.
 		$this->captured_requests = [];
 
-		// Manually run the sync logic.
-		$query = new WP_Query(
-			[
-				'post_type'      => 'post',
-				'post_status'    => 'publish',
-				'posts_per_page' => 100,
-			]
-		);
-
-		foreach ( $query->posts as $post ) {
-			if ( ! Ingestion::should_ingest_post( $post ) ) {
-				continue;
-			}
-
-			$record = Ingestion::transform_post( $post );
-			if ( null !== $record ) {
-				update_post_meta( $post->ID, Ingestion::META_KEY_INGESTION_ATTEMPTED, time() );
-				Ingestion::send_to_api( $record );
-			}
-		}
+		$this->run_cli_sync();
 
 		// Should have 5 API calls.
 		$ingestion_requests = $this->get_ingestion_requests();
