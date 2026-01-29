@@ -107,6 +107,51 @@ To automatically fix many of the reported violations, run:
 composer format
 ```
 
+## Releasing
+
+This project uses GitHub Actions to automate the release process. The workflow follows the pattern used by other Automattic projects like [vip-cli](https://github.com/Automattic/vip-cli) and [vip-design-system](https://github.com/Automattic/vip-design-system).
+
+### Releasing a new version
+
+1. **Initiate the release process** by going to [Actions > Prepare Release](../../actions/workflows/prepare-release.yml).
+
+2. Click **"Run workflow"** on the right-hand side.
+
+3. **Select your version bump type:**
+   - `patch`: Bug fixes and small updates (e.g., 1.0.0 → 1.0.1)
+   - `minor`: New features and non-breaking changes (e.g., 1.0.0 → 1.1.0)
+   - `major`: Breaking changes (e.g., 1.0.0 → 2.0.0)
+
+4. Click **"Run workflow"** to start the process.
+
+5. A **pull request** will be created that:
+   - Updates the version in `package.json`, `package-lock.json`, and `vip-agentforce.php`
+   - Is assigned to you for review
+   - Has the `release` label applied
+
+6. **Review and merge** the pull request when ready.
+
+7. **Merging automatically triggers** the package workflow, which will:
+   - Build the production assets
+   - Create a git tag for the version
+   - Package the plugin into a distributable zip
+   - Create a GitHub Release with the zip attached
+
+### What's included in the release zip
+
+The release package includes only the files needed to run the plugin:
+
+- `vip-agentforce.php` (main plugin file)
+- `modules/` (PHP modules)
+- `utils/` (utility classes)
+- `vip-config/` (VIP configuration)
+- `assets/build/` (compiled JS/CSS)
+- `assets/images/` (static assets)
+- `languages/` (translations)
+- `README.md` and `LICENSE`
+
+Development files, tests, and build tools are excluded via `.distignore`.
+
 ## Support
 
 If you need help with anything, VIP's support team is [just a ticket away](https://wpvip.com/accessing-vip-support/).

@@ -43,6 +43,4 @@ dist
 Thumbs.db
 
 # Misc
-README.md
-LICENSE
 env.php

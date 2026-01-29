@@ -1,15 +1,8 @@
 name: Package Plugin
 
 on:
-  workflow_dispatch:
-    inputs:
-      version:
-        description: 'Version tag for the release (e.g., 1.0.0)'
-        required: false
-        type: string
-  push:
-    tags:
-      - 'v*'
+  pull_request:
+    types: [closed]
 
 permissions:
   contents: write
@@ -18,12 +11,16 @@ jobs:
   package:
     name: Build and Package
     runs-on: ubuntu-latest
+    if: |
+      github.event.pull_request.merged == true &&
+      contains(github.event.pull_request.labels.*.name, 'release') &&
+      startsWith(github.head_ref, 'release/')
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642195f57660ac7e7b5b8d8 # v4.4.0
         with:
           node-version-file: '.nvmrc'
           cache: npm
@@ -38,13 +35,18 @@ jobs:
       - name: Determine version
         id: version
         run: |
-          if [ -n "${{ inputs.version }}" ]; then
-            echo "version=${{ inputs.version }}" >> $GITHUB_OUTPUT
-          elif [[ "${{ github.ref }}" == refs/tags/v* ]]; then
-            echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
-          else
-            echo "version=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
-          fi
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Configure git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Create and push tag
+        run: |
+          git tag "v${{ steps.version.outputs.version }}"
+          git push origin "v${{ steps.version.outputs.version }}"
 
       - name: Create distribution directory
         run: |
@@ -62,13 +64,15 @@ jobs:
           zip -r vip-agentforce-${{ steps.version.outputs.version }}.zip vip-agentforce
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: vip-agentforce-${{ steps.version.outputs.version }}
           path: dist/vip-agentforce-${{ steps.version.outputs.version }}.zip
 
-      - name: Upload release asset
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@da05d552573ad5aba039eaac05058a918a7bf631 # v2.2.2
         with:
+          tag_name: v${{ steps.version.outputs.version }}
+          name: v${{ steps.version.outputs.version }}
           files: dist/vip-agentforce-${{ steps.version.outputs.version }}.zip
+          generate_release_notes: true
