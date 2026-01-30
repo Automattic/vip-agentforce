@@ -28,6 +28,11 @@ if ( file_exists( __DIR__ . '/env.php' ) ) {
 	require_once __DIR__ . '/env.php';
 }
 
+// Developer mode setup (excluded from releases).
+if ( defined( 'VIP_AGENTFORCE_DEVELOPER_MODE' ) && true === VIP_AGENTFORCE_DEVELOPER_MODE && file_exists( __DIR__ . '/dev/setup.php' ) ) {
+	require_once __DIR__ . '/dev/setup.php';
+}
+
 use function Automattic\VIP\Salesforce\Agentforce\Utils\load_integration_configs_from_headers;
 use function Automattic\VIP\Salesforce\Agentforce\Utils\load_integration_configs_from_url;
 
