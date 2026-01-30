@@ -60,6 +60,11 @@ class Ingestion {
 		if ( ! $should_ingest ) {
 			// If this post was previously ingested, delete it from Salesforce.
 			if ( self::was_post_ingested( $post ) ) {
+				// Only delete if we have ingestion filters registered.
+				// If no filters exist, setup is incomplete - don't delete.
+				if ( ! has_filter( 'vip_agentforce_should_ingest_post' ) ) {
+					return new Sync_Result( Sync_Result::SKIPPED, $post );
+				}
 				$deleted = self::delete_post_from_salesforce( $post );
 				return new Sync_Result( $deleted ? Sync_Result::DELETED : Sync_Result::FAILED_API, $post );
 			}
@@ -308,11 +313,13 @@ class Ingestion {
 		/**
 		 * Filter whether a post should be ingested into Salesforce.
 		 *
-		 * @param bool     $should_ingest Default false - must explicitly return true to ingest.
-		 * @param \WP_Post $post          The post being evaluated.
+		 * @param bool|null $should_ingest Default null indicates no filter has decided yet.
+		 *                                 Filters can check for null to see if a prior filter
+		 *                                 already made a decision, useful for conditional overrides.
+		 * @param \WP_Post  $post          The post being evaluated.
 		 * @return bool Whether to ingest the post.
 		 */
-		return (bool) apply_filters( 'vip_agentforce_should_ingest_post', false, $post );
+		return (bool) apply_filters( 'vip_agentforce_should_ingest_post', null, $post );
 	}
 
 	/**

@@ -14,6 +14,42 @@ The first piece is required for you to have the built JS for the Cookie Manageme
 
 If you are actively developing the CMP assets use `npm run start:js` to have live-updates on edits.
 
+### Environment Configuration (env.php)
+
+Create an `env.php` file in the plugin root for local configuration. This file is gitignored and auto-loaded if present:
+
+```php
+<?php
+define( 'VIP_AGENTFORCE_CONFIGS', [
+    'ingestion_api_instance_url' => 'https://your-instance.salesforce.com',
+    'ingestion_api_token'        => 'your-token',
+    'ingestion_api_source_name'  => 'your-source',
+    'ingestion_api_object_name'  => 'your-object',
+    // ... other config values
+] );
+```
+
+### Developer Mode
+
+Enable developer mode for additional local testing tools:
+
+```php
+define( 'VIP_AGENTFORCE_DEVELOPER_MODE', true );
+```
+
+This loads `dev/setup.php` which provides dev-only features.
+
+#### Mock Ingestion API
+
+When testing ingestion locally without a real Salesforce instance, enable the mock API:
+
+```php
+define( 'VIP_AGENTFORCE_DEVELOPER_MODE', true );
+define( 'VIP_AGENTFORCE_MOCK_INGESTION_API', true );
+```
+
+This intercepts all ingestion API calls and returns mock success responses, logging request details via `error_log()`.
+
 ## End-to-End Tests
 
 The Playwright suite lives under `tests/e2e` and depends on a disposable VIP dev-env site. The npm scripts in that directory will provision the environment, run the tests, and tear everything down.

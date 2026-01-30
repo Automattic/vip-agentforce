@@ -52,6 +52,8 @@ class Configs {
 	 *     ingestion_api_endpoint?: string,
 	 *     ingestion_api_source_name?: string,
 	 *     ingestion_api_object_name?: string,
+	 *     ingestion_api_sync_all_posts?: bool,
+	 *     ingestion_api_categories?: array<string>,
 	 *     agentforce_js_sdk_url?: string,
 	 *     agentforce_js_sdk_activated?: bool
 	 * } The module configs. Returns an empty array if configs are not found, not defined, or if JSON parsing fails.
@@ -98,6 +100,26 @@ class Configs {
 			return [];
 		}
 
+		return self::normalize_config( $configs );
+	}
+
+	/**
+	 * Normalize config values for consistent access.
+	 *
+	 * @param array<string, mixed> $configs Raw config array.
+	 * @return array<string, mixed> Normalized config array.
+	 */
+	public static function normalize_config( array $configs ): array {
+		$categories = $configs['ingestion_api_categories'] ?? [];
+		// Normalize ingestion_api_categories: filter to non-empty strings only.
+		if ( is_array( $categories ) && ! empty( $categories ) ) {
+			$configs['ingestion_api_categories'] = array_values(
+				array_filter( $categories, fn( $cat ) => is_string( $cat ) && '' !== $cat )
+			);
+		} else {
+			$configs['ingestion_api_categories'] = [];
+		}
+
 		return $configs;
 	}
 
@@ -107,5 +129,29 @@ class Configs {
 
 	public static function is_production_env(): bool {
 		return defined( 'VIP_GO_APP_ENVIRONMENT' ) && 'production' === constant( 'VIP_GO_APP_ENVIRONMENT' );
+	}
+
+	/**
+	 * Returns whether all posts should be synced to the Ingestion API.
+	 *
+	 * When true, all published posts will be ingested regardless of other filters.
+	 *
+	 * @return bool
+	 */
+	public static function should_sync_all_posts(): bool {
+		$config = self::get_config();
+		return true === ( $config['ingestion_api_sync_all_posts'] ?? false );
+	}
+
+	/**
+	 * Returns the list of category names to sync to the Ingestion API.
+	 *
+	 * Posts in any of these categories will be ingested.
+	 * Uses category name (not slug) for human readability and resilience to slug changes.
+	 *
+	 * @return string[] Array of category names.
+	 */
+	public static function get_ingestion_categories(): array {
+		return self::get_config()['ingestion_api_categories'] ?? [];
 	}
 }
