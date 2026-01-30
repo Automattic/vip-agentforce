@@ -53,7 +53,7 @@ class Configs {
 	 *     ingestion_api_source_name?: string,
 	 *     ingestion_api_object_name?: string,
 	 *     ingestion_api_sync_all_posts?: bool,
-	 *     ingestion_api_categories?: array<mixed>,
+	 *     ingestion_api_categories?: array<string>,
 	 *     agentforce_js_sdk_url?: string,
 	 *     agentforce_js_sdk_activated?: bool
 	 * } The module configs. Returns an empty array if configs are not found, not defined, or if JSON parsing fails.
@@ -100,6 +100,26 @@ class Configs {
 			return [];
 		}
 
+		return self::normalize_config( $configs );
+	}
+
+	/**
+	 * Normalize config values for consistent access.
+	 *
+	 * @param array<string, mixed> $configs Raw config array.
+	 * @return array<string, mixed> Normalized config array.
+	 */
+	public static function normalize_config( array $configs ): array {
+		$categories = $configs['ingestion_api_categories'] ?? [];
+		// Normalize ingestion_api_categories: filter to non-empty strings only.
+		if ( is_array( $categories ) && ! empty( $categories ) ) {
+			$configs['ingestion_api_categories'] = array_values(
+				array_filter( $categories, fn( $cat ) => is_string( $cat ) && '' !== $cat )
+			);
+		} else {
+			$configs['ingestion_api_categories'] = [];
+		}
+
 		return $configs;
 	}
 
@@ -132,13 +152,6 @@ class Configs {
 	 * @return string[] Array of category names.
 	 */
 	public static function get_ingestion_categories(): array {
-		$categories = self::get_config()['ingestion_api_categories'] ?? [];
-
-		if ( ! is_array( $categories ) ) {
-			return [];
-		}
-
-		// Filter to non-empty strings only.
-		return array_values( array_filter( $categories, fn( $cat ) => is_string( $cat ) && '' !== $cat ) );
+		return self::get_config()['ingestion_api_categories'] ?? [];
 	}
 }

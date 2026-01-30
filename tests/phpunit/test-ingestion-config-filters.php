@@ -46,7 +46,7 @@ class Ingestion_Config_Filters_Test extends WP_UnitTestCase {
 		$ref  = new ReflectionClass( Configs::class );
 		$prop = $ref->getProperty( 'cached_config' );
 		$prop->setAccessible( true );
-		$prop->setValue( null, $config );
+		$prop->setValue( null, Configs::normalize_config( $config ) );
 	}
 
 	// =========================================================================

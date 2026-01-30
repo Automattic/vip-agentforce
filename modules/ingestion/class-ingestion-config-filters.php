@@ -25,7 +25,7 @@ class Ingestion_Config_Filters {
 	public static function init(): void {
 		// Register sync_all_posts filter if enabled.
 		if ( Configs::should_sync_all_posts() ) {
-			add_filter( 'vip_agentforce_should_ingest_post', [ __CLASS__, 'filter_sync_all_posts' ] );
+			add_filter( 'vip_agentforce_should_ingest_post', [ __CLASS__, 'filter_sync_all_posts' ], 10, 1 );
 			return; // If syncing all posts, no need to check categories.
 		}
 
