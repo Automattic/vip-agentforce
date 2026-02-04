@@ -213,6 +213,135 @@ class Ingestion_CLI extends WP_CLI_Command {
 			WP_CLI::success( sprintf( 'All %d record(s) deleted successfully.', $success_count ) );
 		}
 	}
+
+	/**
+	 * Process the ingestion queue.
+	 *
+	 * This command immediately processes all queued posts, making API calls
+	 * to Salesforce. Useful for testing or when cron is not available.
+	 *
+	 * ## OPTIONS
+	 *
+	 * [--batch-size=<batch_size>]
+	 * : Number of items to process per run. Defaults to 50.
+	 *
+	 * [--all]
+	 * : Process all queued items (multiple batches until queue is empty).
+	 *
+	 * ## EXAMPLES
+	 *
+	 *     # Process the queue with default batch size
+	 *     wp vip-agentforce ingestion process-queue
+	 *
+	 *     # Process with custom batch size
+	 *     wp vip-agentforce ingestion process-queue --batch-size=100
+	 *
+	 *     # Process all queued items
+	 *     wp vip-agentforce ingestion process-queue --all
+	 *
+	 * @subcommand process-queue
+	 *
+	 * @param array<int, string>    $args       Positional arguments.
+	 * @param array<string, string> $assoc_args Associative arguments.
+	 */
+	public function process_queue( array $args, array $assoc_args ): void {
+		$batch_size  = isset( $assoc_args['batch-size'] ) ? (int) $assoc_args['batch-size'] : null;
+		$process_all = isset( $assoc_args['all'] );
+
+		// Show current queue status.
+		$counts = Ingestion_Queue::get_queue_counts();
+		WP_CLI::log( sprintf( 'Queue status: %d syncs, %d deletions pending.', $counts['sync'], $counts['delete'] ) );
+
+		if ( 0 === $counts['sync'] && 0 === $counts['delete'] ) {
+			WP_CLI::success( 'Queue is empty, nothing to process.' );
+			return;
+		}
+
+		$total_synced  = 0;
+		$total_deleted = 0;
+		$total_failed  = 0;
+		$total_skipped = 0;
+		$iterations    = 0;
+
+		do {
+			++$iterations;
+			WP_CLI::log( sprintf( 'Processing batch %d...', $iterations ) );
+
+			$results = Ingestion_Cron::run_now( $batch_size );
+
+			$total_synced  += $results['synced'];
+			$total_deleted += $results['deleted'];
+			$total_failed  += $results['failed'];
+			$total_skipped += $results['skipped'];
+
+			WP_CLI::log(
+				sprintf(
+					'Batch %d: synced=%d, deleted=%d, failed=%d, skipped=%d',
+					$iterations,
+					$results['synced'],
+					$results['deleted'],
+					$results['failed'],
+					$results['skipped']
+				)
+			);
+
+			// Check if there are more items.
+			$has_more = Ingestion_Queue::has_queued_items();
+		} while ( $process_all && $has_more );
+
+		// Summary.
+		WP_CLI::log( '' );
+		WP_CLI::log( '=== Queue Processing Summary ===' );
+		WP_CLI::log( sprintf( 'Total batches: %d', $iterations ) );
+		WP_CLI::log( sprintf( 'Synced: %d', $total_synced ) );
+		WP_CLI::log( sprintf( 'Deleted: %d', $total_deleted ) );
+		WP_CLI::log( sprintf( 'Failed: %d', $total_failed ) );
+		WP_CLI::log( sprintf( 'Skipped: %d', $total_skipped ) );
+
+		// Show remaining items if any.
+		$remaining = Ingestion_Queue::get_queue_counts();
+		if ( $remaining['sync'] > 0 || $remaining['delete'] > 0 ) {
+			WP_CLI::log( sprintf( 'Remaining in queue: %d syncs, %d deletions', $remaining['sync'], $remaining['delete'] ) );
+		}
+
+		if ( $total_failed > 0 ) {
+			WP_CLI::warning( sprintf( 'Processing completed with %d failure(s).', $total_failed ) );
+		} else {
+			WP_CLI::success( 'Queue processing completed successfully.' );
+		}
+	}
+
+	/**
+	 * Show the current queue status.
+	 *
+	 * ## EXAMPLES
+	 *
+	 *     # Show queue status
+	 *     wp vip-agentforce ingestion queue-status
+	 *
+	 * @subcommand queue-status
+	 */
+	public function queue_status(): void {
+		$counts = Ingestion_Queue::get_queue_counts();
+
+		WP_CLI::log( '=== Ingestion Queue Status ===' );
+		WP_CLI::log( sprintf( 'Posts queued for sync: %d', $counts['sync'] ) );
+		WP_CLI::log( sprintf( 'Posts queued for deletion: %d', $counts['delete'] ) );
+		WP_CLI::log( sprintf( 'Total queued: %d', $counts['sync'] + $counts['delete'] ) );
+
+		// Check cron status.
+		$is_scheduled = Ingestion_Cron::is_scheduled();
+		WP_CLI::log( '' );
+		WP_CLI::log( sprintf( 'Cron scheduled: %s', $is_scheduled ? 'Yes' : 'No' ) );
+
+		if ( $is_scheduled ) {
+			$next = wp_next_scheduled( Ingestion_Cron::CRON_HOOK );
+			if ( $next ) {
+				$next_run = human_time_diff( time(), $next );
+				WP_CLI::log( sprintf( 'Next scheduled run: in %s', $next_run ) );
+			}
+		}
+	}
 }
 
 WP_CLI::add_command( 'vip-agentforce ingestion', Ingestion_CLI::class );

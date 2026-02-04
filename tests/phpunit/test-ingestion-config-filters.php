@@ -8,6 +8,7 @@
 use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion;
 use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_Config_Filters;
 use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_Post_Record;
+use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_Queue;
 use Automattic\VIP\Salesforce\Agentforce\Utils\Configs;
 use Automattic\VIP\Salesforce\Agentforce\Utils\Logger;
 
@@ -33,6 +34,7 @@ class Ingestion_Config_Filters_Test extends WP_UnitTestCase {
 		remove_all_filters( 'vip_agentforce_should_ingest_post' );
 		remove_all_filters( 'vip_agentforce_transform_post' );
 		remove_all_filters( 'pre_http_request' );
+		remove_all_filters( 'vip_agentforce_use_async_ingestion' );
 		Configs::flush_cache();
 		$this->captured_requests = [];
 	}
@@ -327,8 +329,11 @@ class Ingestion_Config_Filters_Test extends WP_UnitTestCase {
 
 		$this->prime_configs_cache( $config );
 
+		// Disable async mode so tests run synchronously (legacy behavior).
+		add_filter( 'vip_agentforce_use_async_ingestion', '__return_false' );
+
 		// Register the save_post hook.
-		Ingestion::init();
+		Ingestion_Queue::init();
 
 		// Register config-based filters.
 		Ingestion_Config_Filters::init();

@@ -7,6 +7,26 @@ require_once __DIR__ . '/../utils/class-logger.php';
 require_once __DIR__ . '/class-speedup-isolated-wp-tests.php';
 require_once __DIR__ . '/class-testable-logger.php';
 
+// Mock WP_CLI classes for testing when WP-CLI is not available.
+if ( ! class_exists( 'WP_CLI_Command' ) ) {
+	// phpcs:ignore Generic.Files.OneObjectStructurePerFile.MultipleFound
+	class WP_CLI_Command {}
+}
+
+if ( ! class_exists( 'WP_CLI' ) ) {
+	// phpcs:ignore Generic.Files.OneObjectStructurePerFile.MultipleFound
+	class WP_CLI {
+		public static function add_command( $name, $callable, $args = array() ) {}
+		public static function log( $message ) {}
+		public static function success( $message ) {}
+		public static function warning( $message ) {}
+		public static function error( $message, $exit = true ) {
+			// Don't exit in tests - just log the error.
+		}
+		public static function line( $message = '' ) {}
+	}
+}
+
 if ( ! defined( 'VIP_GO_APP_ENVIRONMENT' ) ) {
 	define( 'VIP_GO_APP_ENVIRONMENT', 'test' );
 }

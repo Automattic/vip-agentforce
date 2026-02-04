@@ -74,6 +74,12 @@ require_once __DIR__ . '/modules/ingestion/class-ingestion.php';
 require_once __DIR__ . '/modules/ingestion/class-ingestion-failure.php';
 require_once __DIR__ . '/modules/ingestion/class-deletion-failure.php';
 require_once __DIR__ . '/modules/ingestion/class-ingestion-config-filters.php';
+require_once __DIR__ . '/modules/ingestion/class-ingestion-queue.php';
+require_once __DIR__ . '/modules/ingestion/class-ingestion-cron.php';
+
+// Initialize ingestion queue and cron (async processing of Salesforce API calls).
+\Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_Queue::init();
+\Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_Cron::init();
 
 // Load WP-CLI commands.
 if ( defined( 'WP_CLI' ) && WP_CLI ) {
