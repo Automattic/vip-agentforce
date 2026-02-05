@@ -1,11 +1,12 @@
 {
-  "name": "client",
+  "name": "vip-agentforce-custom-client",
   "private": true,
   "version": "0.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "deploy": "pnpm build && cp dist/index.js dist/index.css ../assets/build/js/custom-client/",
     "lint": "eslint .",
     "preview": "vite preview"
   },
