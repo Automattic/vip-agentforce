@@ -98,14 +98,36 @@ export function useChat() {
                     ? JSON.parse(entry.entryPayload)
                     : entry.entryPayload;
 
-                // Safely extract message content with null checks
                 const abstractMessage = payload?.abstractMessage;
-                const messageText = abstractMessage?.staticContent?.text;
                 const messageId = abstractMessage?.id || entry.identifier;
+                const messageType = abstractMessage?.messageType;
+
+                // Extract text based on message type
+                let messageText: string | null = null;
+
+                if (messageType === "StaticContentMessage") {
+                  messageText = abstractMessage?.staticContent?.text;
+                } else if (messageType === "ChoicesMessage") {
+                  // Handle choices/buttons message - convert to text with options
+                  const choices = abstractMessage?.choices;
+                  const headerText = choices?.text || "";
+                  const optionItems = choices?.optionItems || [];
+
+                  // Format options as a list
+                  const optionsList = optionItems
+                    .map((item: { titleItem?: { title?: string } }, idx: number) => {
+                      const title = item?.titleItem?.title || `Option ${idx + 1}`;
+                      return `${idx + 1}. ${title}`;
+                    })
+                    .join("\n\n");
+
+                  messageText = headerText + (optionsList ? "\n\n" + optionsList : "");
+                }
 
                 if (DEBUG) {
                   console.log("[useChat] Chatbot message:", {
                     messageId,
+                    messageType,
                     messageText,
                     fullPayload: payload,
                   });
