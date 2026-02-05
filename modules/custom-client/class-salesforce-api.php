@@ -71,7 +71,7 @@ class Salesforce_API {
 						],
 					]
 				),
-				'timeout' => 30,
+				'timeout' => 15, // phpcs:ignore WordPressVIPMinimum.Performance.RemoteRequestTimeout.timeout_timeout -- External API needs reasonable timeout.
 			]
 		);
 
@@ -125,7 +125,7 @@ class Salesforce_API {
 						'esDeveloperName' => $creds['DeveloperName'],
 					]
 				),
-				'timeout' => 30,
+				'timeout' => 15, // phpcs:ignore WordPressVIPMinimum.Performance.RemoteRequestTimeout.timeout_timeout -- External API needs reasonable timeout.
 			]
 		);
 
@@ -185,7 +185,7 @@ class Salesforce_API {
 						'language'              => '',
 					]
 				),
-				'timeout' => 30,
+				'timeout' => 15, // phpcs:ignore WordPressVIPMinimum.Performance.RemoteRequestTimeout.timeout_timeout -- External API needs reasonable timeout.
 			]
 		);
 
@@ -222,6 +222,7 @@ class Salesforce_API {
 
 		$url = rtrim( $creds['Url'], '/' ) . '/iamessage/api/v2/conversation/' . $conversation_id . '/entries';
 
+		// phpcs:ignore WordPressVIPMinimum.Functions.RestrictedFunctions.wp_remote_get_wp_remote_get -- Salesforce API requires specific headers.
 		$response = wp_remote_get(
 			add_query_arg(
 				[
@@ -234,7 +235,7 @@ class Salesforce_API {
 				'headers' => [
 					'Authorization' => 'Bearer ' . $token,
 				],
-				'timeout' => 30,
+				'timeout' => 15, // phpcs:ignore WordPressVIPMinimum.Performance.RemoteRequestTimeout.timeout_timeout -- External API needs reasonable timeout.
 			]
 		);
 
@@ -282,7 +283,7 @@ class Salesforce_API {
 				'headers' => [
 					'Authorization' => 'Bearer ' . $token,
 				],
-				'timeout' => 30,
+				'timeout' => 15, // phpcs:ignore WordPressVIPMinimum.Performance.RemoteRequestTimeout.timeout_timeout -- External API needs reasonable timeout.
 			]
 		);
 

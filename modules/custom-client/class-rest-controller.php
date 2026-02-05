@@ -113,9 +113,10 @@ class REST_Controller {
 	 *
 	 * Gets an access token and creates a new conversation.
 	 *
-	 * @param WP_REST_Request $request Request object.
+	 * @param WP_REST_Request $request Request object (unused but required by REST API).
 	 * @return WP_REST_Response|WP_Error
 	 */
+	// phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.Found -- Required by REST API callback signature.
 	public static function initialize_chat( WP_REST_Request $request ): WP_REST_Response|WP_Error {
 		// Get access token.
 		$token_result = Salesforce_API::get_access_token();
@@ -148,12 +149,12 @@ class REST_Controller {
 		}
 
 		// Extract orgId from token if possible (for SSE compatibility).
-		$org_id = '';
+		$org_id      = '';
 		$token_parts = explode( '.', $access_token );
 		if ( count( $token_parts ) >= 2 ) {
 			// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_decode
 			$payload = json_decode( base64_decode( $token_parts[1] ), true );
-			$org_id = $payload['orgId'] ?? '';
+			$org_id  = $payload['orgId'] ?? '';
 		}
 
 		return new WP_REST_Response(
