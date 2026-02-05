@@ -282,27 +282,28 @@ class Ingestion_Cron_Test extends WP_UnitTestCase {
 		$schedules = Ingestion_Cron::add_cron_schedule( [] );
 
 		$this->assertArrayHasKey( 'vip_agentforce_ingestion', $schedules );
-		$this->assertSame( 300, $schedules['vip_agentforce_ingestion']['interval'] );
+		$this->assertSame( 900, $schedules['vip_agentforce_ingestion']['interval'] ); // 15 min VIP minimum
 	}
 
 	public function test_cron_interval_is_filterable(): void {
-		add_filter( 'vip_agentforce_cron_interval', fn() => 600 );
+		// Filter to increase beyond minimum (1800 = 30 min).
+		add_filter( 'vip_agentforce_cron_interval', fn() => 1800 );
 
 		$interval = Ingestion_Cron::get_cron_interval();
 
-		$this->assertSame( 600, $interval );
+		$this->assertSame( 1800, $interval );
 
 		remove_all_filters( 'vip_agentforce_cron_interval' );
 	}
 
 	public function test_cron_interval_has_minimum(): void {
-		// Try to set interval to 10 seconds (below minimum of 30).
-		add_filter( 'vip_agentforce_cron_interval', fn() => 10 );
+		// Try to set interval to 60 seconds (below VIP minimum of 900).
+		add_filter( 'vip_agentforce_cron_interval', fn() => 60 );
 
 		$interval = Ingestion_Cron::get_cron_interval();
 
-		// Should be clamped to minimum of 30 seconds.
-		$this->assertSame( 30, $interval );
+		// Should be clamped to VIP minimum of 900 seconds (15 minutes).
+		$this->assertSame( 900, $interval );
 
 		remove_all_filters( 'vip_agentforce_cron_interval' );
 	}

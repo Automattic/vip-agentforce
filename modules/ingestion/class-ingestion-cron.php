@@ -27,9 +27,9 @@ class Ingestion_Cron {
 	public const DEFAULT_BATCH_SIZE = 50;
 
 	/**
-	 * Default cron interval in seconds (5 minutes).
+	 * Default cron interval in seconds (15 minutes - VIP minimum).
 	 */
-	public const DEFAULT_CRON_INTERVAL = 300;
+	public const DEFAULT_CRON_INTERVAL = 900;
 
 	/**
 	 * Initialize the cron hooks.
@@ -50,9 +50,15 @@ class Ingestion_Cron {
 	 */
 	public static function add_cron_schedule( array $schedules ): array {
 		$schedules['vip_agentforce_ingestion'] = [
-			'interval' => self::get_cron_interval(),
+			'interval' => 15 * MINUTE_IN_SECONDS,
 			'display'  => __( 'VIP Agentforce Ingestion', 'vip-agentforce' ),
 		];
+
+		// Allow filtering to increase interval (but not below VIP minimum of 15 min).
+		$filtered_interval = self::get_cron_interval();
+		if ( $filtered_interval > 15 * MINUTE_IN_SECONDS ) {
+			$schedules['vip_agentforce_ingestion']['interval'] = $filtered_interval;
+		}
 
 		return $schedules;
 	}
@@ -60,7 +66,7 @@ class Ingestion_Cron {
 	/**
 	 * Get the cron interval in seconds.
 	 *
-	 * @return int Interval in seconds.
+	 * @return int Interval in seconds (minimum 900 = 15 minutes per VIP requirements).
 	 */
 	public static function get_cron_interval(): int {
 		/**
@@ -68,12 +74,12 @@ class Ingestion_Cron {
 		 *
 		 * @since 1.0.0
 		 *
-		 * @param int $interval Interval in seconds. Default 60 (1 minute).
+		 * @param int $interval Interval in seconds. Default 900 (15 minutes).
 		 */
 		$interval = (int) apply_filters( 'vip_agentforce_cron_interval', self::DEFAULT_CRON_INTERVAL );
 
-		// Minimum 30 seconds to prevent runaway cron.
-		return max( 30, $interval );
+		// Minimum 15 minutes per VIP platform requirements.
+		return max( 15 * MINUTE_IN_SECONDS, $interval );
 	}
 
 	/**
