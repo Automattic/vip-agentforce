@@ -247,6 +247,12 @@ class Salesforce_API {
 		$body        = wp_remote_retrieve_body( $response );
 		$data        = json_decode( $body, true );
 
+		// Debug logging when WP_DEBUG is enabled.
+		if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
+			// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log -- Debug logging.
+			error_log( '[Custom Client] get_messages response: ' . wp_json_encode( $data ) );
+		}
+
 		if ( $status_code < 200 || $status_code >= 300 ) {
 			return new WP_Error(
 				'salesforce_api_error',

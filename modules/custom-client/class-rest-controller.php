@@ -211,8 +211,6 @@ class REST_Controller {
 	 * @return WP_REST_Response|WP_Error
 	 */
 	public static function get_messages( WP_REST_Request $request ): WP_REST_Response|WP_Error {
-		// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log -- Debug logging.
-		error_log( '[Custom Client REST] get_messages endpoint called' );
 
 		$token = self::get_token_from_header( $request );
 		if ( ! $token ) {
