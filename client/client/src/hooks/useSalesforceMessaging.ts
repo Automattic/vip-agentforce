@@ -1,7 +1,7 @@
 import { useCallback } from "react";
 
-const API_BASE_URL =
-  import.meta.env.VITE_API_URL || "http://localhost:8080/api";
+// Use WordPress REST API - relative URL works on any domain
+const API_BASE_URL = "/wp-json/vip-agentforce/v1/custom-client";
 
 interface MessagingCredentials {
   accessToken: string;
