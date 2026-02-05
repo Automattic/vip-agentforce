@@ -103,25 +103,72 @@ export function useChat() {
                 const messageType = abstractMessage?.messageType;
 
                 // Extract text based on message type
+                // Supported types: StaticContentMessage, ChoicesMessage, FormMessage
+                // See: https://developer.salesforce.com/docs/service/messaging-api/references/about/message-types-format-types.html
                 let messageText: string | null = null;
 
                 if (messageType === "StaticContentMessage") {
-                  messageText = abstractMessage?.staticContent?.text;
+                  const staticContent = abstractMessage?.staticContent;
+                  const formatType = staticContent?.formatType;
+
+                  if (formatType === "Text") {
+                    messageText = staticContent?.text;
+                  } else if (formatType === "RichLink") {
+                    // RichLink contains a URL preview
+                    const title = staticContent?.title || "";
+                    const url = staticContent?.url || "";
+                    messageText = title ? `${title}\n${url}` : url;
+                  } else if (formatType === "Attachments" || formatType === "ExternalAttachments") {
+                    // Attachments - extract file names/URLs
+                    const attachments = staticContent?.attachments || [];
+                    messageText = attachments
+                      .map((a: { name?: string; url?: string }) => a.name || a.url || "Attachment")
+                      .join("\n");
+                  } else if (formatType === "WebView") {
+                    // WebView - just show the URL
+                    messageText = staticContent?.url || "[Web content]";
+                  } else {
+                    // Unknown format, try to extract any text
+                    messageText = staticContent?.text || JSON.stringify(staticContent);
+                  }
                 } else if (messageType === "ChoicesMessage") {
-                  // Handle choices/buttons message - convert to text with options
+                  // Handle choices message - Buttons, QuickReplies, or Carousel
                   const choices = abstractMessage?.choices;
+                  const formatType = choices?.formatType;
                   const headerText = choices?.text || "";
                   const optionItems = choices?.optionItems || [];
 
-                  // Format options as a list
-                  const optionsList = optionItems
-                    .map((item: { titleItem?: { title?: string } }, idx: number) => {
-                      const title = item?.titleItem?.title || `Option ${idx + 1}`;
-                      return `${idx + 1}. ${title}`;
-                    })
-                    .join("\n\n");
-
-                  messageText = headerText + (optionsList ? "\n\n" + optionsList : "");
+                  if (formatType === "Carousel") {
+                    // Carousel has items with images and content
+                    const carouselList = optionItems
+                      .map((item: { titleItem?: { title?: string; subTitle?: string } }, idx: number) => {
+                        const title = item?.titleItem?.title || `Item ${idx + 1}`;
+                        const subtitle = item?.titleItem?.subTitle || "";
+                        return subtitle ? `${idx + 1}. **${title}**\n   ${subtitle}` : `${idx + 1}. **${title}**`;
+                      })
+                      .join("\n\n");
+                    messageText = headerText + (carouselList ? "\n\n" + carouselList : "");
+                  } else {
+                    // Buttons or QuickReplies - format as numbered list
+                    const optionsList = optionItems
+                      .map((item: { titleItem?: { title?: string } }, idx: number) => {
+                        const title = item?.titleItem?.title || `Option ${idx + 1}`;
+                        return `${idx + 1}. ${title}`;
+                      })
+                      .join("\n\n");
+                    messageText = headerText + (optionsList ? "\n\n" + optionsList : "");
+                  }
+                } else if (messageType === "FormMessage") {
+                  // Form inputs - just show a placeholder since we can't render forms
+                  const formText = abstractMessage?.forms?.text || "Please complete the form.";
+                  messageText = `📋 ${formText}`;
+                } else {
+                  // Unknown message type - log and try to extract something useful
+                  console.warn("[useChat] Unknown message type:", messageType, abstractMessage);
+                  messageText = abstractMessage?.staticContent?.text ||
+                               abstractMessage?.choices?.text ||
+                               abstractMessage?.forms?.text ||
+                               null;
                 }
 
                 if (DEBUG) {
