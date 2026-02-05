@@ -9,6 +9,7 @@ parameters:
     - vip-agentforce.php
   excludePaths:
     - %rootDir%/../../../tests/e2e
+    - %rootDir%/../../../tests/class-wp-cli-mock.php
   scanDirectories:
     - mu-plugins
   scanFiles:

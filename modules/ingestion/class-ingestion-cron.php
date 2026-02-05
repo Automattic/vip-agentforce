@@ -35,7 +35,7 @@ class Ingestion_Cron {
 	 * Initialize the cron hooks.
 	 */
 	public static function init(): void {
-		add_action( self::CRON_HOOK, [ __CLASS__, 'process_queue' ] );
+		add_action( self::CRON_HOOK, [ __CLASS__, 'handle_cron' ] );
 		add_filter( 'cron_schedules', [ __CLASS__, 'add_cron_schedule' ] );
 
 		// Schedule on init if there are queued items.
@@ -135,9 +135,18 @@ class Ingestion_Cron {
 	}
 
 	/**
+	 * Cron action callback - wrapper for process_queue that returns void.
+	 *
+	 * WordPress action callbacks should not return values.
+	 */
+	public static function handle_cron(): void {
+		self::process_queue();
+	}
+
+	/**
 	 * Process the ingestion queue.
 	 *
-	 * This is the main cron callback that processes queued posts.
+	 * This method can be called directly (e.g., from CLI) to get results.
 	 *
 	 * @param int|null $batch_size Optional batch size override.
 	 * @return array{synced: int, deleted: int, failed: int, skipped: int} Processing results.
