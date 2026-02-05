@@ -205,7 +205,7 @@ class Ingestion_Cron_Test extends WP_UnitTestCase {
 
 		// Mark as ingested and queue for deletion.
 		update_post_meta( $post->ID, Ingestion::META_KEY_INGESTION_ATTEMPTED, time() );
-		Ingestion_Queue::queue_for_delete( $post->ID, $post );
+		Ingestion_Queue::queue_for_delete( $post->ID );
 
 		$results = Ingestion_Cron::process_queue();
 
@@ -331,7 +331,7 @@ class Ingestion_Cron_Test extends WP_UnitTestCase {
 
 		// Mark as ingested and queue for deletion.
 		update_post_meta( $delete_post->ID, Ingestion::META_KEY_INGESTION_ATTEMPTED, time() );
-		Ingestion_Queue::queue_for_delete( $delete_post->ID, $delete_post );
+		Ingestion_Queue::queue_for_delete( $delete_post->ID );
 
 		$results = Ingestion_Cron::process_queue();
 

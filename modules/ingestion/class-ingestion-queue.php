@@ -33,7 +33,7 @@ class Ingestion_Queue {
 	/**
 	 * Queue action type constants.
 	 */
-	public const ACTION_SYNC = 'sync';
+	public const ACTION_SYNC   = 'sync';
 	public const ACTION_DELETE = 'delete';
 
 	/**
@@ -100,7 +100,7 @@ class Ingestion_Queue {
 		}
 
 		if ( self::is_async_enabled() ) {
-			self::queue_for_delete( $post_id, $post );
+			self::queue_for_delete( $post_id );
 		} else {
 			// Sync mode: delete immediately.
 			Ingestion::handle_before_delete_post( $post_id, $post );
@@ -137,10 +137,9 @@ class Ingestion_Queue {
 	 * For deletions, we also store the record_id since the post may not exist
 	 * when the cron runs.
 	 *
-	 * @param int      $post_id Post ID.
-	 * @param \WP_Post $post    The post object (needed to build record_id).
+	 * @param int $post_id Post ID.
 	 */
-	public static function queue_for_delete( int $post_id, \WP_Post $post ): void {
+	public static function queue_for_delete( int $post_id ): void {
 		// Remove any pending sync - deletion supersedes.
 		delete_post_meta( $post_id, self::META_KEY_QUEUED_FOR_SYNC );
 

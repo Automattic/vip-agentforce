@@ -49,7 +49,7 @@ class Ingestion_Queue_Test extends WP_UnitTestCase {
 	public function test_queue_for_delete_sets_meta_with_record_id(): void {
 		$post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
 
-		Ingestion_Queue::queue_for_delete( $post->ID, $post );
+		Ingestion_Queue::queue_for_delete( $post->ID );
 
 		$meta = get_post_meta( $post->ID, Ingestion_Queue::META_KEY_QUEUED_FOR_DELETE, true );
 		$this->assertIsArray( $meta, 'Delete queue meta should be an array.' );
@@ -62,7 +62,7 @@ class Ingestion_Queue_Test extends WP_UnitTestCase {
 		$post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
 
 		// First queue for delete.
-		Ingestion_Queue::queue_for_delete( $post->ID, $post );
+		Ingestion_Queue::queue_for_delete( $post->ID );
 		$this->assertNotEmpty( get_post_meta( $post->ID, Ingestion_Queue::META_KEY_QUEUED_FOR_DELETE, true ) );
 
 		// Then queue for sync - should remove delete.
@@ -80,7 +80,7 @@ class Ingestion_Queue_Test extends WP_UnitTestCase {
 		$this->assertNotEmpty( get_post_meta( $post->ID, Ingestion_Queue::META_KEY_QUEUED_FOR_SYNC, true ) );
 
 		// Then queue for delete - should remove sync.
-		Ingestion_Queue::queue_for_delete( $post->ID, $post );
+		Ingestion_Queue::queue_for_delete( $post->ID );
 
 		$this->assertNotEmpty( get_post_meta( $post->ID, Ingestion_Queue::META_KEY_QUEUED_FOR_DELETE, true ) );
 		$this->assertEmpty( get_post_meta( $post->ID, Ingestion_Queue::META_KEY_QUEUED_FOR_SYNC, true ) );
@@ -102,7 +102,7 @@ class Ingestion_Queue_Test extends WP_UnitTestCase {
 	public function test_get_queued_for_delete_returns_post_ids_and_record_ids(): void {
 		$post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
 
-		Ingestion_Queue::queue_for_delete( $post->ID, $post );
+		Ingestion_Queue::queue_for_delete( $post->ID );
 
 		$queued = Ingestion_Queue::get_queued_for_delete();
 
@@ -124,7 +124,7 @@ class Ingestion_Queue_Test extends WP_UnitTestCase {
 	public function test_dequeue_delete_removes_meta(): void {
 		$post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
 
-		Ingestion_Queue::queue_for_delete( $post->ID, $post );
+		Ingestion_Queue::queue_for_delete( $post->ID );
 		$this->assertNotEmpty( get_post_meta( $post->ID, Ingestion_Queue::META_KEY_QUEUED_FOR_DELETE, true ) );
 
 		Ingestion_Queue::dequeue_delete( $post->ID );
@@ -147,7 +147,7 @@ class Ingestion_Queue_Test extends WP_UnitTestCase {
 
 		Ingestion_Queue::queue_for_sync( $post1->ID );
 		Ingestion_Queue::queue_for_sync( $post2->ID );
-		Ingestion_Queue::queue_for_delete( $post3->ID, $post3 );
+		Ingestion_Queue::queue_for_delete( $post3->ID );
 
 		$counts = Ingestion_Queue::get_queue_counts();
 
