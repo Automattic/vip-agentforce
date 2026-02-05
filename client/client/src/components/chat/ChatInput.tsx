@@ -8,6 +8,7 @@ interface ChatInputProps {
   onSend: () => void;
   onKeyPress: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void;
   isEnabled: boolean;
+  isConnecting?: boolean;
   onReconnect?: () => void;
 }
 
@@ -17,6 +18,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   onSend,
   onKeyPress,
   isEnabled,
+  isConnecting = false,
   onReconnect,
 }) => {
   const { theme } = useTheme();
@@ -51,11 +53,13 @@ export const ChatInput: React.FC<ChatInputProps> = ({
               }
             }}
             placeholder={
-              isEnabled
-                ? isListening
-                  ? "Listening..."
-                  : "Type your message..."
-                : "Click to reconnect..."
+              isConnecting
+                ? "Waiting for agent..."
+                : isEnabled
+                  ? isListening
+                    ? "Listening..."
+                    : "Type your message..."
+                  : "Click to reconnect..."
             }
             className="w-full p-3 bg-transparent resize-none focus:outline-none text-sm cursor-pointer"
             rows={1}

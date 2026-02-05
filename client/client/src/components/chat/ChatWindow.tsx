@@ -29,10 +29,12 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const {
     messages,
     isConnected,
+    isConnecting,
     isLoading,
     isTyping,
     error,
     currentAgent,
+    agentJoined,
     sendMessage,
     closeChat,
     startNewChat,
@@ -45,9 +47,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     }
   }, [messages, windowState]);
 
-  // Send messages
+  // Send messages - only allow when connected AND agent has joined
   const handleSend = async () => {
-    if (!inputValue.trim() || !isConnected) return;
+    if (!inputValue.trim() || !isConnected || !agentJoined) return;
     const messageText = inputValue;
     setInputValue("");
 
@@ -115,7 +117,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
               handleSend();
             }
           }}
-          isEnabled={isConnected}
+          isEnabled={isConnected && agentJoined}
+          isConnecting={isConnecting || (isConnected && !agentJoined)}
           onReconnect={startNewChat}
         />
       </AnimatedChatContainer>

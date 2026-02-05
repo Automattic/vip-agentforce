@@ -9,9 +9,11 @@ const DEBUG = import.meta.env.DEV; // Enable debug logging in development
 export function useChat() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isConnected, setIsConnected] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
   const [currentAgent, setCurrentAgent] = useState<string | null>(null);
+  const [agentJoined, setAgentJoined] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const credsRef = useRef<{
@@ -21,7 +23,7 @@ export function useChat() {
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
   const processedMessageIdsRef = useRef<Set<string>>(new Set());
-  const isInitializedRef = useRef(false);
+  const isInitializingRef = useRef(false);
 
   const {
     initialize,
@@ -157,6 +159,7 @@ export function useChat() {
                   p.participant?.role?.toLowerCase() === "chatbot"
                 ) {
                   setCurrentAgent(p.displayName);
+                  setAgentJoined(true);
                   setMessages((prev) => [
                     ...prev,
                     {
@@ -172,6 +175,7 @@ export function useChat() {
                   p.participant?.role === "agent"
                 ) {
                   setCurrentAgent(null);
+                  setAgentJoined(false);
                   setMessages((prev) => [
                     ...prev,
                     {
@@ -252,14 +256,25 @@ export function useChat() {
   }, [getMessages, processConversationEntries, resetTimeout, stopPolling]);
 
   const startChat = useCallback(async () => {
+    // Prevent double initialization
+    if (isInitializingRef.current) {
+      if (DEBUG) {
+        console.log("[useChat] Already initializing, skipping");
+      }
+      return;
+    }
+    isInitializingRef.current = true;
+
     try {
       stopPolling();
+      setIsConnecting(true);
 
       // Reset all state
       setMessages([]);
       setIsLoading(false);
       setIsTyping(false);
       setCurrentAgent(null);
+      setAgentJoined(false);
       setError(null);
       processedMessageIdsRef.current.clear();
 
@@ -272,10 +287,13 @@ export function useChat() {
 
       startPolling();
       resetTimeout();
+      setIsConnecting(false);
     } catch (err) {
       console.error("Chat initialization error:", err);
       setError("Failed to start chat");
       setIsConnected(false);
+      setIsConnecting(false);
+      isInitializingRef.current = false;
     }
   }, [initialize, startPolling, stopPolling, resetTimeout]);
 
@@ -327,11 +345,14 @@ export function useChat() {
       );
 
       setIsConnected(false);
+      setIsConnecting(false);
       setIsTyping(false);
       setCurrentAgent(null);
+      setAgentJoined(false);
       setMessages([]);
       setIsLoading(false);
       setError(null);
+      isInitializingRef.current = false;
       onClosed();
     } catch (err) {
       console.error("Failed to close chat:", err);
@@ -340,23 +361,23 @@ export function useChat() {
   };
 
   useEffect(() => {
-    if (isInitializedRef.current) return;
-    isInitializedRef.current = true;
-
     startChat();
 
     return () => {
       stopPolling();
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
+      isInitializingRef.current = false;
     };
   }, [startChat, stopPolling]);
 
   return {
     messages,
     isConnected,
+    isConnecting,
     isLoading,
     isTyping,
     currentAgent,
+    agentJoined,
     error,
     sendMessage,
     closeChat,
