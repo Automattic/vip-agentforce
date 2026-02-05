@@ -4,6 +4,7 @@ import { useSalesforceMessaging } from "./useSalesforceMessaging";
 
 const INACTIVITY_TIMEOUT = 5 * 60 * 1000; // 5 minutes
 const POLLING_INTERVAL = 2000; // 2 seconds
+const DEBUG = import.meta.env.DEV; // Enable debug logging in development
 
 export function useChat() {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -68,6 +69,10 @@ export function useChat() {
   const processConversationEntries = useCallback(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (entries: any[]) => {
+      if (DEBUG) {
+        console.log("[useChat] Raw entries received:", entries);
+      }
+
       // Sort by timestamp to process in order
       const sorted = [...entries].sort(
         (a, b) => a.clientTimestamp - b.clientTimestamp
@@ -77,6 +82,10 @@ export function useChat() {
         // Skip already processed entries
         if (processedMessageIdsRef.current.has(entry.identifier)) return;
         processedMessageIdsRef.current.add(entry.identifier);
+
+        if (DEBUG) {
+          console.log("[useChat] Processing entry:", entry.entryType, entry);
+        }
 
         switch (entry.entryType) {
           case "Message":
@@ -91,6 +100,14 @@ export function useChat() {
                 const abstractMessage = payload?.abstractMessage;
                 const messageText = abstractMessage?.staticContent?.text;
                 const messageId = abstractMessage?.id || entry.identifier;
+
+                if (DEBUG) {
+                  console.log("[useChat] Chatbot message:", {
+                    messageId,
+                    messageText,
+                    fullPayload: payload,
+                  });
+                }
 
                 if (!messageText) {
                   console.warn("Message entry missing text content:", entry);
@@ -185,6 +202,10 @@ export function useChat() {
   );
 
   const startPolling = useCallback(() => {
+    if (DEBUG) {
+      console.log("[useChat] startPolling called, existing interval:", !!pollingRef.current);
+    }
+
     if (pollingRef.current) {
       clearInterval(pollingRef.current);
     }
@@ -192,7 +213,12 @@ export function useChat() {
     setIsConnected(true);
 
     const poll = async () => {
-      if (!credsRef.current) return;
+      if (!credsRef.current) {
+        if (DEBUG) {
+          console.log("[useChat] poll: no creds, skipping");
+        }
+        return;
+      }
 
       try {
         const data = await getMessages(
@@ -219,6 +245,9 @@ export function useChat() {
     };
 
     pollingRef.current = setInterval(poll, POLLING_INTERVAL);
+    if (DEBUG) {
+      console.log("[useChat] Polling interval set, ID:", pollingRef.current);
+    }
     poll(); // Initial poll
   }, [getMessages, processConversationEntries, resetTimeout, stopPolling]);
 
@@ -270,6 +299,14 @@ export function useChat() {
         credsRef.current.conversationId,
         content
       );
+
+      // Ensure polling is running after sending a message
+      if (!pollingRef.current) {
+        if (DEBUG) {
+          console.log("[useChat] Polling was stopped, restarting...");
+        }
+        startPolling();
+      }
     } catch (err) {
       console.error(err);
       setError("Failed to send message");
