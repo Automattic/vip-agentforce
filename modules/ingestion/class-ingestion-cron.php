@@ -24,7 +24,7 @@ class Ingestion_Cron {
 	/**
 	 * Default batch size for processing.
 	 */
-	public const DEFAULT_BATCH_SIZE = 50;
+	public const DEFAULT_BATCH_SIZE = 100;
 
 	/**
 	 * Default cron interval in seconds (15 minutes - VIP minimum).
