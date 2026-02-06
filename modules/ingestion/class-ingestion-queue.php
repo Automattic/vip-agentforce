@@ -26,9 +26,20 @@ class Ingestion_Queue {
 	public const META_KEY_QUEUED_FOR_SYNC = 'vip_agentforce_queued_for_sync';
 
 	/**
-	 * Post meta key for tracking posts queued for deletion.
+	 * Option name for storing the delete queue.
+	 *
+	 * We use an option instead of post meta because wp_delete_post() removes
+	 * all post meta, which would lose the queue entry before cron processes it.
 	 */
-	public const META_KEY_QUEUED_FOR_DELETE = 'vip_agentforce_queued_for_delete';
+	public const OPTION_DELETE_QUEUE = 'vip_agentforce_delete_queue';
+
+	/**
+	 * Maximum number of items to store in the delete queue.
+	 *
+	 * If the queue exceeds this limit, deletions are processed synchronously
+	 * to prevent unbounded option growth during bulk delete operations.
+	 */
+	public const DELETE_QUEUE_MAX_SIZE = 500;
 
 	/**
 	 * Queue action type constants.
@@ -114,7 +125,7 @@ class Ingestion_Queue {
 	 */
 	public static function queue_for_sync( int $post_id ): void {
 		// If already queued for delete, remove it (sync takes precedence on save).
-		delete_post_meta( $post_id, self::META_KEY_QUEUED_FOR_DELETE );
+		self::dequeue_delete( $post_id );
 
 		// Set the queue timestamp.
 		update_post_meta( $post_id, self::META_KEY_QUEUED_FOR_SYNC, time() );
@@ -134,8 +145,11 @@ class Ingestion_Queue {
 	/**
 	 * Queue a post for deletion from Salesforce.
 	 *
-	 * For deletions, we also store the record_id since the post may not exist
-	 * when the cron runs.
+	 * Uses a WordPress option instead of post meta because wp_delete_post()
+	 * removes all post meta, which would lose the queue entry before cron runs.
+	 *
+	 * If the queue exceeds DELETE_QUEUE_MAX_SIZE, falls back to synchronous
+	 * deletion to prevent unbounded option growth during bulk operations.
 	 *
 	 * @param int $post_id Post ID.
 	 */
@@ -143,20 +157,43 @@ class Ingestion_Queue {
 		// Remove any pending sync - deletion supersedes.
 		delete_post_meta( $post_id, self::META_KEY_QUEUED_FOR_SYNC );
 
-		// Store the record_id along with the queue timestamp since the post
-		// might be deleted by the time the cron runs.
+		// Build the record_id since the post might be deleted by the time cron runs.
 		$site_id   = defined( 'VIP_GO_APP_ID' ) ? (string) VIP_GO_APP_ID : '0';
 		$blog_id   = (string) get_current_blog_id();
 		$record_id = $site_id . '_' . $blog_id . '_' . $post_id;
 
-		update_post_meta(
-			$post_id,
-			self::META_KEY_QUEUED_FOR_DELETE,
-			[
-				'queued_at' => time(),
-				'record_id' => $record_id,
-			]
-		);
+		// Get current delete queue from option.
+		$queue = get_option( self::OPTION_DELETE_QUEUE, [] );
+		if ( ! is_array( $queue ) ) {
+			$queue = [];
+		}
+
+		// If queue is at capacity, process this delete synchronously to prevent unbounded growth.
+		if ( count( $queue ) >= self::DELETE_QUEUE_MAX_SIZE ) {
+			Logger::info(
+				'ingestion-queue',
+				'Delete queue at capacity, processing synchronously',
+				[
+					'post_id'    => $post_id,
+					'record_id'  => $record_id,
+					'queue_size' => count( $queue ),
+					'max_size'   => self::DELETE_QUEUE_MAX_SIZE,
+				]
+			);
+
+			// Process synchronously - don't block on failure.
+			Ingestion::delete_record_id_from_api( $record_id );
+			return;
+		}
+
+		// Add to queue (keyed by record_id to prevent duplicates).
+		$queue[ $record_id ] = [
+			'post_id'   => $post_id,
+			'record_id' => $record_id,
+			'queued_at' => time(),
+		];
+
+		update_option( self::OPTION_DELETE_QUEUE, $queue, false );
 
 		// Ensure the cron is scheduled.
 		Ingestion_Cron::schedule_processing();
@@ -198,35 +235,24 @@ class Ingestion_Queue {
 	/**
 	 * Get posts queued for deletion.
 	 *
-	 * @param int $limit Maximum number of posts to return.
+	 * @param int $limit Maximum number of items to return.
 	 * @return array<int, array{post_id: int, record_id: string}> Array of queued deletions.
 	 */
 	public static function get_queued_for_delete( int $limit = 100 ): array {
-		global $wpdb;
-
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
-		$results = $wpdb->get_results(
-			$wpdb->prepare(
-				"SELECT post_id, meta_value FROM {$wpdb->postmeta}
-				WHERE meta_key = %s
-				LIMIT %d",
-				self::META_KEY_QUEUED_FOR_DELETE,
-				$limit
-			)
-		);
-
-		$queued = [];
-		foreach ( $results as $row ) {
-			$meta_value = maybe_unserialize( $row->meta_value );
-			if ( is_array( $meta_value ) && isset( $meta_value['record_id'] ) ) {
-				$queued[] = [
-					'post_id'   => (int) $row->post_id,
-					'record_id' => $meta_value['record_id'],
-				];
-			}
+		$queue = get_option( self::OPTION_DELETE_QUEUE, [] );
+		if ( ! is_array( $queue ) ) {
+			return [];
 		}
 
-		return $queued;
+		// Sort by queued_at and limit.
+		uasort(
+			$queue,
+			function ( $a, $b ) {
+				return ( $a['queued_at'] ?? 0 ) <=> ( $b['queued_at'] ?? 0 );
+			}
+		);
+
+		return array_slice( array_values( $queue ), 0, $limit );
 	}
 
 	/**
@@ -244,7 +270,20 @@ class Ingestion_Queue {
 	 * @param int $post_id Post ID.
 	 */
 	public static function dequeue_delete( int $post_id ): void {
-		delete_post_meta( $post_id, self::META_KEY_QUEUED_FOR_DELETE );
+		$queue = get_option( self::OPTION_DELETE_QUEUE, [] );
+		if ( ! is_array( $queue ) ) {
+			return;
+		}
+
+		// Build record_id to find the entry.
+		$site_id   = defined( 'VIP_GO_APP_ID' ) ? (string) VIP_GO_APP_ID : '0';
+		$blog_id   = (string) get_current_blog_id();
+		$record_id = $site_id . '_' . $blog_id . '_' . $post_id;
+
+		if ( isset( $queue[ $record_id ] ) ) {
+			unset( $queue[ $record_id ] );
+			update_option( self::OPTION_DELETE_QUEUE, $queue, false );
+		}
 	}
 
 	/**
@@ -255,17 +294,22 @@ class Ingestion_Queue {
 	public static function has_queued_items(): bool {
 		global $wpdb;
 
+		// Check sync queue (post meta).
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
-		$count = $wpdb->get_var(
+		$sync_count = (int) $wpdb->get_var(
 			$wpdb->prepare(
-				"SELECT COUNT(*) FROM {$wpdb->postmeta}
-				WHERE meta_key IN (%s, %s)",
-				self::META_KEY_QUEUED_FOR_SYNC,
-				self::META_KEY_QUEUED_FOR_DELETE
+				"SELECT COUNT(*) FROM {$wpdb->postmeta} WHERE meta_key = %s",
+				self::META_KEY_QUEUED_FOR_SYNC
 			)
 		);
 
-		return (int) $count > 0;
+		if ( $sync_count > 0 ) {
+			return true;
+		}
+
+		// Check delete queue (option).
+		$delete_queue = get_option( self::OPTION_DELETE_QUEUE, [] );
+		return is_array( $delete_queue ) && count( $delete_queue ) > 0;
 	}
 
 	/**
@@ -276,6 +320,7 @@ class Ingestion_Queue {
 	public static function get_queue_counts(): array {
 		global $wpdb;
 
+		// Sync count from post meta.
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 		$sync_count = (int) $wpdb->get_var(
 			$wpdb->prepare(
@@ -284,13 +329,9 @@ class Ingestion_Queue {
 			)
 		);
 
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
-		$delete_count = (int) $wpdb->get_var(
-			$wpdb->prepare(
-				"SELECT COUNT(*) FROM {$wpdb->postmeta} WHERE meta_key = %s",
-				self::META_KEY_QUEUED_FOR_DELETE
-			)
-		);
+		// Delete count from option.
+		$delete_queue = get_option( self::OPTION_DELETE_QUEUE, [] );
+		$delete_count = is_array( $delete_queue ) ? count( $delete_queue ) : 0;
 
 		return [
 			'sync'   => $sync_count,

@@ -21,16 +21,18 @@ class Ingestion_Queue_Test extends WP_UnitTestCase {
 		parent::tearDown();
 		Logger::enable();
 
-		// Clean up any queued items.
+		// Clean up sync queue (post meta).
 		global $wpdb;
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 		$wpdb->query(
 			$wpdb->prepare(
-				"DELETE FROM {$wpdb->postmeta} WHERE meta_key IN (%s, %s)",
-				Ingestion_Queue::META_KEY_QUEUED_FOR_SYNC,
-				Ingestion_Queue::META_KEY_QUEUED_FOR_DELETE
+				"DELETE FROM {$wpdb->postmeta} WHERE meta_key = %s",
+				Ingestion_Queue::META_KEY_QUEUED_FOR_SYNC
 			)
 		);
+
+		// Clean up delete queue (option).
+		delete_option( Ingestion_Queue::OPTION_DELETE_QUEUE );
 
 		// Unschedule cron.
 		Ingestion_Cron::unschedule_processing();
@@ -46,16 +48,20 @@ class Ingestion_Queue_Test extends WP_UnitTestCase {
 		$this->assertIsNumeric( $meta, 'Sync queue meta should be a timestamp.' );
 	}
 
-	public function test_queue_for_delete_sets_meta_with_record_id(): void {
+	public function test_queue_for_delete_stores_in_option(): void {
 		$post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
 
 		Ingestion_Queue::queue_for_delete( $post->ID );
 
-		$meta = get_post_meta( $post->ID, Ingestion_Queue::META_KEY_QUEUED_FOR_DELETE, true );
-		$this->assertIsArray( $meta, 'Delete queue meta should be an array.' );
-		$this->assertArrayHasKey( 'queued_at', $meta );
-		$this->assertArrayHasKey( 'record_id', $meta );
-		$this->assertStringContainsString( (string) $post->ID, $meta['record_id'] );
+		$queue = get_option( Ingestion_Queue::OPTION_DELETE_QUEUE, [] );
+		$this->assertIsArray( $queue, 'Delete queue option should be an array.' );
+		$this->assertCount( 1, $queue, 'Delete queue should have one entry.' );
+
+		$entry = reset( $queue );
+		$this->assertArrayHasKey( 'queued_at', $entry );
+		$this->assertArrayHasKey( 'record_id', $entry );
+		$this->assertArrayHasKey( 'post_id', $entry );
+		$this->assertStringContainsString( (string) $post->ID, $entry['record_id'] );
 	}
 
 	public function test_queue_for_sync_removes_pending_delete(): void {
@@ -63,13 +69,15 @@ class Ingestion_Queue_Test extends WP_UnitTestCase {
 
 		// First queue for delete.
 		Ingestion_Queue::queue_for_delete( $post->ID );
-		$this->assertNotEmpty( get_post_meta( $post->ID, Ingestion_Queue::META_KEY_QUEUED_FOR_DELETE, true ) );
+		$queue = get_option( Ingestion_Queue::OPTION_DELETE_QUEUE, [] );
+		$this->assertCount( 1, $queue, 'Delete queue should have one entry.' );
 
 		// Then queue for sync - should remove delete.
 		Ingestion_Queue::queue_for_sync( $post->ID );
 
 		$this->assertNotEmpty( get_post_meta( $post->ID, Ingestion_Queue::META_KEY_QUEUED_FOR_SYNC, true ) );
-		$this->assertEmpty( get_post_meta( $post->ID, Ingestion_Queue::META_KEY_QUEUED_FOR_DELETE, true ) );
+		$queue = get_option( Ingestion_Queue::OPTION_DELETE_QUEUE, [] );
+		$this->assertCount( 0, $queue, 'Delete queue should be empty after sync queue.' );
 	}
 
 	public function test_queue_for_delete_removes_pending_sync(): void {
@@ -82,7 +90,8 @@ class Ingestion_Queue_Test extends WP_UnitTestCase {
 		// Then queue for delete - should remove sync.
 		Ingestion_Queue::queue_for_delete( $post->ID );
 
-		$this->assertNotEmpty( get_post_meta( $post->ID, Ingestion_Queue::META_KEY_QUEUED_FOR_DELETE, true ) );
+		$queue = get_option( Ingestion_Queue::OPTION_DELETE_QUEUE, [] );
+		$this->assertCount( 1, $queue, 'Delete queue should have one entry.' );
 		$this->assertEmpty( get_post_meta( $post->ID, Ingestion_Queue::META_KEY_QUEUED_FOR_SYNC, true ) );
 	}
 
@@ -121,14 +130,16 @@ class Ingestion_Queue_Test extends WP_UnitTestCase {
 		$this->assertEmpty( get_post_meta( $post->ID, Ingestion_Queue::META_KEY_QUEUED_FOR_SYNC, true ) );
 	}
 
-	public function test_dequeue_delete_removes_meta(): void {
+	public function test_dequeue_delete_removes_from_option(): void {
 		$post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
 
 		Ingestion_Queue::queue_for_delete( $post->ID );
-		$this->assertNotEmpty( get_post_meta( $post->ID, Ingestion_Queue::META_KEY_QUEUED_FOR_DELETE, true ) );
+		$queue = get_option( Ingestion_Queue::OPTION_DELETE_QUEUE, [] );
+		$this->assertCount( 1, $queue, 'Delete queue should have one entry.' );
 
 		Ingestion_Queue::dequeue_delete( $post->ID );
-		$this->assertEmpty( get_post_meta( $post->ID, Ingestion_Queue::META_KEY_QUEUED_FOR_DELETE, true ) );
+		$queue = get_option( Ingestion_Queue::OPTION_DELETE_QUEUE, [] );
+		$this->assertCount( 0, $queue, 'Delete queue should be empty after dequeue.' );
 	}
 
 	public function test_has_queued_items_returns_true_when_items_exist(): void {
@@ -136,6 +147,15 @@ class Ingestion_Queue_Test extends WP_UnitTestCase {
 
 		$post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
 		Ingestion_Queue::queue_for_sync( $post->ID );
+
+		$this->assertTrue( Ingestion_Queue::has_queued_items() );
+	}
+
+	public function test_has_queued_items_returns_true_for_delete_queue(): void {
+		$this->assertFalse( Ingestion_Queue::has_queued_items() );
+
+		$post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
+		Ingestion_Queue::queue_for_delete( $post->ID );
 
 		$this->assertTrue( Ingestion_Queue::has_queued_items() );
 	}
@@ -195,8 +215,8 @@ class Ingestion_Queue_Test extends WP_UnitTestCase {
 		// Simulate before_delete_post.
 		Ingestion_Queue::handle_before_delete_post( $post->ID, $post );
 
-		$meta = get_post_meta( $post->ID, Ingestion_Queue::META_KEY_QUEUED_FOR_DELETE, true );
-		$this->assertNotEmpty( $meta, 'Previously ingested post should be queued for deletion.' );
+		$queue = get_option( Ingestion_Queue::OPTION_DELETE_QUEUE, [] );
+		$this->assertCount( 1, $queue, 'Previously ingested post should be queued for deletion.' );
 	}
 
 	public function test_handle_before_delete_post_skips_non_ingested_posts(): void {
@@ -210,8 +230,8 @@ class Ingestion_Queue_Test extends WP_UnitTestCase {
 		// Simulate before_delete_post.
 		Ingestion_Queue::handle_before_delete_post( $post->ID, $post );
 
-		$meta = get_post_meta( $post->ID, Ingestion_Queue::META_KEY_QUEUED_FOR_DELETE, true );
-		$this->assertEmpty( $meta, 'Non-ingested post should not be queued for deletion.' );
+		$queue = get_option( Ingestion_Queue::OPTION_DELETE_QUEUE, [] );
+		$this->assertCount( 0, $queue, 'Non-ingested post should not be queued for deletion.' );
 	}
 
 	public function test_get_queued_for_sync_respects_limit(): void {
@@ -224,5 +244,55 @@ class Ingestion_Queue_Test extends WP_UnitTestCase {
 		$queued = Ingestion_Queue::get_queued_for_sync( 3 );
 
 		$this->assertCount( 3, $queued, 'Should respect the limit parameter.' );
+	}
+
+	public function test_delete_queue_survives_post_deletion(): void {
+		$post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
+
+		// Mark as previously ingested.
+		update_post_meta( $post->ID, Ingestion::META_KEY_INGESTION_ATTEMPTED, time() );
+
+		// Queue for delete.
+		Ingestion_Queue::queue_for_delete( $post->ID );
+
+		$queue_before = get_option( Ingestion_Queue::OPTION_DELETE_QUEUE, [] );
+		$this->assertCount( 1, $queue_before, 'Delete queue should have one entry before deletion.' );
+
+		// Delete the post - this would have cleared post meta in the old implementation.
+		wp_delete_post( $post->ID, true );
+
+		// Verify queue entry survives.
+		$queue_after = get_option( Ingestion_Queue::OPTION_DELETE_QUEUE, [] );
+		$this->assertCount( 1, $queue_after, 'Delete queue entry should survive post deletion.' );
+	}
+
+	public function test_queue_for_delete_falls_back_to_sync_when_at_capacity(): void {
+		// Pre-populate the delete queue to max capacity.
+		$queue = [];
+		for ( $i = 0; $i < Ingestion_Queue::DELETE_QUEUE_MAX_SIZE; $i++ ) {
+			$record_id           = '0_1_' . ( 10000 + $i );
+			$queue[ $record_id ] = [
+				'post_id'   => 10000 + $i,
+				'record_id' => $record_id,
+				'queued_at' => time() - $i,
+			];
+		}
+		update_option( Ingestion_Queue::OPTION_DELETE_QUEUE, $queue );
+
+		$this->assertCount( Ingestion_Queue::DELETE_QUEUE_MAX_SIZE, get_option( Ingestion_Queue::OPTION_DELETE_QUEUE ) );
+
+		// Try to queue another post for delete.
+		$post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
+		Ingestion_Queue::queue_for_delete( $post->ID );
+
+		// The queue should NOT have grown beyond the max size.
+		$queue_after = get_option( Ingestion_Queue::OPTION_DELETE_QUEUE, [] );
+		$this->assertCount( Ingestion_Queue::DELETE_QUEUE_MAX_SIZE, $queue_after, 'Queue should not exceed max size.' );
+
+		// The new post should NOT be in the queue (was processed sync).
+		$site_id   = defined( 'VIP_GO_APP_ID' ) ? (string) VIP_GO_APP_ID : '0';
+		$blog_id   = (string) get_current_blog_id();
+		$record_id = $site_id . '_' . $blog_id . '_' . $post->ID;
+		$this->assertArrayNotHasKey( $record_id, $queue_after, 'New post should not be queued when at capacity.' );
 	}
 }

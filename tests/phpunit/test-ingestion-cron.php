@@ -52,17 +52,19 @@ class Ingestion_Cron_Test extends WP_UnitTestCase {
 		Configs::flush_cache();
 		$this->captured_requests = [];
 
-		// Clean up any queued items.
+		// Clean up sync queue (post meta).
 		global $wpdb;
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 		$wpdb->query(
 			$wpdb->prepare(
-				"DELETE FROM {$wpdb->postmeta} WHERE meta_key IN (%s, %s, %s)",
+				"DELETE FROM {$wpdb->postmeta} WHERE meta_key IN (%s, %s)",
 				Ingestion_Queue::META_KEY_QUEUED_FOR_SYNC,
-				Ingestion_Queue::META_KEY_QUEUED_FOR_DELETE,
 				Ingestion::META_KEY_INGESTION_ATTEMPTED
 			)
 		);
+
+		// Clean up delete queue (option).
+		delete_option( Ingestion_Queue::OPTION_DELETE_QUEUE );
 
 		// Unschedule cron.
 		Ingestion_Cron::unschedule_processing();
