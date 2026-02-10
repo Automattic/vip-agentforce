@@ -19,106 +19,196 @@ class Ingestion_CLI extends WP_CLI_Command {
 	/**
 	 * Sync all eligible published posts to Salesforce.
 	 *
-	 * This command queries all published posts, applies the configured filters,
-	 * and syncs matching posts to Salesforce. It does NOT trigger WordPress save hooks.
+	 * Queues a bulk sync for async processing via cron. The command returns
+	 * immediately after counting posts and writing initial progress. Use
+	 * `wp vip-agentforce ingestion sync-status` to monitor progress.
+	 *
+	 * ## OPTIONS
+	 *
+	 * [--status]
+	 * : Show the current sync progress instead of starting a new sync.
+	 *
+	 * [--reset]
+	 * : Reset a stuck or completed sync so a new one can be started.
 	 *
 	 * ## EXAMPLES
 	 *
-	 *     # Sync all eligible posts
+	 *     # Start async sync of all eligible posts
 	 *     wp vip-agentforce ingestion sync
 	 *
+	 *     # Check sync progress
+	 *     wp vip-agentforce ingestion sync --status
+	 *
+	 *     # Reset a completed/stuck sync
+	 *     wp vip-agentforce ingestion sync --reset
+	 *
 	 * @subcommand sync
+	 *
+	 * @param array<int, string>    $args       Positional arguments.
+	 * @param array<string, string> $assoc_args Associative arguments.
 	 */
-	public function sync(): void {
-		$batch_size = 100;
+	public function sync( array $args, array $assoc_args ): void {
+		// Handle --status flag.
+		if ( isset( $assoc_args['status'] ) ) {
+			$this->show_sync_status();
+			return;
+		}
 
+		// Handle --reset flag.
+		if ( isset( $assoc_args['reset'] ) ) {
+			$this->reset_sync();
+			return;
+		}
+
+		$this->start_sync();
+	}
+
+	/**
+	 * Show the current sync progress.
+	 *
+	 * ## EXAMPLES
+	 *
+	 *     wp vip-agentforce ingestion sync-status
+	 *
+	 * @subcommand sync-status
+	 */
+	public function sync_status(): void {
+		$this->show_sync_status();
+	}
+
+	/**
+	 * Start a new bulk sync.
+	 */
+	private function start_sync(): void {
 		// Check that filters are registered.
 		if ( ! has_filter( 'vip_agentforce_should_ingest_post' ) ) {
 			WP_CLI::error( 'No vip_agentforce_should_ingest_post filter registered. Cannot determine which posts to sync.', false );
 			return;
 		}
 
-		// Determine post types to query.
+		// Block if already running.
+		if ( Ingestion_Sync_Progress::is_running() ) {
+			WP_CLI::error( 'A sync is already in progress. Use --status to check progress or --reset to clear a stuck sync.', false );
+			return;
+		}
+
+		// Count eligible posts.
 		$post_types = get_post_types( [ 'public' => true ] );
 
-		WP_CLI::log( sprintf( 'Starting sync for post types: %s', implode( ', ', $post_types ) ) );
+		$query = new \WP_Query(
+			[
+				'post_type'      => $post_types,
+				'post_status'    => 'publish',
+				'posts_per_page' => 1,
+				'no_found_rows'  => false,
+				'fields'         => 'ids',
+			]
+		);
 
-		$ingested_count = 0;
-		$deleted_count  = 0;
-		$skipped_count  = 0;
-		$failure_count  = 0;
-		$total_queried  = 0;
-		$page           = 1;
+		$total = $query->found_posts;
 
-		do {
-			$query = new \WP_Query(
-				[
-					'post_type'      => $post_types,
-					'post_status'    => 'publish',
-					'posts_per_page' => $batch_size,
-					'paged'          => $page,
-					'orderby'        => 'ID',
-					'order'          => 'ASC',
-					'no_found_rows'  => false,
-				]
-			);
-
-			$total_posts = $query->found_posts;
-
-			if ( 1 === $page ) {
-				WP_CLI::log( sprintf( 'Found %d published posts to evaluate.', $total_posts ) );
-			}
-
-			foreach ( $query->posts as $post ) {
-				++$total_queried;
-
-				// Use shared sync logic - handles ingest, delete, or skip.
-				$result = Ingestion::sync_post( $post );
-
-				switch ( $result->status ) {
-					case Sync_Result::INGESTED:
-						WP_CLI::log( sprintf( 'Post %d: Synced successfully.', $post->ID ) );
-						++$ingested_count;
-						break;
-
-					case Sync_Result::DELETED:
-						WP_CLI::log( sprintf( 'Post %d: Deleted from Salesforce (no longer matches filter).', $post->ID ) );
-						++$deleted_count;
-						break;
-
-					case Sync_Result::SKIPPED:
-						++$skipped_count;
-						break;
-
-					case Sync_Result::FAILED_TRANSFORM:
-						WP_CLI::warning( sprintf( 'Post %d: Transform failed, skipping.', $post->ID ) );
-						++$failure_count;
-						break;
-
-					case Sync_Result::FAILED_API:
-						WP_CLI::warning( sprintf( 'Post %d: API error - %s', $post->ID, $result->error_message ?? 'Unknown error' ) );
-						++$failure_count;
-						break;
-				}
-			}
-
-			++$page;
-		} while ( $total_queried < $total_posts );
-
-		// Summary.
-		WP_CLI::log( '' );
-		WP_CLI::log( '=== Sync Summary ===' );
-		WP_CLI::log( sprintf( 'Total posts evaluated: %d', $total_queried ) );
-		WP_CLI::log( sprintf( 'Ingested: %d', $ingested_count ) );
-		WP_CLI::log( sprintf( 'Deleted: %d', $deleted_count ) );
-		WP_CLI::log( sprintf( 'Skipped (did not pass filters): %d', $skipped_count ) );
-		WP_CLI::log( sprintf( 'Failed: %d', $failure_count ) );
-
-		if ( $failure_count > 0 ) {
-			WP_CLI::warning( sprintf( 'Sync completed with %d failure(s).', $failure_count ) );
-		} else {
-			WP_CLI::success( 'Sync completed successfully.' );
+		if ( 0 === $total ) {
+			WP_CLI::warning( 'No published posts found to sync.' );
+			return;
 		}
+
+		// Start the sync progress tracker.
+		$started = Ingestion_Sync_Progress::start( $total, array_values( $post_types ) );
+
+		if ( ! $started ) {
+			WP_CLI::error( 'Failed to start sync. A sync may already be in progress.', false );
+			return;
+		}
+
+		// Ensure cron is scheduled to pick up the bulk sync.
+		Ingestion_Cron::schedule_processing();
+
+		WP_CLI::success(
+			sprintf(
+				'Bulk sync queued: %s posts will be processed by cron. Use `wp vip-agentforce ingestion sync --status` to monitor progress.',
+				number_format_i18n( $total )
+			)
+		);
+
+		Logger::info(
+			'ingestion-cli',
+			'Bulk sync initiated via CLI',
+			[
+				'total'      => $total,
+				'post_types' => array_values( $post_types ),
+			]
+		);
+	}
+
+	/**
+	 * Display the current sync status.
+	 */
+	private function show_sync_status(): void {
+		$progress = Ingestion_Sync_Progress::get();
+
+		if ( null === $progress ) {
+			WP_CLI::log( 'No sync has been initiated.' );
+			return;
+		}
+
+		WP_CLI::log( '=== Bulk Sync Status ===' );
+		WP_CLI::log( sprintf( 'Status: %s', strtoupper( $progress['status'] ) ) );
+		WP_CLI::log( sprintf( 'Progress: %d / %d posts', $progress['processed'], $progress['total'] ) );
+
+		if ( $progress['total'] > 0 ) {
+			$percent = round( ( $progress['processed'] / $progress['total'] ) * 100, 1 );
+			WP_CLI::log( sprintf( 'Percentage: %.1f%%', $percent ) );
+		}
+
+		WP_CLI::log( '' );
+		WP_CLI::log( sprintf( 'Synced:  %d', $progress['synced'] ) );
+		WP_CLI::log( sprintf( 'Skipped: %d', $progress['skipped'] ) );
+		WP_CLI::log( sprintf( 'Failed:  %d', $progress['failed'] ) );
+		WP_CLI::log( sprintf( 'Deleted: %d', $progress['deleted'] ) );
+		WP_CLI::log( '' );
+		WP_CLI::log( sprintf( 'Cursor (last_post_id): %d', $progress['last_post_id'] ) );
+
+		if ( ! empty( $progress['post_types'] ) ) {
+			WP_CLI::log( sprintf( 'Post types: %s', implode( ', ', $progress['post_types'] ) ) );
+		}
+
+		if ( ! empty( $progress['started_at'] ) ) {
+			WP_CLI::log( sprintf( 'Started: %s ago', human_time_diff( $progress['started_at'] ) ) );
+		}
+
+		if ( ! empty( $progress['completed_at'] ) ) {
+			$duration = $progress['completed_at'] - $progress['started_at'];
+			WP_CLI::log( sprintf( 'Duration: %s', human_time_diff( 0, $duration ) ) );
+		}
+
+		if ( ! empty( $progress['error'] ) ) {
+			WP_CLI::warning( sprintf( 'Error: %s', $progress['error'] ) );
+		}
+	}
+
+	/**
+	 * Reset sync progress to allow a new sync.
+	 */
+	private function reset_sync(): void {
+		$progress = Ingestion_Sync_Progress::get();
+
+		if ( null === $progress ) {
+			WP_CLI::log( 'No sync progress to reset.' );
+			return;
+		}
+
+		if ( Ingestion_Sync_Progress::STATUS_RUNNING === $progress['status'] ) {
+			WP_CLI::warning(
+				sprintf(
+					'Resetting a running sync (%d/%d posts processed). The in-flight batch will complete but no further batches will run.',
+					$progress['processed'],
+					$progress['total']
+				)
+			);
+		}
+
+		Ingestion_Sync_Progress::reset();
+		WP_CLI::success( 'Sync progress has been reset.' );
 	}
 
 	/**
@@ -252,7 +342,9 @@ class Ingestion_CLI extends WP_CLI_Command {
 		$counts = Ingestion_Queue::get_queue_counts();
 		WP_CLI::log( sprintf( 'Queue status: %d syncs, %d deletions pending.', $counts['sync'], $counts['delete'] ) );
 
-		if ( 0 === $counts['sync'] && 0 === $counts['delete'] ) {
+		$bulk_sync_running = Ingestion_Sync_Progress::is_running();
+
+		if ( 0 === $counts['sync'] && 0 === $counts['delete'] && ! $bulk_sync_running ) {
 			WP_CLI::success( 'Queue is empty, nothing to process.' );
 			return;
 		}
@@ -285,8 +377,8 @@ class Ingestion_CLI extends WP_CLI_Command {
 				)
 			);
 
-			// Check if there are more items.
-			$has_more = Ingestion_Queue::has_queued_items();
+			// Check if there are more items (queue or active bulk sync).
+			$has_more = Ingestion_Queue::has_queued_items() || Ingestion_Sync_Progress::is_running();
 		} while ( $process_all && $has_more );
 
 		// Summary.
@@ -340,6 +432,12 @@ class Ingestion_CLI extends WP_CLI_Command {
 				$next_run = human_time_diff( time(), $next );
 				WP_CLI::log( sprintf( 'Next scheduled run: in %s', $next_run ) );
 			}
+		}
+
+		// Show bulk sync status if active.
+		if ( Ingestion_Sync_Progress::is_running() ) {
+			WP_CLI::log( '' );
+			WP_CLI::log( Ingestion_Sync_Progress::get_summary() );
 		}
 	}
 }

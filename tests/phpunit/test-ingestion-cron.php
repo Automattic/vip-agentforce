@@ -9,6 +9,7 @@ use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion;
 use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_Cron;
 use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_Post_Record;
 use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_Queue;
+use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_Sync_Progress;
 use Automattic\VIP\Salesforce\Agentforce\Utils\Configs;
 use Automattic\VIP\Salesforce\Agentforce\Utils\Logger;
 
@@ -65,6 +66,9 @@ class Ingestion_Cron_Test extends WP_UnitTestCase {
 
 		// Clean up delete queue (option).
 		delete_option( Ingestion_Queue::OPTION_DELETE_QUEUE );
+
+		// Clean up sync progress.
+		Ingestion_Sync_Progress::reset();
 
 		// Unschedule cron.
 		Ingestion_Cron::unschedule_processing();
@@ -346,5 +350,126 @@ class Ingestion_Cron_Test extends WP_UnitTestCase {
 		$this->assertCount( 2, $this->captured_requests );
 		$this->assertSame( 'DELETE', $this->captured_requests[0]['method'] );
 		$this->assertSame( 'POST', $this->captured_requests[1]['method'] );
+	}
+
+	public function test_process_queue_processes_bulk_sync_batch(): void {
+		$this->mock_http_success();
+		$this->setup_ingestion_filters();
+
+		$this->factory()->post->create_many( 3, [ 'post_status' => 'publish' ] );
+
+		Ingestion_Sync_Progress::start( 3, [ 'post' ] );
+
+		$results = Ingestion_Cron::process_queue( 10 );
+
+		$this->assertSame( 3, $results['synced'] );
+		$this->assertFalse( Ingestion_Sync_Progress::is_running() );
+
+		$progress = Ingestion_Sync_Progress::get();
+		$this->assertSame( 'completed', $progress['status'] );
+	}
+
+	public function test_bulk_sync_respects_batch_size(): void {
+		$this->mock_http_success();
+		$this->setup_ingestion_filters();
+
+		$this->factory()->post->create_many( 5, [ 'post_status' => 'publish' ] );
+
+		Ingestion_Sync_Progress::start( 5, [ 'post' ] );
+
+		// Process only 3
+		$results = Ingestion_Cron::process_queue( 3 );
+
+		$this->assertSame( 3, $results['synced'] );
+		$this->assertTrue( Ingestion_Sync_Progress::is_running() );
+
+		$progress = Ingestion_Sync_Progress::get();
+		$this->assertSame( 3, $progress['processed'] );
+		$this->assertGreaterThan( 0, $progress['last_post_id'] );
+
+		// Process remaining 2
+		$results = Ingestion_Cron::process_queue( 3 );
+
+		$this->assertSame( 2, $results['synced'] );
+		$this->assertFalse( Ingestion_Sync_Progress::is_running() );
+	}
+
+	public function test_bulk_sync_cursor_paginates_correctly(): void {
+		$this->mock_http_success();
+		$this->setup_ingestion_filters();
+
+		// Create 5 posts and capture IDs
+		$post_ids = [];
+		for ( $i = 0; $i < 5; $i++ ) {
+			$post_ids[] = $this->factory()->post->create( [ 'post_status' => 'publish' ] );
+		}
+		sort( $post_ids );
+
+		Ingestion_Sync_Progress::start( 5, [ 'post' ] );
+
+		// Batch 1 (2 posts)
+		Ingestion_Cron::process_queue( 2 );
+		$progress = Ingestion_Sync_Progress::get();
+		$this->assertEquals( $post_ids[1], $progress['last_post_id'] );
+
+		// Batch 2 (2 posts)
+		Ingestion_Cron::process_queue( 2 );
+		$progress = Ingestion_Sync_Progress::get();
+		$this->assertEquals( $post_ids[3], $progress['last_post_id'] );
+
+		// Batch 3 (1 post)
+		$results = Ingestion_Cron::process_queue( 2 );
+		$this->assertSame( 1, $results['synced'] );
+		$this->assertFalse( Ingestion_Sync_Progress::is_running() );
+	}
+
+	public function test_bulk_sync_keeps_cron_scheduled(): void {
+		$this->mock_http_success();
+		$this->setup_ingestion_filters();
+
+		$this->factory()->post->create_many( 5, [ 'post_status' => 'publish' ] );
+
+		Ingestion_Sync_Progress::start( 5, [ 'post' ] );
+		Ingestion_Cron::schedule_processing();
+
+		// Process partial batch
+		Ingestion_Cron::process_queue( 3 );
+
+		$this->assertTrue( Ingestion_Cron::is_scheduled() );
+	}
+
+	public function test_bulk_sync_does_not_run_when_not_active(): void {
+		$this->mock_http_success();
+		$this->setup_ingestion_filters();
+
+		$this->factory()->post->create_many( 3, [ 'post_status' => 'publish' ] );
+
+		// Don't start sync
+
+		$results = Ingestion_Cron::process_queue();
+
+		$this->assertSame( 0, $results['synced'] );
+	}
+
+	public function test_process_queue_handles_queue_and_bulk_sync_together(): void {
+		$this->mock_http_success();
+		$this->setup_ingestion_filters();
+
+		// Queue one post for individual sync.
+		$queued_post = $this->factory()->post->create( [ 'post_status' => 'publish' ] );
+		Ingestion_Queue::queue_for_sync( $queued_post );
+
+		// Create 2 more posts for bulk sync.
+		$this->factory()->post->create_many( 2, [ 'post_status' => 'publish' ] );
+
+		// Start bulk sync (cursor at 0 will find all 3 posts).
+		Ingestion_Sync_Progress::start( 3, [ 'post' ] );
+
+		$results = Ingestion_Cron::process_queue( 10 );
+
+		// 1 from queue + 3 from bulk sync (re-syncs queued post too) = 4 total.
+		// Queue processing and bulk sync are independent — bulk sync processes
+		// all posts by cursor, even those already handled by the queue.
+		$this->assertSame( 4, $results['synced'] );
 	}
 }

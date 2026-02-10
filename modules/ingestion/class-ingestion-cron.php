@@ -14,6 +14,9 @@ use Automattic\VIP\Salesforce\Agentforce\Utils\Logger;
  *
  * All Salesforce API calls are made through this cron job,
  * never synchronously during the request lifecycle.
+ *
+ * Also processes bulk sync operations initiated via CLI,
+ * using a cursor-based approach to paginate through all posts.
  */
 class Ingestion_Cron {
 	/**
@@ -80,7 +83,9 @@ class Ingestion_Cron {
 	 * Maybe schedule the cron on init if there are pending items.
 	 */
 	public static function maybe_schedule_on_init(): void {
-		if ( Ingestion_Queue::has_queued_items() && ! self::is_scheduled() ) {
+		$has_work = Ingestion_Queue::has_queued_items() || Ingestion_Sync_Progress::is_running();
+
+		if ( $has_work && ! self::is_scheduled() ) {
 			self::schedule_processing();
 		}
 	}
@@ -141,6 +146,10 @@ class Ingestion_Cron {
 	 * Process the ingestion queue.
 	 *
 	 * This method can be called directly (e.g., from CLI) to get results.
+	 * It handles three types of work:
+	 * 1. Queued deletions (highest priority)
+	 * 2. Queued syncs (individual post saves)
+	 * 3. Bulk sync batches (cursor-based, from CLI sync command)
 	 *
 	 * @param int|null $batch_size Optional batch size override.
 	 * @return array{synced: int, deleted: int, failed: int, skipped: int} Processing results.
@@ -170,14 +179,20 @@ class Ingestion_Cron {
 			$results = self::process_syncs( $results, $remaining_batch );
 		}
 
+		// Process bulk sync with remaining batch capacity.
+		$remaining_batch = $batch_size - $results['deleted'] - $results['failed'] - $results['synced'] - $results['skipped'];
+		if ( $remaining_batch > 0 && Ingestion_Sync_Progress::is_running() ) {
+			$results = self::process_bulk_sync( $results, $remaining_batch );
+		}
+
 		Logger::info(
 			'ingestion-cron',
 			'Queue processing complete',
 			$results
 		);
 
-		// Unschedule if queue is empty.
-		if ( ! Ingestion_Queue::has_queued_items() ) {
+		// Unschedule if queue is empty AND no bulk sync is running.
+		if ( ! Ingestion_Queue::has_queued_items() && ! Ingestion_Sync_Progress::is_running() ) {
 			self::unschedule_processing();
 		}
 
@@ -299,6 +314,146 @@ class Ingestion_Cron {
 
 			// Dequeue regardless of result to avoid infinite loops.
 			Ingestion_Queue::dequeue_sync( $post_id );
+		}
+
+		return $results;
+	}
+
+	/**
+	 * Process a batch of the bulk sync using a cursor.
+	 *
+	 * Queries posts with ID > last_post_id, processes them, then updates the cursor.
+	 * When no more posts are found, marks the bulk sync as completed.
+	 *
+	 * @param array{synced: int, deleted: int, failed: int, skipped: int} $results Current results.
+	 * @param int                                                          $limit   Max items to process.
+	 * @return array{synced: int, deleted: int, failed: int, skipped: int} Updated results.
+	 */
+	private static function process_bulk_sync( array $results, int $limit ): array {
+		$progress = Ingestion_Sync_Progress::get();
+		if ( null === $progress || Ingestion_Sync_Progress::STATUS_RUNNING !== $progress['status'] ) {
+			return $results;
+		}
+
+		$last_post_id = $progress['last_post_id'] ?? 0;
+		$post_types   = ! empty( $progress['post_types'] ) ? $progress['post_types'] : get_post_types( [ 'public' => true ] );
+
+		// Use posts_where filter to apply cursor (WHERE ID > last_post_id) efficiently.
+		$cursor_filter = function ( $where ) use ( $last_post_id ) {
+			global $wpdb;
+			$where .= $wpdb->prepare( " AND {$wpdb->posts}.ID > %d", $last_post_id );
+			return $where;
+		};
+
+		add_filter( 'posts_where', $cursor_filter );
+		$query = new \WP_Query(
+			[
+				'post_type'              => $post_types,
+				'post_status'            => 'publish',
+				'posts_per_page'         => $limit,
+				'orderby'                => 'ID',
+				'order'                  => 'ASC',
+				'no_found_rows'          => true,
+				'suppress_filters'       => false,
+				'update_post_meta_cache' => false,
+				'update_post_term_cache' => false,
+			]
+		);
+		remove_filter( 'posts_where', $cursor_filter );
+
+		$posts = $query->posts;
+
+		// No more posts — bulk sync is done.
+		if ( empty( $posts ) ) {
+			Ingestion_Sync_Progress::complete();
+
+			Logger::info(
+				'ingestion-cron',
+				'Bulk sync completed',
+				[
+					'total_processed' => $progress['processed'],
+					'total'           => $progress['total'],
+				]
+			);
+
+			return $results;
+		}
+
+		$batch_results = [
+			'synced'  => 0,
+			'skipped' => 0,
+			'failed'  => 0,
+			'deleted' => 0,
+		];
+
+		$new_last_post_id = $last_post_id;
+
+		foreach ( $posts as $post ) {
+			$sync_result = Ingestion::sync_post( $post );
+
+			switch ( $sync_result->status ) {
+				case Sync_Result::INGESTED:
+					++$results['synced'];
+					++$batch_results['synced'];
+					break;
+
+				case Sync_Result::DELETED:
+					++$results['deleted'];
+					++$batch_results['deleted'];
+					break;
+
+				case Sync_Result::SKIPPED:
+					++$results['skipped'];
+					++$batch_results['skipped'];
+					break;
+
+				case Sync_Result::FAILED_TRANSFORM:
+				case Sync_Result::FAILED_API:
+					++$results['failed'];
+					++$batch_results['failed'];
+
+					Logger::warning(
+						'ingestion-cron',
+						'Bulk sync: failed to sync post',
+						[
+							'post_id'       => $post->ID,
+							'status'        => $sync_result->status,
+							'error_message' => $sync_result->error_message,
+						]
+					);
+					break;
+			}
+
+			$new_last_post_id = $post->ID;
+		}
+
+		// Update the cursor and progress counters.
+		Ingestion_Sync_Progress::update( $batch_results, $new_last_post_id );
+
+		Logger::info(
+			'ingestion-cron',
+			'Bulk sync batch processed',
+			[
+				'batch_synced'  => $batch_results['synced'],
+				'batch_skipped' => $batch_results['skipped'],
+				'batch_failed'  => $batch_results['failed'],
+				'batch_deleted' => $batch_results['deleted'],
+				'last_post_id'  => $new_last_post_id,
+			]
+		);
+
+		// If fewer posts returned than requested, we've processed everything.
+		if ( count( $posts ) < $limit ) {
+			Ingestion_Sync_Progress::complete();
+
+			Logger::info(
+				'ingestion-cron',
+				'Bulk sync completed',
+				[
+					'total_processed' => $progress['processed'] + count( $posts ),
+					'total'           => $progress['total'],
+				]
+			);
 		}
 
 		return $results;
