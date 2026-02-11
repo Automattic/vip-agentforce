@@ -429,8 +429,13 @@ class Ingestion_CLI extends WP_CLI_Command {
 		if ( $is_scheduled ) {
 			$next = wp_next_scheduled( Ingestion_Cron::CRON_HOOK );
 			if ( $next ) {
-				$next_run = human_time_diff( time(), $next );
-				WP_CLI::log( sprintf( 'Next scheduled run: in %s', $next_run ) );
+				if ( $next <= time() ) {
+					$overdue = human_time_diff( $next, time() );
+					WP_CLI::log( sprintf( 'Next scheduled run: overdue by %s (will run on next cron trigger)', $overdue ) );
+				} else {
+					$next_run = human_time_diff( time(), $next );
+					WP_CLI::log( sprintf( 'Next scheduled run: in %s', $next_run ) );
+				}
 			}
 		}
 

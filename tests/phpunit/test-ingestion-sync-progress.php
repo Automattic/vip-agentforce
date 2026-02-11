@@ -150,10 +150,10 @@ class Ingestion_Sync_Progress_Test extends WP_UnitTestCase {
 
 		$progress = Ingestion_Sync_Progress::get();
 
-		$this->assertSame( 10, $progress['processed'] ); // (5+1) + (3+1)
-		$this->assertSame( 8, $progress['synced'] ); // 5 + 3
-		$this->assertSame( 1, $progress['skipped'] ); // 1 + 0
-		$this->assertSame( 1, $progress['failed'] ); // 0 + 1
+		$this->assertSame( 10, $progress['processed'] ); // 6 from first batch + 4 from second.
+		$this->assertSame( 8, $progress['synced'] ); // 5 from first batch + 3 from second.
+		$this->assertSame( 1, $progress['skipped'] ); // 1 from first batch only.
+		$this->assertSame( 1, $progress['failed'] ); // 1 from second batch only.
 		$this->assertSame( 20, $progress['last_post_id'] );
 	}
 

@@ -12,8 +12,10 @@ use Automattic\VIP\Salesforce\Agentforce\Utils\Logger;
 /**
  * Handles cron-based processing of the ingestion queue.
  *
- * All Salesforce API calls are made through this cron job,
- * never synchronously during the request lifecycle.
+ * Salesforce API calls are primarily processed via this cron job to
+ * avoid making them during the request lifecycle, but calls may still
+ * occur synchronously when async ingestion is disabled or when falling
+ * back from queue capacity limits.
  *
  * Also processes bulk sync operations initiated via CLI,
  * using a cursor-based approach to paginate through all posts.
@@ -39,6 +41,7 @@ class Ingestion_Cron {
 	 */
 	public static function init(): void {
 		add_action( self::CRON_HOOK, [ __CLASS__, 'handle_cron' ] );
+		// phpcs:ignore WordPress.WP.CronInterval.ChangeDetected -- interval is dynamic via get_cron_interval() with a 60s minimum.
 		add_filter( 'cron_schedules', [ __CLASS__, 'add_cron_schedule' ] );
 
 		// Schedule on init if there are queued items.
@@ -81,11 +84,52 @@ class Ingestion_Cron {
 
 	/**
 	 * Maybe schedule the cron on init if there are pending items.
+	 *
+	 * Also detects stale cron schedules (e.g., interval changed from 15min to 1min)
+	 * and reschedules with the correct interval.
 	 */
 	public static function maybe_schedule_on_init(): void {
+		// Reschedule if the stored interval doesn't match the current one.
+		self::maybe_reschedule_stale_interval();
+
 		$has_work = Ingestion_Queue::has_queued_items() || Ingestion_Sync_Progress::is_running();
 
 		if ( $has_work && ! self::is_scheduled() ) {
+			self::schedule_processing();
+		}
+	}
+
+	/**
+	 * Detect and fix stale cron timestamps.
+	 *
+	 * WordPress stores the recurrence schedule name with the event, but the
+	 * next-run timestamp may be set far in the future if the event was
+	 * originally scheduled with a longer interval (e.g., 15 min → 1 min).
+	 * This detects the mismatch and reschedules with the correct timing.
+	 */
+	private static function maybe_reschedule_stale_interval(): void {
+		$timestamp = wp_next_scheduled( self::CRON_HOOK );
+		if ( ! $timestamp ) {
+			return;
+		}
+
+		$expected_interval = self::get_cron_interval();
+
+		// Stale if: next run is more than 2× the interval in the future,
+		// or overdue by more than 2× the interval (e.g., scheduled with old 15-min interval).
+		// Use 2× to avoid unnecessary rescheduling from minor clock drift.
+		$time_until_next = $timestamp - time();
+		if ( $time_until_next > ( $expected_interval * 2 ) || $time_until_next < -( $expected_interval * 2 ) ) {
+			Logger::info(
+				'ingestion-cron',
+				'Rescheduling cron: next run too far in the future',
+				[
+					'time_until_next'   => $time_until_next,
+					'expected_interval' => $expected_interval,
+				]
+			);
+
+			self::unschedule_processing();
 			self::schedule_processing();
 		}
 	}
@@ -470,7 +514,7 @@ class Ingestion_Cron {
 		 *
 		 * @param int $batch_size Default batch size.
 		 */
-		return (int) apply_filters( 'vip_agentforce_cron_batch_size', self::DEFAULT_BATCH_SIZE );
+		return max( 1, (int) apply_filters( 'vip_agentforce_cron_batch_size', self::DEFAULT_BATCH_SIZE ) );
 	}
 
 	/**

@@ -86,6 +86,13 @@ class Ingestion_Queue {
 			return;
 		}
 
+		// Skip posts that don't need ingestion and were never previously ingested.
+		// Previously ingested posts must still be queued so sync_post() can detect
+		// status changes (e.g., un-publish) and delete them from Salesforce.
+		if ( ! Ingestion::should_ingest_post( $post ) && ! Ingestion::was_post_ingested( $post ) ) {
+			return;
+		}
+
 		if ( self::is_async_enabled() ) {
 			self::queue_for_sync( $post_id );
 		} else {
@@ -102,10 +109,10 @@ class Ingestion_Queue {
 	 */
 	public static function handle_before_delete_post( int $post_id, \WP_Post $post ): void {
 		// Only act if the post was previously ingested.
-		if ( 'publish' !== $post->post_status ) {
-			return;
-		}
-
+		// Note: We intentionally do NOT check post_status here. A post may have
+		// been trashed (status = 'trash') before being permanently deleted. If it
+		// was previously ingested into Salesforce, we need to queue the deletion
+		// regardless of its current status.
 		if ( ! Ingestion::was_post_ingested( $post ) ) {
 			return;
 		}
@@ -181,8 +188,21 @@ class Ingestion_Queue {
 				]
 			);
 
-			// Process synchronously - don't block on failure.
-			Ingestion::delete_record_id_from_api( $record_id );
+			// Process synchronously - don't block on failure, but log if it fails.
+			$api_result = Ingestion::delete_record_id_from_api( $record_id );
+			if ( ! $api_result->success ) {
+				Logger::error(
+					'ingestion-queue',
+					'Failed to delete record synchronously when delete queue at capacity',
+					[
+						'post_id'       => $post_id,
+						'record_id'     => $record_id,
+						'queue_size'    => count( $queue ),
+						'max_size'      => self::DELETE_QUEUE_MAX_SIZE,
+						'error_message' => $api_result->error_message,
+					]
+				);
+			}
 			return;
 		}
 

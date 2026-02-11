@@ -2,6 +2,23 @@
 
 > **Prerequisites:** VIP dev-env running (`composer start`), plugin active.
 
+> **⚠️ Important: WP-Cron is a pseudo-cron.** WordPress doesn't use a real system
+> cron. Instead, scheduled events only fire when someone makes an HTTP request to
+> the site (a page visit). In a local dev environment with no browser traffic,
+> **cron events will never fire on their own** — they'll show as "overdue" in
+> `queue-status`. This is normal and expected behavior.
+>
+> To process the queue locally, either:
+> - **Trigger cron manually:** `vip dev-env exec -- wp cron event run vip_agentforce_process_ingestion_queue`
+> - **Use `process-queue` directly:** `vip dev-env exec -- wp vip-agentforce ingestion process-queue`
+>
+> On production (WordPress VIP), this isn't an issue — constant traffic triggers
+> WP-Cron, and VIP also runs a system-level cron as a safety net.
+>
+> See: [WP-Cron overview](https://developer.wordpress.org/plugins/cron/) •
+> [Hooking into system cron](https://developer.wordpress.org/plugins/cron/hooking-wp-cron-into-the-system-task-scheduler/) •
+> [`wp cron event run`](https://developer.wordpress.org/cli/commands/cron/event/run/)
+
 ---
 
 ## 1. Configure for Local Testing
@@ -281,7 +298,11 @@ Expected: Warning about resetting a running sync, then `Success: Sync progress h
 
 ## 15. Let Cron Handle It (End-to-End)
 
-For the full async experience, start a sync and let WP-Cron process it:
+For the full async experience, start a sync and let WP-Cron process it.
+
+> **Reminder:** WP-Cron is triggered by page visits, not a background timer.
+> In local dev you must trigger cron manually via WP-CLI — events won't fire on
+> their own without HTTP traffic. See the note at the top of this guide.
 
 ```bash
 # Reset and start fresh

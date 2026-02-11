@@ -177,6 +177,7 @@ class Ingestion_Queue_Test extends WP_UnitTestCase {
 
 	public function test_handle_save_post_queues_for_sync(): void {
 		Ingestion_Queue::init();
+		add_filter( 'vip_agentforce_should_ingest_post', '__return_true' );
 
 		$post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
 
@@ -264,6 +265,27 @@ class Ingestion_Queue_Test extends WP_UnitTestCase {
 		// Verify queue entry survives.
 		$queue_after = get_option( Ingestion_Queue::OPTION_DELETE_QUEUE, [] );
 		$this->assertCount( 1, $queue_after, 'Delete queue entry should survive post deletion.' );
+	}
+
+	public function test_handle_before_delete_post_queues_trashed_ingested_posts(): void {
+		Ingestion_Queue::init();
+
+		// Create a published post and mark as ingested.
+		$post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
+		update_post_meta( $post->ID, Ingestion::META_KEY_INGESTION_ATTEMPTED, time() );
+
+		// Clear any sync queue from post creation.
+		Ingestion_Queue::dequeue_sync( $post->ID );
+
+		// Trash the post (simulates user moving to trash).
+		wp_trash_post( $post->ID );
+		$trashed_post = get_post( $post->ID );
+
+		// Simulate permanent deletion of the trashed post.
+		Ingestion_Queue::handle_before_delete_post( $trashed_post->ID, $trashed_post );
+
+		$queue = get_option( Ingestion_Queue::OPTION_DELETE_QUEUE, [] );
+		$this->assertCount( 1, $queue, 'Trashed-then-deleted ingested post should be queued for Salesforce deletion.' );
 	}
 
 	public function test_queue_for_delete_falls_back_to_sync_when_at_capacity(): void {

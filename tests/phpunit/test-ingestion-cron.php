@@ -451,6 +451,60 @@ class Ingestion_Cron_Test extends WP_UnitTestCase {
 		$this->assertSame( 0, $results['synced'] );
 	}
 
+	public function test_reschedule_stale_interval_when_too_far_in_future(): void {
+		// Schedule with a timestamp 15 minutes in the future (simulating old 15-min interval).
+		wp_schedule_event( time() + 900, 'vip_agentforce_ingestion', Ingestion_Cron::CRON_HOOK );
+		$this->assertTrue( Ingestion_Cron::is_scheduled() );
+
+		$old_next = wp_next_scheduled( Ingestion_Cron::CRON_HOOK );
+		$this->assertGreaterThan( time() + 800, $old_next );
+
+		// Queue an item so the cron stays scheduled.
+		$post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
+		Ingestion_Queue::queue_for_sync( $post->ID );
+
+		// This should detect the stale timestamp and reschedule.
+		Ingestion_Cron::maybe_schedule_on_init();
+
+		$new_next = wp_next_scheduled( Ingestion_Cron::CRON_HOOK );
+		// New timestamp should be close to now (within a few seconds).
+		$this->assertLessThanOrEqual( time() + 5, $new_next );
+	}
+
+	public function test_reschedule_stale_interval_when_overdue(): void {
+		// Schedule with a timestamp 5 minutes in the past (overdue beyond 2× interval).
+		wp_schedule_event( time() - 300, 'vip_agentforce_ingestion', Ingestion_Cron::CRON_HOOK );
+		$this->assertTrue( Ingestion_Cron::is_scheduled() );
+
+		// Queue an item so the cron stays scheduled.
+		$post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
+		Ingestion_Queue::queue_for_sync( $post->ID );
+
+		// This should detect the overdue timestamp and reschedule.
+		Ingestion_Cron::maybe_schedule_on_init();
+
+		$new_next = wp_next_scheduled( Ingestion_Cron::CRON_HOOK );
+		// New timestamp should be close to now (within a few seconds).
+		$this->assertLessThanOrEqual( time() + 5, $new_next );
+		$this->assertGreaterThanOrEqual( time() - 2, $new_next );
+	}
+
+	public function test_no_reschedule_when_interval_is_normal(): void {
+		// Schedule with a timestamp 30 seconds from now (within 2× of 60s interval).
+		$expected_time = time() + 30;
+		wp_schedule_event( $expected_time, 'vip_agentforce_ingestion', Ingestion_Cron::CRON_HOOK );
+
+		// Queue an item so maybe_schedule_on_init doesn't skip.
+		$post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
+		Ingestion_Queue::queue_for_sync( $post->ID );
+
+		Ingestion_Cron::maybe_schedule_on_init();
+
+		// Timestamp should be unchanged.
+		$next = wp_next_scheduled( Ingestion_Cron::CRON_HOOK );
+		$this->assertSame( $expected_time, $next );
+	}
+
 	public function test_process_queue_handles_queue_and_bulk_sync_together(): void {
 		$this->mock_http_success();
 		$this->setup_ingestion_filters();
