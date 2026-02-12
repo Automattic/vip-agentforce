@@ -31,6 +31,15 @@ class Ingestion_CLI extends WP_CLI_Command {
 	 * [--reset]
 	 * : Reset a stuck or completed sync so a new one can be started.
 	 *
+	 * [--format=<format>]
+	 * : Output format. Use 'json' for machine-readable output (with --status).
+	 * ---
+	 * default: table
+	 * options:
+	 *   - table
+	 *   - json
+	 * ---
+	 *
 	 * ## EXAMPLES
 	 *
 	 *     # Start async sync of all eligible posts
@@ -38,6 +47,9 @@ class Ingestion_CLI extends WP_CLI_Command {
 	 *
 	 *     # Check sync progress
 	 *     wp vip-agentforce ingestion sync --status
+	 *
+	 *     # Check sync progress as JSON (for programmatic consumption)
+	 *     wp vip-agentforce ingestion sync --status --format=json
 	 *
 	 *     # Reset a completed/stuck sync
 	 *     wp vip-agentforce ingestion sync --reset
@@ -50,7 +62,7 @@ class Ingestion_CLI extends WP_CLI_Command {
 	public function sync( array $args, array $assoc_args ): void {
 		// Handle --status flag.
 		if ( isset( $assoc_args['status'] ) ) {
-			$this->show_sync_status();
+			$this->show_sync_status( $assoc_args );
 			return;
 		}
 
@@ -66,14 +78,29 @@ class Ingestion_CLI extends WP_CLI_Command {
 	/**
 	 * Show the current sync progress.
 	 *
+	 * ## OPTIONS
+	 *
+	 * [--format=<format>]
+	 * : Output format. Use 'json' for machine-readable output.
+	 * ---
+	 * default: table
+	 * options:
+	 *   - table
+	 *   - json
+	 * ---
+	 *
 	 * ## EXAMPLES
 	 *
 	 *     wp vip-agentforce ingestion sync-status
+	 *     wp vip-agentforce ingestion sync-status --format=json
 	 *
 	 * @subcommand sync-status
+	 *
+	 * @param array<int, string>    $args       Positional arguments.
+	 * @param array<string, string> $assoc_args Associative arguments.
 	 */
-	public function sync_status(): void {
-		$this->show_sync_status();
+	public function sync_status( array $args = [], array $assoc_args = [] ): void {
+		$this->show_sync_status( $assoc_args );
 	}
 
 	/**
@@ -142,9 +169,17 @@ class Ingestion_CLI extends WP_CLI_Command {
 
 	/**
 	 * Display the current sync status.
+	 *
+	 * @param array<string, string> $assoc_args Associative arguments (supports 'format').
 	 */
-	private function show_sync_status(): void {
+	private function show_sync_status( array $assoc_args = [] ): void {
 		$progress = Ingestion_Sync_Progress::get();
+		$format   = $assoc_args['format'] ?? 'table';
+
+		if ( 'json' === $format ) {
+			$this->show_sync_status_json( $progress );
+			return;
+		}
 
 		if ( null === $progress ) {
 			WP_CLI::log( 'No sync has been initiated.' );
@@ -184,6 +219,31 @@ class Ingestion_CLI extends WP_CLI_Command {
 		if ( ! empty( $progress['error'] ) ) {
 			WP_CLI::warning( sprintf( 'Error: %s', $progress['error'] ) );
 		}
+	}
+
+	/**
+	 * Output sync status as JSON.
+	 *
+	 * Outputs a JSON object matching the REST API response shape, with an
+	 * additional 'percentage' field for convenience.
+	 *
+	 * @param array<string, mixed>|null $progress Progress data from Ingestion_Sync_Progress::get().
+	 */
+	private function show_sync_status_json( ?array $progress ): void {
+		if ( null === $progress ) {
+			$output = [
+				'status'  => Ingestion_Sync_Progress::STATUS_IDLE,
+				'message' => 'No sync has been initiated.',
+			];
+		} else {
+			$output               = $progress;
+			$output['percentage'] = $progress['total'] > 0
+				? (float) round( ( $progress['processed'] / $progress['total'] ) * 100, 1 )
+				: 0.0;
+		}
+
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.json_encode_json_encode -- CLI output, not database storage.
+		echo json_encode( $output, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_PRESERVE_ZERO_FRACTION );
 	}
 
 	/**

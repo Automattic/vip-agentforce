@@ -394,6 +394,125 @@ class Ingestion_CLI_Test extends WP_UnitTestCase {
 		$this->assertNull( Ingestion_Sync_Progress::get() );
 	}
 
+	// =========================================================================
+	// JSON Format Tests
+	// =========================================================================
+
+	public function test_cli_sync_status_json_no_sync(): void {
+		$output = $this->run_cli_sync( [
+			'status' => '',
+			'format' => 'json',
+		] );
+		$data   = json_decode( $output, true );
+
+		$this->assertNotNull( $data, 'Output should be valid JSON.' );
+		$this->assertSame( 'idle', $data['status'] );
+		$this->assertSame( 'No sync has been initiated.', $data['message'] );
+	}
+
+	public function test_cli_sync_status_json_running(): void {
+		Ingestion_Sync_Progress::start( 200, [ 'post', 'page' ] );
+
+		$output = $this->run_cli_sync( [
+			'status' => '',
+			'format' => 'json',
+		] );
+		$data   = json_decode( $output, true );
+
+		$this->assertNotNull( $data, 'Output should be valid JSON.' );
+		$this->assertSame( 'running', $data['status'] );
+		$this->assertSame( 200, $data['total'] );
+		$this->assertSame( 0, $data['processed'] );
+		$this->assertSame( 0.0, $data['percentage'] );
+		$this->assertContains( 'post', $data['post_types'] );
+		$this->assertContains( 'page', $data['post_types'] );
+	}
+
+	public function test_cli_sync_status_json_with_progress(): void {
+		Ingestion_Sync_Progress::start( 100, [ 'post' ] );
+		Ingestion_Sync_Progress::update(
+			[
+				'synced'  => 30,
+				'skipped' => 10,
+				'failed'  => 5,
+				'deleted' => 5,
+			],
+			999
+		);
+
+		$output = $this->run_cli_sync( [
+			'status' => '',
+			'format' => 'json',
+		] );
+		$data   = json_decode( $output, true );
+
+		$this->assertNotNull( $data, 'Output should be valid JSON.' );
+		$this->assertSame( 'running', $data['status'] );
+		$this->assertSame( 100, $data['total'] );
+		$this->assertSame( 50, $data['processed'] );
+		$this->assertSame( 30, $data['synced'] );
+		$this->assertSame( 10, $data['skipped'] );
+		$this->assertSame( 5, $data['failed'] );
+		$this->assertSame( 5, $data['deleted'] );
+		$this->assertSame( 999, $data['last_post_id'] );
+		$this->assertSame( 50.0, $data['percentage'] );
+	}
+
+	public function test_cli_sync_status_json_completed(): void {
+		Ingestion_Sync_Progress::start( 10, [ 'post' ] );
+		Ingestion_Sync_Progress::update(
+			[
+				'synced'  => 8,
+				'skipped' => 2,
+				'failed'  => 0,
+				'deleted' => 0,
+			],
+			42
+		);
+		Ingestion_Sync_Progress::complete();
+
+		$output = $this->run_cli_sync( [
+			'status' => '',
+			'format' => 'json',
+		] );
+		$data   = json_decode( $output, true );
+
+		$this->assertNotNull( $data, 'Output should be valid JSON.' );
+		$this->assertSame( 'completed', $data['status'] );
+		$this->assertSame( 100.0, $data['percentage'] );
+		$this->assertNotNull( $data['completed_at'] );
+	}
+
+	public function test_cli_sync_status_json_failed(): void {
+		Ingestion_Sync_Progress::start( 50, [ 'post' ] );
+		Ingestion_Sync_Progress::fail( 'API timeout' );
+
+		$output = $this->run_cli_sync( [
+			'status' => '',
+			'format' => 'json',
+		] );
+		$data   = json_decode( $output, true );
+
+		$this->assertNotNull( $data, 'Output should be valid JSON.' );
+		$this->assertSame( 'failed', $data['status'] );
+		$this->assertSame( 'API timeout', $data['error'] );
+		$this->assertArrayHasKey( 'percentage', $data );
+	}
+
+	public function test_cli_sync_status_json_via_subcommand(): void {
+		Ingestion_Sync_Progress::start( 75, [ 'post' ] );
+
+		$cli = new Ingestion_CLI();
+		ob_start();
+		$cli->sync_status( [], [ 'format' => 'json' ] );
+		$output = ob_get_clean();
+		$data   = json_decode( $output, true );
+
+		$this->assertNotNull( $data, 'Output should be valid JSON.' );
+		$this->assertSame( 'running', $data['status'] );
+		$this->assertSame( 75, $data['total'] );
+	}
+
 	public function test_cli_sync_reset_flag(): void {
 		$this->setup_ingestion_filters();
 		$this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
