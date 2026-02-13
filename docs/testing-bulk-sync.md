@@ -41,7 +41,7 @@ define( 'VIP_AGENTFORCE_MOCK_INGESTION_API', true );
 Verify the plugin is active:
 
 ```bash
-vip dev-env exec -- wp plugin list --status=active --name=vip-agentforce --format=table
+vip dev-env exec -- wp plugin list --name=vip-agentforce --format=table
 ```
 
 ---
