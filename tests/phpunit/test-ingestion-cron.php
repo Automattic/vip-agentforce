@@ -242,6 +242,27 @@ class Ingestion_Cron_Test extends WP_UnitTestCase {
 		$this->assertCount( 2, $remaining );
 	}
 
+	public function test_process_queue_clamps_negative_batch_size(): void {
+		$this->mock_http_success();
+		$this->setup_ingestion_filters();
+
+		// Create 3 posts.
+		$this->factory()->post->create_many( 3, [ 'post_status' => 'publish' ] );
+
+		// Start bulk sync.
+		Ingestion_Sync_Progress::start( 3, [ 'post' ] );
+
+		// Process with -1. If not clamped, it would process all 3 posts (posts_per_page=-1).
+		// If clamped to 1, it should only process 1 post.
+		$results = Ingestion_Cron::process_queue( -1 );
+
+		$this->assertSame( 1, $results['synced'] );
+		$this->assertTrue( Ingestion_Sync_Progress::is_running() );
+
+		$progress = Ingestion_Sync_Progress::get();
+		$this->assertSame( 1, $progress['processed'] );
+	}
+
 	public function test_process_queue_unschedules_when_empty(): void {
 		$this->mock_http_success();
 		$this->setup_ingestion_filters();

@@ -199,7 +199,7 @@ class Ingestion_Cron {
 	 * @return array{synced: int, deleted: int, failed: int, skipped: int} Processing results.
 	 */
 	public static function process_queue( ?int $batch_size = null ): array {
-		$batch_size = $batch_size ?? self::get_batch_size();
+		$batch_size = ( null !== $batch_size ) ? max( 1, $batch_size ) : self::get_batch_size();
 
 		$results = [
 			'synced'  => 0,
