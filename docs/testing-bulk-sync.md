@@ -259,7 +259,7 @@ Delete a post while the sync is running:
 
 ```bash
 # Grab the first post ID
-POST_ID=$(vip dev-env exec -- wp post list --post_type=post --post_status=publish --field=ID --format=csv | head -1)
+POST_ID=$(vip dev-env exec -- wp post list --post_type=post --post_status=publish --field=ID --format=csv | tail -n +3 | head -1)
 
 # Delete it
 vip dev-env exec -- wp post delete $POST_ID --force
