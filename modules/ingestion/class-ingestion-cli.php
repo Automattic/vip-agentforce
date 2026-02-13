@@ -105,6 +105,8 @@ class Ingestion_CLI extends WP_CLI_Command {
 
 	/**
 	 * Start a new bulk sync.
+	 *
+	 * @param array<string, string> $assoc_args Associative arguments.
 	 */
 	private function start_sync( array $assoc_args = [] ): void {
 		$format = $assoc_args['format'] ?? 'table';
