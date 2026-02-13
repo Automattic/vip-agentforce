@@ -513,6 +513,45 @@ class Ingestion_CLI_Test extends WP_UnitTestCase {
 		$this->assertSame( 75, $data['total'] );
 	}
 
+	public function test_cli_sync_start_json_success(): void {
+		$this->setup_ingestion_filters();
+		$this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
+
+		$output = $this->run_cli_sync( [ 'format' => 'json' ] );
+		$data   = json_decode( $output, true );
+
+		$this->assertNotNull( $data, 'Output should be valid JSON.' );
+		$this->assertTrue( $data['success'] );
+		$this->assertSame( 'running', $data['status'] );
+		$this->assertSame( 1, $data['total'] );
+		$this->assertArrayHasKey( 'post_types', $data );
+	}
+
+	public function test_cli_sync_start_json_already_running(): void {
+		$this->setup_ingestion_filters();
+		Ingestion_Sync_Progress::start( 100, [ 'post' ] );
+
+		$output = $this->run_cli_sync( [ 'format' => 'json' ] );
+		$data   = json_decode( $output, true );
+
+		$this->assertNotNull( $data, 'Output should be valid JSON.' );
+		$this->assertFalse( $data['success'] );
+		$this->assertSame( 'running', $data['status'] );
+		$this->assertStringContainsString( 'already in progress', $data['message'] );
+	}
+
+	public function test_cli_sync_start_json_no_published_posts(): void {
+		$this->setup_ingestion_filters();
+
+		$output = $this->run_cli_sync( [ 'format' => 'json' ] );
+		$data   = json_decode( $output, true );
+
+		$this->assertNotNull( $data, 'Output should be valid JSON.' );
+		$this->assertFalse( $data['success'] );
+		$this->assertSame( 'idle', $data['status'] );
+		$this->assertSame( 'No published posts found to sync.', $data['message'] );
+	}
+
 	public function test_cli_sync_reset_flag(): void {
 		$this->setup_ingestion_filters();
 		$this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );

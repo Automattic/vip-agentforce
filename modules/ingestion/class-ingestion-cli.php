@@ -32,7 +32,7 @@ class Ingestion_CLI extends WP_CLI_Command {
 	 * : Reset a stuck or completed sync so a new one can be started.
 	 *
 	 * [--format=<format>]
-	 * : Output format. Use 'json' for machine-readable output (with --status).
+	 * : Output format. Use 'json' for machine-readable output.
 	 * ---
 	 * default: table
 	 * options:
@@ -72,7 +72,7 @@ class Ingestion_CLI extends WP_CLI_Command {
 			return;
 		}
 
-		$this->start_sync();
+		$this->start_sync( $assoc_args );
 	}
 
 	/**
@@ -106,16 +106,38 @@ class Ingestion_CLI extends WP_CLI_Command {
 	/**
 	 * Start a new bulk sync.
 	 */
-	private function start_sync(): void {
+	private function start_sync( array $assoc_args = [] ): void {
+		$format = $assoc_args['format'] ?? 'table';
+
 		// Check that filters are registered.
 		if ( ! has_filter( 'vip_agentforce_should_ingest_post' ) ) {
-			WP_CLI::error( 'No vip_agentforce_should_ingest_post filter registered. Cannot determine which posts to sync.', false );
+			$message = 'No vip_agentforce_should_ingest_post filter registered. Cannot determine which posts to sync.';
+			if ( 'json' === $format ) {
+				echo wp_json_encode( [
+					'success' => false,
+					'message' => $message,
+					'status'  => Ingestion_Sync_Progress::STATUS_IDLE,
+				] );
+				return;
+			}
+
+			WP_CLI::error( $message, false );
 			return;
 		}
 
 		// Block if already running.
 		if ( Ingestion_Sync_Progress::is_running() ) {
-			WP_CLI::error( 'A sync is already in progress. Use --status to check progress or --reset to clear a stuck sync.', false );
+			$message = 'A sync is already in progress. Use --status to check progress or --reset to clear a stuck sync.';
+			if ( 'json' === $format ) {
+				echo wp_json_encode( [
+					'success' => false,
+					'message' => $message,
+					'status'  => Ingestion_Sync_Progress::STATUS_RUNNING,
+				] );
+				return;
+			}
+
+			WP_CLI::error( $message, false );
 			return;
 		}
 
@@ -135,7 +157,17 @@ class Ingestion_CLI extends WP_CLI_Command {
 		$total = $query->found_posts;
 
 		if ( 0 === $total ) {
-			WP_CLI::warning( 'No published posts found to sync.' );
+			$message = 'No published posts found to sync.';
+			if ( 'json' === $format ) {
+				echo wp_json_encode( [
+					'success' => false,
+					'message' => $message,
+					'status'  => Ingestion_Sync_Progress::STATUS_IDLE,
+				] );
+				return;
+			}
+
+			WP_CLI::warning( $message );
 			return;
 		}
 
@@ -143,19 +175,39 @@ class Ingestion_CLI extends WP_CLI_Command {
 		$started = Ingestion_Sync_Progress::start( $total, array_values( $post_types ) );
 
 		if ( ! $started ) {
-			WP_CLI::error( 'Failed to start sync. A sync may already be in progress.', false );
+			$message = 'Failed to start sync. A sync may already be in progress.';
+			if ( 'json' === $format ) {
+				echo wp_json_encode( [
+					'success' => false,
+					'message' => $message,
+					'status'  => Ingestion_Sync_Progress::STATUS_FAILED,
+				] );
+				return;
+			}
+
+			WP_CLI::error( $message, false );
 			return;
 		}
 
 		// Ensure cron is scheduled to pick up the bulk sync.
 		Ingestion_Cron::schedule_processing();
 
-		WP_CLI::success(
-			sprintf(
-				'Bulk sync queued: %s posts will be processed by cron. Use `wp vip-agentforce ingestion sync --status` to monitor progress.',
-				number_format_i18n( $total )
-			)
+		$message = sprintf(
+			'Bulk sync queued: %s posts will be processed by cron. Use `wp vip-agentforce ingestion sync --status` to monitor progress.',
+			number_format_i18n( $total )
 		);
+
+		if ( 'json' === $format ) {
+			echo wp_json_encode( [
+				'success'    => true,
+				'message'    => $message,
+				'status'     => Ingestion_Sync_Progress::STATUS_RUNNING,
+				'total'      => $total,
+				'post_types' => array_values( $post_types ),
+			] );
+		} else {
+			WP_CLI::success( $message );
+		}
 
 		Logger::info(
 			'ingestion-cli',
