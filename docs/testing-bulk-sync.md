@@ -211,14 +211,12 @@ Expected: `COMPLETED`, shows total synced count, duration. The "Mid-Sync Post" w
 
 ## 11. Test the REST Endpoint
 
-Query progress via the REST API (you'll need an authenticated session):
+Query progress via the REST API (as an authenticated admin user):
 
 ```bash
-# Get a nonce (admin user)
-NONCE=$(vip dev-env exec -- wp eval 'echo wp_create_nonce("wp_rest");')
-
 # Fetch sync progress
 vip dev-env exec -- wp eval '
+  wp_set_current_user(1);
   $request = new WP_REST_Request("GET", "/vip-agentforce/v1/sync-progress");
   $response = rest_do_request($request);
   echo json_encode($response->get_data(), JSON_PRETTY_PRINT) . "\n";
