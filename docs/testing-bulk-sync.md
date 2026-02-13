@@ -130,10 +130,17 @@ Error: A sync is already in progress. Use --status to check progress or --reset 
 
 ## 7. Process a Small Batch Manually
 
-Instead of waiting for cron, fire the queue processor manually with a small batch to see pagination in action:
+Instead of waiting for cron, fire the queue processor manually with a small batch to see pagination in action. You need an active bulk sync before running `process-queue`.
+
+If you don't already have one running, start it first:
 
 ```bash
-# Process only 5 posts
+vip dev-env exec -- wp vip-agentforce ingestion sync
+```
+
+Then process only 5 posts:
+
+```bash
 vip dev-env exec -- wp vip-agentforce ingestion process-queue --batch-size=5
 ```
 
