@@ -23,7 +23,9 @@
 
 ## 1. Configure for Local Testing
 
-Make sure your `env.php` has the mock API enabled and sync-all-posts on:
+You can test with either a **mock API** (no real Salesforce calls) or a **real Salesforce instance**.
+
+### Option A: Mock API (recommended for most testing)
 
 ```php
 <?php
@@ -36,6 +38,23 @@ define( 'VIP_AGENTFORCE_CONFIGS', [
 ] );
 define( 'VIP_AGENTFORCE_DEVELOPER_MODE', true );
 define( 'VIP_AGENTFORCE_MOCK_INGESTION_API', true );
+```
+
+### Option B: Real Salesforce instance
+
+To make actual API calls to Salesforce Data Cloud:
+
+```php
+<?php
+define( 'VIP_AGENTFORCE_CONFIGS', [
+    'ingestion_api_instance_url' => 'https://your-instance.salesforce.com',
+    'ingestion_api_token'        => 'your-real-token',
+    'ingestion_api_source_name'  => 'your-source-name',
+    'ingestion_api_object_name'  => 'your-object-name',
+    'ingestion_api_sync_all_posts' => true,
+] );
+define( 'VIP_AGENTFORCE_DEVELOPER_MODE', true );
+// Omit VIP_AGENTFORCE_MOCK_INGESTION_API or set to false
 ```
 
 Verify the plugin is active:
@@ -371,3 +390,24 @@ vip dev-env exec -- wp vip-agentforce ingestion sync --reset
 | `wp vip-agentforce ingestion process-queue --all` | Drain everything |
 | `wp vip-agentforce ingestion process-queue --batch-size=5` | Control batch size |
 | `wp cron event run vip_agentforce_process_ingestion_queue` | Simulate a cron tick |
+
+---
+
+## Troubleshooting
+
+### Sync progresses unexpectedly between status checks
+
+Setting `cron: false` in your dev-env config does **not** fully freeze WP-Cron
+execution paths. WP-Cron can still be triggered by WordPress requests (including
+WP-CLI commands), so sync progress may advance between checks even without
+waiting for a minute boundary.
+
+For deterministic, manual progression, use:
+
+```bash
+# Process a specific number of posts
+vip dev-env exec -- wp vip-agentforce ingestion process-queue --batch-size=5
+
+# Or trigger the cron event directly
+vip dev-env exec -- wp cron event run vip_agentforce_process_ingestion_queue
+```
