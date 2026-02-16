@@ -1,6 +1,10 @@
 <?php
 /**
- * REST API endpoint for sync progress.
+ * REST API endpoint for querying bulk sync progress.
+ *
+ * Note: Parker uses WP-CLI (sync --status --format=json) instead,
+ * since GOOP can't make HTTP requests to WP sites. This endpoint is
+ * for local testing/direct admin access.
  *
  * @package vip-agentforce
  */
