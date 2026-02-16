@@ -3,6 +3,7 @@
 use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion;
 use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_Failure;
 use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_Post_Record;
+use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_Queue;
 use Automattic\VIP\Salesforce\Agentforce\Utils\Configs;
 use Automattic\VIP\Salesforce\Agentforce\Utils\Logger;
 
@@ -18,7 +19,11 @@ class Ingestion_Test extends WP_UnitTestCase {
 	public function setUp(): void {
 		parent::setUp();
 		Logger::disable();
-		Ingestion::init();
+
+		// Disable async mode so tests run synchronously (legacy behavior).
+		add_filter( 'vip_agentforce_use_async_ingestion', '__return_false' );
+
+		Ingestion_Queue::init();
 
 		// Prime configs cache for API calls.
 		$this->prime_configs_cache(
@@ -38,6 +43,7 @@ class Ingestion_Test extends WP_UnitTestCase {
 		remove_all_filters( 'vip_agentforce_transform_post' );
 		remove_all_actions( 'vip_agentforce_post_ingestion_failed' );
 		remove_all_filters( 'pre_http_request' );
+		remove_all_filters( 'vip_agentforce_use_async_ingestion' );
 		Configs::flush_cache();
 		$this->captured_requests = [];
 	}
@@ -139,7 +145,7 @@ class Ingestion_Test extends WP_UnitTestCase {
 	}
 
 	public function test_save_post_hook_is_registered(): void {
-		$this->assertEquals( 10, has_action( 'save_post', [ Ingestion::class, 'handle_save_post' ] ) );
+		$this->assertEquals( 10, has_action( 'save_post', [ Ingestion_Queue::class, 'handle_save_post' ] ) );
 	}
 
 	public function test_returns_false_when_no_filter_registered(): void {

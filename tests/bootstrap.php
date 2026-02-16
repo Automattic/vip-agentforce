@@ -6,6 +6,7 @@ require_once __DIR__ . '/../utils/class-constants.php';
 require_once __DIR__ . '/../utils/class-logger.php';
 require_once __DIR__ . '/class-speedup-isolated-wp-tests.php';
 require_once __DIR__ . '/class-testable-logger.php';
+require_once __DIR__ . '/class-wp-cli-mock.php';
 
 if ( ! defined( 'VIP_GO_APP_ENVIRONMENT' ) ) {
 	define( 'VIP_GO_APP_ENVIRONMENT', 'test' );

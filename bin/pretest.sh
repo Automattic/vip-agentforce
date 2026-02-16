@@ -6,5 +6,5 @@ if php -r 'exit((int)(PHP_VERSION_ID < 80100));'; then
 	echo "Disabling WP_DEBUG in wp-test-config.php"
 	sed -i "s@define( 'WP_DEBUG', true );@// define( 'WP_DEBUG', true );@" /tmp/wordpress-tests-lib/wp-tests-config.php
 fi
-# Install PHPUnit Polyfills
-composer global require --dev yoast/phpunit-polyfills
+# Use PHPUnit Polyfills from project vendor directory (avoids GitHub rate limits in Docker).
+export WP_TESTS_PHPUNIT_POLYFILLS_PATH=/home/circleci/project/vendor/yoast/phpunit-polyfills

@@ -3,6 +3,7 @@
 use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion;
 use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_Failure;
 use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_Post_Record;
+use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_Queue;
 
 /**
  * Test class for API failure scenarios using pre_http_request filter to mock failures.
@@ -11,7 +12,11 @@ class Ingestion_Api_Failure_Test extends WP_UnitTestCase {
 
 	public function setUp(): void {
 		parent::setUp();
-		Ingestion::init();
+
+		// Disable async mode so tests run synchronously (legacy behavior).
+		add_filter( 'vip_agentforce_use_async_ingestion', '__return_false' );
+
+		Ingestion_Queue::init();
 
 		// Mock the config so API URL is set.
 		add_filter(
@@ -36,6 +41,7 @@ class Ingestion_Api_Failure_Test extends WP_UnitTestCase {
 		remove_all_filters( 'vip_agentforce_transform_post' );
 		remove_all_filters( 'vip_agentforce_config' );
 		remove_all_filters( 'pre_http_request' );
+		remove_all_filters( 'vip_agentforce_use_async_ingestion' );
 		remove_all_actions( 'vip_agentforce_post_ingestion_failed' );
 	}
 

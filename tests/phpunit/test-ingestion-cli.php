@@ -3,6 +3,8 @@
 use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion;
 use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_CLI;
 use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_Post_Record;
+use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_Sync_Progress;
+use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_Cron;
 use Automattic\VIP\Salesforce\Agentforce\Utils\Configs;
 use Automattic\VIP\Salesforce\Agentforce\Utils\Logger;
 
@@ -31,6 +33,9 @@ class Ingestion_CLI_Test extends WP_UnitTestCase {
 		parent::setUp();
 		Logger::disable();
 		$this->captured_requests = [];
+
+		// Initialize cron hooks (registers the custom schedule needed by schedule_processing).
+		Ingestion_Cron::init();
 
 		// Set up config for API calls via cache priming.
 		$this->prime_configs_cache(
@@ -75,7 +80,11 @@ class Ingestion_CLI_Test extends WP_UnitTestCase {
 		remove_all_filters( 'pre_http_request' );
 		remove_all_filters( 'vip_agentforce_should_ingest_post' );
 		remove_all_filters( 'vip_agentforce_transform_post' );
+		remove_all_filters( 'cron_schedules' );
+		remove_all_actions( Ingestion_Cron::CRON_HOOK );
 		$this->captured_requests = [];
+		Ingestion_Sync_Progress::reset();
+		Ingestion_Cron::unschedule_processing();
 	}
 
 	/**
@@ -257,12 +266,14 @@ class Ingestion_CLI_Test extends WP_UnitTestCase {
 	/**
 	 * Run CLI sync command and capture output.
 	 *
+	 * @param array<string, string> $assoc_args Associative arguments passed to the sync command.
+	 *
 	 * @return string Captured CLI output.
 	 */
-	private function run_cli_sync(): string {
+	private function run_cli_sync( array $assoc_args = [] ): string {
 		$cli = new Ingestion_CLI();
 		ob_start();
-		$cli->sync();
+		$cli->sync( [], $assoc_args );
 		return ob_get_clean();
 	}
 
@@ -272,11 +283,11 @@ class Ingestion_CLI_Test extends WP_UnitTestCase {
 
 		$this->run_cli_sync();
 
-		// Should not make any API calls when filter is missing.
-		$this->assertCount( 0, $this->get_ingestion_requests() );
+		// Should not start progress when filter is missing.
+		$this->assertNull( Ingestion_Sync_Progress::get() );
 	}
 
-	public function test_cli_sync_ingests_posts(): void {
+	public function test_cli_sync_starts_bulk_sync_progress(): void {
 		$this->setup_ingestion_filters();
 
 		// Create posts.
@@ -288,12 +299,15 @@ class Ingestion_CLI_Test extends WP_UnitTestCase {
 
 		$this->run_cli_sync();
 
-		// Should have 2 API calls (one for each post).
+		$this->assertTrue( Ingestion_Sync_Progress::is_running() );
+		$this->assertEquals( 2, Ingestion_Sync_Progress::get()['total'] );
+
+		// Should have 0 API calls (sync just queues).
 		$ingestion_requests = $this->get_ingestion_requests();
-		$this->assertCount( 2, $ingestion_requests, 'Both posts should be synced via CLI.' );
+		$this->assertCount( 0, $ingestion_requests, 'Sync should not make API calls directly.' );
 	}
 
-	public function test_cli_sync_ingests_correct_count(): void {
+	public function test_cli_sync_reports_correct_total_count(): void {
 		$this->setup_ingestion_filters();
 
 		// Create 3 posts.
@@ -301,42 +315,12 @@ class Ingestion_CLI_Test extends WP_UnitTestCase {
 		$this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
 		$this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
 
-		// Clear any requests from post creation.
-		$this->captured_requests = [];
-
 		$this->run_cli_sync();
 
-		// Should have 3 API calls.
-		$this->assertCount( 3, $this->get_ingestion_requests() );
+		$this->assertEquals( 3, Ingestion_Sync_Progress::get()['total'] );
 	}
 
-	public function test_cli_sync_respects_should_ingest_filter(): void {
-		$this->setup_ingestion_filters();
-
-		// Create posts.
-		$post1 = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
-		$this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
-
-		// Clear any requests from post creation.
-		$this->captured_requests = [];
-
-		// Replace filter to only allow post1.
-		remove_all_filters( 'vip_agentforce_should_ingest_post' );
-		add_filter(
-			'vip_agentforce_should_ingest_post',
-			fn( $should_ingest, $post ) => $post->ID === $post1->ID,
-			10,
-			2
-		);
-
-		$this->run_cli_sync();
-
-		// Should have 1 API call (only post1).
-		$ingestion_requests = $this->get_ingestion_requests();
-		$this->assertCount( 1, $ingestion_requests, 'Only post1 should be synced.' );
-	}
-
-	public function test_cli_sync_only_processes_published_posts(): void {
+	public function test_cli_sync_counts_only_published_posts(): void {
 		$this->setup_ingestion_filters();
 
 		// Create posts with different statuses.
@@ -344,14 +328,10 @@ class Ingestion_CLI_Test extends WP_UnitTestCase {
 		$this->factory()->post->create_and_get( [ 'post_status' => 'draft' ] );
 		$this->factory()->post->create_and_get( [ 'post_status' => 'pending' ] );
 
-		// Clear any requests from post creation.
-		$this->captured_requests = [];
-
 		$this->run_cli_sync();
 
-		// Only the published post should be synced.
-		$ingestion_requests = $this->get_ingestion_requests();
-		$this->assertCount( 1, $ingestion_requests, 'Only published post should be synced.' );
+		// Only the published post should be counted.
+		$this->assertEquals( 1, Ingestion_Sync_Progress::get()['total'] );
 	}
 
 	public function test_cli_sync_does_not_trigger_save_post_hook(): void {
@@ -376,63 +356,214 @@ class Ingestion_CLI_Test extends WP_UnitTestCase {
 		// save_post should NOT have been called.
 		$this->assertFalse( $save_post_called, 'Sync should NOT trigger save_post hook.' );
 
-		// But the API should have been called.
-		$this->assertCount( 1, $this->get_ingestion_requests() );
-	}
-
-	public function test_cli_sync_sets_ingestion_attempted_meta(): void {
-		$this->setup_ingestion_filters();
-
-		$post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
-
-		// Clear the meta that might have been set during post creation.
-		delete_post_meta( $post->ID, Ingestion::META_KEY_INGESTION_ATTEMPTED );
-
-		// Verify meta is not set.
-		$this->assertEmpty( get_post_meta( $post->ID, Ingestion::META_KEY_INGESTION_ATTEMPTED, true ) );
-
-		// Clear any requests from post creation.
-		$this->captured_requests = [];
-
-		$this->run_cli_sync();
-
-		// Meta should now be set.
-		$meta_value = get_post_meta( $post->ID, Ingestion::META_KEY_INGESTION_ATTEMPTED, true );
-		$this->assertNotSame( '', $meta_value, 'Ingestion meta should be set after sync.' );
-		$this->assertGreaterThan( 0, (int) $meta_value, 'Ingestion meta should be a positive timestamp.' );
-	}
-
-	public function test_cli_sync_handles_transform_failure(): void {
-		// Set up filter that allows ingestion but transform returns null.
-		add_filter( 'vip_agentforce_should_ingest_post', '__return_true' );
-		add_filter( 'vip_agentforce_transform_post', '__return_null' );
-
-		$this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
-
-		// Clear any requests from post creation.
-		$this->captured_requests = [];
-
-		$this->run_cli_sync();
-
-		// Transform failed, so no API call should be made.
+		// No API calls should be made either.
 		$this->assertCount( 0, $this->get_ingestion_requests() );
 	}
 
-	public function test_cli_sync_processes_multiple_posts_in_batch(): void {
+	public function test_cli_sync_blocks_when_already_running(): void {
 		$this->setup_ingestion_filters();
+		$this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
 
-		// Create 5 posts.
-		for ( $i = 0; $i < 5; $i++ ) {
-			$this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
-		}
-
-		// Clear any requests from post creation.
-		$this->captured_requests = [];
+		// Simulate running sync.
+		Ingestion_Sync_Progress::start( 100, [ 'post' ] );
 
 		$this->run_cli_sync();
 
-		// Should have 5 API calls.
-		$ingestion_requests = $this->get_ingestion_requests();
-		$this->assertCount( 5, $ingestion_requests, 'All 5 posts should be synced.' );
+		// Should not overwrite existing progress.
+		$this->assertEquals( 100, Ingestion_Sync_Progress::get()['total'] );
+
+		// No new API calls.
+		$this->assertCount( 0, $this->get_ingestion_requests() );
+	}
+
+	public function test_cli_sync_schedules_cron(): void {
+		$this->setup_ingestion_filters();
+		$this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
+
+		$this->assertFalse( Ingestion_Cron::is_scheduled() );
+
+		$this->run_cli_sync();
+
+		$this->assertTrue( Ingestion_Cron::is_scheduled() );
+	}
+
+	public function test_cli_sync_status_flag(): void {
+		// Don't start any sync.
+		$this->run_cli_sync( [ 'status' => '' ] );
+
+		$this->assertNull( Ingestion_Sync_Progress::get() );
+	}
+
+	// =========================================================================
+	// JSON Format Tests
+	// =========================================================================
+
+	public function test_cli_sync_status_json_no_sync(): void {
+		$output = $this->run_cli_sync( [
+			'status' => '',
+			'format' => 'json',
+		] );
+		$data   = json_decode( $output, true );
+
+		$this->assertNotNull( $data, 'Output should be valid JSON.' );
+		$this->assertSame( 'idle', $data['status'] );
+		$this->assertSame( 'No sync has been initiated.', $data['message'] );
+	}
+
+	public function test_cli_sync_status_json_running(): void {
+		Ingestion_Sync_Progress::start( 200, [ 'post', 'page' ] );
+
+		$output = $this->run_cli_sync( [
+			'status' => '',
+			'format' => 'json',
+		] );
+		$data   = json_decode( $output, true );
+
+		$this->assertNotNull( $data, 'Output should be valid JSON.' );
+		$this->assertSame( 'running', $data['status'] );
+		$this->assertSame( 200, $data['total'] );
+		$this->assertSame( 0, $data['processed'] );
+		$this->assertSame( 0.0, $data['percentage'] );
+		$this->assertContains( 'post', $data['post_types'] );
+		$this->assertContains( 'page', $data['post_types'] );
+	}
+
+	public function test_cli_sync_status_json_with_progress(): void {
+		Ingestion_Sync_Progress::start( 100, [ 'post' ] );
+		Ingestion_Sync_Progress::update(
+			[
+				'synced'  => 30,
+				'skipped' => 10,
+				'failed'  => 5,
+				'deleted' => 5,
+			],
+			999
+		);
+
+		$output = $this->run_cli_sync( [
+			'status' => '',
+			'format' => 'json',
+		] );
+		$data   = json_decode( $output, true );
+
+		$this->assertNotNull( $data, 'Output should be valid JSON.' );
+		$this->assertSame( 'running', $data['status'] );
+		$this->assertSame( 100, $data['total'] );
+		$this->assertSame( 50, $data['processed'] );
+		$this->assertSame( 30, $data['synced'] );
+		$this->assertSame( 10, $data['skipped'] );
+		$this->assertSame( 5, $data['failed'] );
+		$this->assertSame( 5, $data['deleted'] );
+		$this->assertSame( 999, $data['last_post_id'] );
+		$this->assertSame( 50.0, $data['percentage'] );
+	}
+
+	public function test_cli_sync_status_json_completed(): void {
+		Ingestion_Sync_Progress::start( 10, [ 'post' ] );
+		Ingestion_Sync_Progress::update(
+			[
+				'synced'  => 8,
+				'skipped' => 2,
+				'failed'  => 0,
+				'deleted' => 0,
+			],
+			42
+		);
+		Ingestion_Sync_Progress::complete();
+
+		$output = $this->run_cli_sync( [
+			'status' => '',
+			'format' => 'json',
+		] );
+		$data   = json_decode( $output, true );
+
+		$this->assertNotNull( $data, 'Output should be valid JSON.' );
+		$this->assertSame( 'completed', $data['status'] );
+		$this->assertSame( 100.0, $data['percentage'] );
+		$this->assertNotNull( $data['completed_at'] );
+	}
+
+	public function test_cli_sync_status_json_failed(): void {
+		Ingestion_Sync_Progress::start( 50, [ 'post' ] );
+		Ingestion_Sync_Progress::fail( 'API timeout' );
+
+		$output = $this->run_cli_sync( [
+			'status' => '',
+			'format' => 'json',
+		] );
+		$data   = json_decode( $output, true );
+
+		$this->assertNotNull( $data, 'Output should be valid JSON.' );
+		$this->assertSame( 'failed', $data['status'] );
+		$this->assertSame( 'API timeout', $data['error'] );
+		$this->assertArrayHasKey( 'percentage', $data );
+	}
+
+	public function test_cli_sync_status_json_via_subcommand(): void {
+		Ingestion_Sync_Progress::start( 75, [ 'post' ] );
+
+		$cli = new Ingestion_CLI();
+		ob_start();
+		$cli->sync_status( [], [ 'format' => 'json' ] );
+		$output = ob_get_clean();
+		$data   = json_decode( $output, true );
+
+		$this->assertNotNull( $data, 'Output should be valid JSON.' );
+		$this->assertSame( 'running', $data['status'] );
+		$this->assertSame( 75, $data['total'] );
+	}
+
+	public function test_cli_sync_start_json_success(): void {
+		$this->setup_ingestion_filters();
+		$this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
+
+		$output = $this->run_cli_sync( [ 'format' => 'json' ] );
+		$data   = json_decode( $output, true );
+
+		$this->assertNotNull( $data, 'Output should be valid JSON.' );
+		$this->assertTrue( $data['success'] );
+		$this->assertSame( 'running', $data['status'] );
+		$this->assertSame( 1, $data['total'] );
+		$this->assertArrayHasKey( 'post_types', $data );
+	}
+
+	public function test_cli_sync_start_json_already_running(): void {
+		$this->setup_ingestion_filters();
+		Ingestion_Sync_Progress::start( 100, [ 'post' ] );
+
+		$output = $this->run_cli_sync( [ 'format' => 'json' ] );
+		$data   = json_decode( $output, true );
+
+		$this->assertNotNull( $data, 'Output should be valid JSON.' );
+		$this->assertFalse( $data['success'] );
+		$this->assertSame( 'running', $data['status'] );
+		$this->assertStringContainsString( 'already in progress', $data['message'] );
+	}
+
+	public function test_cli_sync_start_json_no_published_posts(): void {
+		$this->setup_ingestion_filters();
+
+		$output = $this->run_cli_sync( [ 'format' => 'json' ] );
+		$data   = json_decode( $output, true );
+
+		$this->assertNotNull( $data, 'Output should be valid JSON.' );
+		$this->assertFalse( $data['success'] );
+		$this->assertSame( 'idle', $data['status'] );
+		$this->assertSame( 'No published posts found to sync.', $data['message'] );
+	}
+
+	public function test_cli_sync_reset_flag(): void {
+		$this->setup_ingestion_filters();
+		$this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
+
+		$this->run_cli_sync();
+		$this->assertTrue( Ingestion_Sync_Progress::is_running() );
+
+		$cli = new Ingestion_CLI();
+		ob_start();
+		$cli->sync( [], [ 'reset' => '' ] );
+		ob_get_clean();
+
+		$this->assertNull( Ingestion_Sync_Progress::get() );
 	}
 }

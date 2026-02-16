@@ -3,6 +3,7 @@
 use Automattic\VIP\Salesforce\Agentforce\Ingestion\Deletion_Failure;
 use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion;
 use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_Post_Record;
+use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_Queue;
 use Automattic\VIP\Salesforce\Agentforce\Utils\Configs;
 
 class Ingestion_Deletion_Test extends WP_UnitTestCase {
@@ -97,7 +98,11 @@ class Ingestion_Deletion_Test extends WP_UnitTestCase {
 
 	public function setUp(): void {
 		parent::setUp();
-		Ingestion::init();
+
+		// Disable async mode so tests run synchronously (legacy behavior).
+		add_filter( 'vip_agentforce_use_async_ingestion', '__return_false' );
+
+		Ingestion_Queue::init();
 
 		// Set up config for API calls via cache priming.
 		$this->prime_configs_cache(
@@ -118,6 +123,7 @@ class Ingestion_Deletion_Test extends WP_UnitTestCase {
 		remove_all_filters( 'vip_agentforce_should_ingest_post' );
 		remove_all_filters( 'vip_agentforce_transform_post' );
 		remove_all_actions( 'vip_agentforce_post_deletion_failed' );
+		remove_all_filters( 'vip_agentforce_use_async_ingestion' );
 		Configs::flush_cache();
 		remove_all_filters( 'pre_http_request' );
 	}
@@ -171,7 +177,7 @@ class Ingestion_Deletion_Test extends WP_UnitTestCase {
 	// =========================================================================
 
 	public function test_before_delete_post_hook_is_registered(): void {
-		$this->assertEquals( 10, has_action( 'before_delete_post', [ Ingestion::class, 'handle_before_delete_post' ] ) );
+		$this->assertEquals( 10, has_action( 'before_delete_post', [ Ingestion_Queue::class, 'handle_before_delete_post' ] ) );
 	}
 
 	// =========================================================================
