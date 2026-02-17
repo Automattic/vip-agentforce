@@ -31,7 +31,8 @@ class Cmp_Tests extends WP_UnitTestCase {
 	}
 
 	private function get_embedding_script_fixture(): string {
-		return <<<HTML
+		// phpcs:disable WordPress.WP.EnqueuedResources.NonEnqueuedScript -- Test fixture intentionally contains script tags.
+		return <<<'HTML'
 <script type="text/javascript">
 function initEmbeddedMessaging() {
 	window.__agentforceInitCalled = true;
@@ -39,6 +40,7 @@ function initEmbeddedMessaging() {
 </script>
 <script type="text/javascript" src="https://example.local/assets/js/bootstrap.min.js" onload="initEmbeddedMessaging()"></script>
 HTML;
+		// phpcs:enable WordPress.WP.EnqueuedResources.NonEnqueuedScript
 	}
 
 	public function tearDown(): void {
@@ -104,6 +106,7 @@ HTML;
 		$this->prime_configs_cache(
 			[
 				'agentforce_js_sdk_activated' => true,
+				// phpcs:ignore WordPress.WP.EnqueuedResources.NonEnqueuedScript -- Test fixture intentionally contains script tags.
 				'agentforce_embedding_script' => '<script src="https://example.local/assets/js/bootstrap.min.js"></script>',
 			]
 		);
@@ -124,6 +127,7 @@ HTML;
 		$this->prime_configs_cache(
 			[
 				'agentforce_js_sdk_activated' => true,
+				// phpcs:ignore WordPress.WP.EnqueuedResources.NonEnqueuedScript -- Test fixture intentionally contains script tags.
 				'agentforce_embedding_script' => '<script>function initEmbeddedMessaging(){window.__agentforceInitCalled=true;}</script><script src="http://example.local/assets/js/bootstrap.min.js" onload="initEmbeddedMessaging()"></script>',
 			]
 		);
@@ -310,6 +314,7 @@ HTML;
 
 		$this->prime_configs_cache(
 			[
+				// phpcs:ignore WordPress.WP.EnqueuedResources.NonEnqueuedScript -- Test fixture intentionally contains script tags.
 				'agentforce_embedding_script' => '<script src="http://example.local/assets/js/bootstrap.min.js"></script>',
 			]
 		);
