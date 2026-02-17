@@ -3,7 +3,7 @@ import type { Locator, Page } from '@playwright/test';
 const selectors = {
 	heading: '.agentforce-wrap h1',
 	sdkActivationStatus: '#agentforce-sdk-activation-status',
-	sdkUrl: '#agentforce-sdk-url',
+	embeddingScriptStatus: '#agentforce-embedding-script-status',
 	consentType: 'select[name="vip_agentforce_consent_type"]',
 	onetrustRow: '#row_onetrust',
 	onetrustGroupId: 'input[name="vip_agentforce_onetrust_group_id"]',
@@ -19,7 +19,7 @@ export class CmpSettingsPage {
 	private readonly page: Page;
 	public readonly heading: Locator;
 	public readonly sdkActivationStatus: Locator;
-	public readonly sdkUrl: Locator;
+	public readonly embeddingScriptStatus: Locator;
 	public readonly consentType: Locator;
 	public readonly onetrustRow: Locator;
 	public readonly onetrustGroupId: Locator;
@@ -34,7 +34,7 @@ export class CmpSettingsPage {
 		this.page = page;
 		this.heading = page.locator( selectors.heading );
 		this.sdkActivationStatus = page.locator( selectors.sdkActivationStatus );
-		this.sdkUrl = page.locator( selectors.sdkUrl );
+		this.embeddingScriptStatus = page.locator( selectors.embeddingScriptStatus );
 		this.consentType = page.locator( selectors.consentType );
 		this.onetrustRow = page.locator( selectors.onetrustRow );
 		this.onetrustGroupId = page.locator( selectors.onetrustGroupId );

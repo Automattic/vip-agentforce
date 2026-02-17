@@ -20,10 +20,10 @@ test.describe( 'CMP Settings', () => {
 			await cmpSettings.visit();
 			await expect( cmpSettings.heading ).toHaveText( 'Agentforce Settings' );
 			await expect( cmpSettings.sdkActivationStatus ).toHaveAttribute( 'data-status', 'active' );
-			await expect( cmpSettings.sdkUrl ).toHaveAttribute( 'data-url', 'https://example.local' );
+			await expect( cmpSettings.embeddingScriptStatus ).toHaveAttribute( 'data-status', 'configured' );
 		} );
 
-		await test.step( 'Configure Cookiebot consent and SDK URL', async () => {
+		await test.step( 'Configure Cookiebot consent settings', async () => {
 			await cmpSettings.setConsentType( 'CookieBot' );
 
 			await expect( cmpSettings.onetrustRow ).toBeHidden();
@@ -42,12 +42,12 @@ test.describe( 'CMP Settings', () => {
 
 	test( 'custom consent exposes SDK control API on the frontend', async ( { page } ) => {
 		const cmpSettings = new CmpSettingsPage( page );
-		const dataUrl = 'https://example.local';
+		const bootstrapSrc = 'https://example.local/assets/js/bootstrap.min.js';
 
-		await test.step( 'Configure Custom consent with SDK URL', async () => {
+		await test.step( 'Configure Custom consent with embedding script', async () => {
 			await cmpSettings.visit();
 			await expect( cmpSettings.sdkActivationStatus ).toHaveAttribute( 'data-status', 'active' );
-			await expect( cmpSettings.sdkUrl ).toHaveAttribute( 'data-url', dataUrl );
+			await expect( cmpSettings.embeddingScriptStatus ).toHaveAttribute( 'data-status', 'configured' );
 			await cmpSettings.setConsentType( 'Custom' );
 
 			await cmpSettings.save();
@@ -70,7 +70,7 @@ test.describe( 'CMP Settings', () => {
 
 			expect( afterLoad.hasScript ).toBe( true );
 			expect( afterLoad.consent ).toBe( true );
-			expect( afterLoad.sdkSrc ).toContain( dataUrl );
+			expect( afterLoad.sdkSrc ).toContain( bootstrapSrc );
 
 			const afterUnload = await page.evaluate( () => {
 				window.AgentforceCMP.unloadSDK();

@@ -59,4 +59,29 @@ class ClassConfigsTest extends WP_UnitTestCase {
 		$this->prime_configs_cache( [ 'agentforce_js_sdk_url' => null ] );
 		$this->assertSame( '', Configs::get_js_sdk_url() );
 	}
+
+	public function test_get_embedding_script_returns_empty_when_missing(): void {
+		$this->prime_configs_cache( [] );
+		$this->assertSame( '', Configs::get_embedding_script() );
+	}
+
+	public function test_get_embedding_script_returns_string_when_present(): void {
+		$this->prime_configs_cache(
+			[
+				'agentforce_embedding_script' => '<script>function initEmbeddedMessaging(){}</script>',
+			]
+		);
+		$this->assertSame( '<script>function initEmbeddedMessaging(){}</script>', Configs::get_embedding_script() );
+	}
+
+	public function test_get_embedding_script_returns_empty_when_non_string(): void {
+		$this->prime_configs_cache( [ 'agentforce_embedding_script' => [ '<script></script>' ] ] );
+		$this->assertSame( '', Configs::get_embedding_script() );
+
+		$this->prime_configs_cache( [ 'agentforce_embedding_script' => 123 ] );
+		$this->assertSame( '', Configs::get_embedding_script() );
+
+		$this->prime_configs_cache( [ 'agentforce_embedding_script' => null ] );
+		$this->assertSame( '', Configs::get_embedding_script() );
+	}
 }
