@@ -30,6 +30,19 @@ class Cmp_Tests extends WP_UnitTestCase {
 		$prop->setValue( null, $config );
 	}
 
+	private function get_embedding_script_fixture(): string {
+		// phpcs:disable WordPress.WP.EnqueuedResources.NonEnqueuedScript -- Test fixture intentionally contains script tags.
+		return <<<'HTML'
+<script type="text/javascript">
+function initEmbeddedMessaging() {
+	window.__agentforceInitCalled = true;
+}
+</script>
+<script type="text/javascript" src="https://example.local/assets/js/bootstrap.min.js" onload="initEmbeddedMessaging()"></script>
+HTML;
+		// phpcs:enable WordPress.WP.EnqueuedResources.NonEnqueuedScript
+	}
+
 	public function tearDown(): void {
 		delete_option( 'vip_agentforce_consent_type' );
 		delete_option( 'vip_agentforce_onetrust_group_id' );
@@ -54,7 +67,7 @@ class Cmp_Tests extends WP_UnitTestCase {
 		$this->prime_configs_cache(
 			[
 				'agentforce_js_sdk_activated' => false,
-				'agentforce_js_sdk_url'       => 'https://example.local',
+				'agentforce_embedding_script' => $this->get_embedding_script_fixture(),
 			]
 		);
 
@@ -70,11 +83,72 @@ class Cmp_Tests extends WP_UnitTestCase {
 		);
 	}
 
-	public function test_cookieyes_script_enqueued_with_localized_sdk_url(): void {
+	public function test_consent_script_not_enqueued_when_embedding_script_is_missing(): void {
 		$this->prime_configs_cache(
 			[
 				'agentforce_js_sdk_activated' => true,
-				'agentforce_js_sdk_url'       => 'https://example.local',
+			]
+		);
+
+		update_option( 'vip_agentforce_consent_type', 'CookieYes' );
+
+		$this->reset_consent_script( 'vip-af-cookieyes-consent' );
+
+		Assets::get_instance()->enqueue_consent_scripts();
+
+		$this->assertFalse(
+			wp_script_is( 'vip-af-cookieyes-consent', 'enqueued' ),
+			'Consent script should not enqueue when embedding script is missing.'
+		);
+	}
+
+	public function test_consent_script_not_enqueued_when_embedding_script_is_invalid(): void {
+		$this->prime_configs_cache(
+			[
+				'agentforce_js_sdk_activated' => true,
+				// phpcs:ignore WordPress.WP.EnqueuedResources.NonEnqueuedScript -- Test fixture intentionally contains script tags.
+				'agentforce_embedding_script' => '<script src="https://example.local/assets/js/bootstrap.min.js"></script>',
+			]
+		);
+
+		update_option( 'vip_agentforce_consent_type', 'CookieYes' );
+
+		$this->reset_consent_script( 'vip-af-cookieyes-consent' );
+
+		Assets::get_instance()->enqueue_consent_scripts();
+
+		$this->assertFalse(
+			wp_script_is( 'vip-af-cookieyes-consent', 'enqueued' ),
+			'Consent script should not enqueue when embedding script parsing fails.'
+		);
+	}
+
+	public function test_consent_script_not_enqueued_when_bootstrap_url_is_http(): void {
+		$this->prime_configs_cache(
+			[
+				'agentforce_js_sdk_activated' => true,
+				// phpcs:ignore WordPress.WP.EnqueuedResources.NonEnqueuedScript -- Test fixture intentionally contains script tags.
+				'agentforce_embedding_script' => '<script>function initEmbeddedMessaging(){window.__agentforceInitCalled=true;}</script><script src="http://example.local/assets/js/bootstrap.min.js" onload="initEmbeddedMessaging()"></script>',
+			]
+		);
+
+		update_option( 'vip_agentforce_consent_type', 'CookieYes' );
+
+		$this->reset_consent_script( 'vip-af-cookieyes-consent' );
+
+		Assets::get_instance()->enqueue_consent_scripts();
+
+		$this->assertFalse(
+			wp_script_is( 'vip-af-cookieyes-consent', 'enqueued' ),
+			'Consent script should not enqueue when bootstrap src is not HTTPS.'
+		);
+	}
+
+	public function test_cookieyes_script_enqueued_with_localized_embedding_data(): void {
+		$this->prime_configs_cache(
+			[
+				'agentforce_js_sdk_activated' => true,
+				'agentforce_embedding_script' => $this->get_embedding_script_fixture(),
 			]
 		);
 
@@ -90,12 +164,16 @@ class Cmp_Tests extends WP_UnitTestCase {
 		);
 
 		$localized_data = wp_scripts()->get_data( 'vip-af-cookieyes-consent', 'data' );
-		// WP Version 6.9 changed how the data is returned.
-		if ( version_compare( get_bloginfo( 'version' ), '6.9', '<' ) ) {
-			$this->assertStringContainsString( '"sdkUrl":"https:\/\/example.local"', $localized_data );
-		} else {
-			$this->assertStringContainsString( '"sdkUrl":"https://example.local"', $localized_data );
+		$this->assertStringContainsString( '"embedding":{"bootstrapSrc":"', $localized_data );
+		$this->assertStringContainsString( 'bootstrap.min.js', $localized_data );
+		$this->assertStringNotContainsString( '"onloadCallback"', $localized_data );
+		$this->assertStringNotContainsString( '"sdkUrl"', $localized_data );
+
+		$inline_data = wp_scripts()->get_data( 'vip-af-cookieyes-consent', 'before' );
+		if ( is_array( $inline_data ) ) {
+			$inline_data = implode( "\n", $inline_data );
 		}
+		$this->assertStringContainsString( 'function initEmbeddedMessaging()', strval( $inline_data ) );
 	}
 
 	public function test_supported_cmp_asset_files_are_present(): void {
@@ -128,7 +206,7 @@ class Cmp_Tests extends WP_UnitTestCase {
 		$this->prime_configs_cache(
 			[
 				'agentforce_js_sdk_activated' => true,
-				'agentforce_js_sdk_url'       => 'https://example.local',
+				'agentforce_embedding_script' => $this->get_embedding_script_fixture(),
 			]
 		);
 
@@ -147,7 +225,7 @@ class Cmp_Tests extends WP_UnitTestCase {
 		$this->prime_configs_cache(
 			[
 				'agentforce_js_sdk_activated' => true,
-				'agentforce_js_sdk_url'       => 'https://example.local',
+				'agentforce_embedding_script' => $this->get_embedding_script_fixture(),
 			]
 		);
 
@@ -166,7 +244,7 @@ class Cmp_Tests extends WP_UnitTestCase {
 		$this->prime_configs_cache(
 			[
 				'agentforce_js_sdk_activated' => true,
-				'agentforce_js_sdk_url'       => 'https://example.local',
+				'agentforce_embedding_script' => $this->get_embedding_script_fixture(),
 			]
 		);
 
@@ -200,7 +278,6 @@ class Cmp_Tests extends WP_UnitTestCase {
 		$this->prime_configs_cache(
 			[
 				'agentforce_js_sdk_activated' => false,
-				'agentforce_js_sdk_url'       => 'https://example.local',
 			]
 		);
 
@@ -213,23 +290,54 @@ class Cmp_Tests extends WP_UnitTestCase {
 		$this->assertStringNotContainsString( '<input', $output );
 	}
 
-	public function test_sdk_url_is_readonly_and_reflects_config(): void {
+	public function test_embedding_script_status_is_readonly_and_reflects_config(): void {
 		$settings = Settings_Page::get_instance();
 
 		$this->prime_configs_cache(
 			[
-				'agentforce_js_sdk_activated' => true,
-				'agentforce_js_sdk_url'       => 'https://example.local',
+				'agentforce_embedding_script' => $this->get_embedding_script_fixture(),
 			]
 		);
 
 		ob_start();
-		$settings->render_sdk_url_field();
+		$settings->render_embedding_script_field();
 		$output = ob_get_clean();
 
-		$this->assertStringContainsString( 'id="agentforce-sdk-url"', $output );
-		$this->assertStringContainsString( 'data-url="https://example.local"', $output );
-		$this->assertStringNotContainsString( 'name="agentforce_salesforce_sdk_url"', $output );
+		$this->assertStringContainsString( 'id="agentforce-embedding-script-status"', $output );
+		$this->assertStringContainsString( 'data-status="configured"', $output );
+		$this->assertStringContainsString( 'Configured', $output );
+		$this->assertStringNotContainsString( '<input', $output );
+	}
+
+	public function test_embedding_script_status_is_not_configured_when_script_is_invalid(): void {
+		$settings = Settings_Page::get_instance();
+
+		$this->prime_configs_cache(
+			[
+				// phpcs:ignore WordPress.WP.EnqueuedResources.NonEnqueuedScript -- Test fixture intentionally contains script tags.
+				'agentforce_embedding_script' => '<script src="http://example.local/assets/js/bootstrap.min.js"></script>',
+			]
+		);
+
+		ob_start();
+		$settings->render_embedding_script_field();
+		$output = ob_get_clean();
+
+		$this->assertStringContainsString( 'id="agentforce-embedding-script-status"', $output );
+		$this->assertStringContainsString( 'data-status="not-configured"', $output );
+		$this->assertStringContainsString( 'Not configured', $output );
+		$this->assertStringNotContainsString( '<input', $output );
+	}
+
+	public function test_settings_page_uses_salesforce_js_embed_label(): void {
+		$settings = Settings_Page::get_instance();
+
+		ob_start();
+		$settings->render_settings_page();
+		$output = ob_get_clean();
+
+		$this->assertStringContainsString( 'Salesforce JS Embed', $output );
+		$this->assertStringNotContainsString( 'Salesforce SDK URL', $output );
 	}
 
 	public function test_render_custom_css_includes_alignment_and_sanitizes_css(): void {
