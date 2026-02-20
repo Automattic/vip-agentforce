@@ -60,8 +60,8 @@ jobs:
 
       - name: Create zip archive
         run: |
-          cd dist
-          zip -r vip-agentforce.zip vip-agentforce
+          cd dist/vip-agentforce
+          zip -r ../vip-agentforce.zip .
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
