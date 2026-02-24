@@ -31,6 +31,9 @@ class Ingestion_CLI extends WP_CLI_Command {
 	 * [--reset]
 	 * : Reset a stuck or completed sync so a new one can be started.
 	 *
+	 * [--force]
+	 * : Bypass the check for registered filters. Useful when triggered via API before config propagates.
+	 *
 	 * [--format=<format>]
 	 * : Output format. Use 'json' for machine-readable output.
 	 * ---
@@ -112,7 +115,7 @@ class Ingestion_CLI extends WP_CLI_Command {
 		$format = $assoc_args['format'] ?? 'table';
 
 		// Check that filters are registered.
-		if ( ! has_filter( 'vip_agentforce_should_ingest_post' ) ) {
+		if ( ! isset( $assoc_args['force'] ) && ! has_filter( 'vip_agentforce_should_ingest_post' ) ) {
 			$message = 'No vip_agentforce_should_ingest_post filter registered. Cannot determine which posts to sync.';
 			if ( 'json' === $format ) {
 				echo wp_json_encode( [
