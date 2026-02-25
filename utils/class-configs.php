@@ -150,9 +150,24 @@ class Configs {
 		/**
 		 * Filters the hidden prechat fields sent to the Agentforce widget.
 		 *
+		 * @since 0.2.0
+		 *
 		 * @param array<string, string> $fields Key-value pairs of prechat fields.
 		 */
-		return apply_filters( 'vip_agentforce_prechat_fields', $fields );
+		$filtered_fields = apply_filters( 'vip_agentforce_prechat_fields', $fields );
+
+		if ( ! is_array( $filtered_fields ) ) {
+			return $fields;
+		}
+
+		$normalized = array();
+		foreach ( $filtered_fields as $key => $value ) {
+			if ( is_string( $key ) && is_string( $value ) ) {
+				$normalized[ $key ] = $value;
+			}
+		}
+
+		return $normalized;
 	}
 
 	public static function is_local_env(): bool {
