@@ -134,6 +134,27 @@ class Configs {
 		return $configs;
 	}
 
+	/**
+	 * Returns the prechat fields to pass to the Agentforce embedded messaging widget.
+	 *
+	 * @return array<string, string> Key-value pairs of hidden prechat fields.
+	 */
+	public static function get_prechat_fields(): array {
+		$site_id = defined( 'VIP_GO_APP_ID' ) ? (string) VIP_GO_APP_ID : '0';
+		$blog_id = (string) get_current_blog_id();
+
+		$fields = array(
+			'site_id_blog_id' => $site_id . '_' . $blog_id,
+		);
+
+		/**
+		 * Filters the hidden prechat fields sent to the Agentforce widget.
+		 *
+		 * @param array<string, string> $fields Key-value pairs of prechat fields.
+		 */
+		return apply_filters( 'vip_agentforce_prechat_fields', $fields );
+	}
+
 	public static function is_local_env(): bool {
 		return ! defined( 'VIP_GO_APP_ENVIRONMENT' ) || 'local' === constant( 'VIP_GO_APP_ENVIRONMENT' );
 	}
