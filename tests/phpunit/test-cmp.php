@@ -287,6 +287,50 @@ HTML;
 		$this->assertStringEndsWith( '_' . $blog_id, $fields['site_id_blog_id'] );
 	}
 
+	public function test_prechat_fields_filter_adds_custom_fields(): void {
+		$filter = function ( array $fields ): array {
+			$fields['custom_field'] = 'custom_value';
+			return $fields;
+		};
+
+		add_filter( 'vip_agentforce_prechat_fields', $filter );
+		$fields = Configs::get_prechat_fields();
+		remove_filter( 'vip_agentforce_prechat_fields', $filter );
+
+		$this->assertArrayHasKey( 'site_id_blog_id', $fields );
+		$this->assertSame( 'custom_value', $fields['custom_field'] );
+	}
+
+	public function test_prechat_fields_filter_rejects_non_array_return(): void {
+		$filter = function (): string {
+			return 'garbage';
+		};
+
+		add_filter( 'vip_agentforce_prechat_fields', $filter );
+		$fields = Configs::get_prechat_fields();
+		remove_filter( 'vip_agentforce_prechat_fields', $filter );
+
+		// Should fall back to the default fields.
+		$this->assertArrayHasKey( 'site_id_blog_id', $fields );
+	}
+
+	public function test_prechat_fields_filter_strips_non_string_values(): void {
+		$filter = function ( array $fields ): array {
+			$fields['bad_int']   = 123;
+			$fields['bad_array'] = array( 'nope' );
+			$fields['good']      = 'yes';
+			return $fields;
+		};
+
+		add_filter( 'vip_agentforce_prechat_fields', $filter );
+		$fields = Configs::get_prechat_fields();
+		remove_filter( 'vip_agentforce_prechat_fields', $filter );
+
+		$this->assertArrayNotHasKey( 'bad_int', $fields );
+		$this->assertArrayNotHasKey( 'bad_array', $fields );
+		$this->assertSame( 'yes', $fields['good'] );
+	}
+
 	public function test_sanitize_consent_type_returns_value_for_supported_cmp(): void {
 		$settings = Settings_Page::get_instance();
 
