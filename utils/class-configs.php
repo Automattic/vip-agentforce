@@ -166,7 +166,7 @@ class Configs {
 
 		$normalized = array();
 		foreach ( $filtered_fields as $key => $value ) {
-			if ( is_string( $key ) && is_string( $value ) ) {
+			if ( is_string( $key ) && is_string( $value ) && '' !== $value ) {
 				$normalized[ $key ] = $value;
 			}
 		}
