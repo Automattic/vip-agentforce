@@ -140,7 +140,11 @@ class Configs {
 	 * @return array<string, string> Key-value pairs of hidden prechat fields.
 	 */
 	public static function get_prechat_fields(): array {
-		$site_id = defined( 'VIP_GO_APP_ID' ) ? (string) VIP_GO_APP_ID : '0';
+		if ( ! defined( 'VIP_GO_APP_ID' ) ) {
+			throw new \RuntimeException( 'VIP_GO_APP_ID is not defined.' );
+		}
+
+		$site_id = (string) VIP_GO_APP_ID;
 		$blog_id = (string) get_current_blog_id();
 
 		$fields = array(
