@@ -12,6 +12,10 @@ if ( ! defined( 'VIP_GO_APP_ENVIRONMENT' ) ) {
 	define( 'VIP_GO_APP_ENVIRONMENT', 'test' );
 }
 
+if ( ! defined( 'VIP_GO_APP_ID' ) ) {
+	define( 'VIP_GO_APP_ID', 101 );
+}
+
 
 $_tests_dir = getenv( 'WP_TESTS_DIR' );
 
