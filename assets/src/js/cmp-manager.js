@@ -2,6 +2,24 @@
  * CMP Manager for Agentforce.
  */
 const getEmbeddingConfig = () => window.vipAgentforceConsentData?.embedding;
+const getPrechatFields = () => window.vipAgentforceConsentData?.prechatFields;
+
+const setupPrechatFields = () => {
+	const prechatFields = getPrechatFields();
+	if (!prechatFields || Object.keys(prechatFields).length === 0) {
+		return;
+	}
+
+	window.addEventListener('onEmbeddedMessagingReady', () => {
+		try {
+			window.embeddedservice_bootstrap.prechatAPI.setHiddenPrechatFields(
+				prechatFields
+			);
+		} catch (error) {
+			// Silent fail — prechat fields are non-critical.
+		}
+	});
+};
 
 const invokeEmbeddedMessagingInit = () => {
 	if (typeof window.initEmbeddedMessaging === 'function') {
@@ -18,6 +36,8 @@ export const loadAgentforceSDK = () => {
 	if (!embeddingConfig || !embeddingConfig.bootstrapSrc) {
 		return;
 	}
+
+	setupPrechatFields();
 
 	const script = document.createElement('script');
 	script.id = 'agentforce-sdk';
