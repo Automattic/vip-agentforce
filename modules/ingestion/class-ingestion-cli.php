@@ -243,7 +243,7 @@ class Ingestion_CLI extends WP_CLI_Command {
 
 		$config = \Automattic\VIP\Salesforce\Agentforce\Utils\Configs::get_config();
 
-		$has_filter       = has_filter( 'vip_agentforce_should_ingest_post' );
+		$has_filter       = (bool) has_filter( 'vip_agentforce_should_ingest_post' );
 		$sync_all_posts   = \Automattic\VIP\Salesforce\Agentforce\Utils\Configs::should_sync_all_posts();
 		$categories       = \Automattic\VIP\Salesforce\Agentforce\Utils\Configs::get_ingestion_categories();
 		$has_api_url      = ! empty( $config['ingestion_api_instance_url'] );
@@ -259,6 +259,7 @@ class Ingestion_CLI extends WP_CLI_Command {
 			'ready'             => $ready,
 			'filter_registered' => $has_filter,
 			'sync_all_posts'    => $sync_all_posts,
+			'categories'        => $categories,
 			'categories_count'  => count( $categories ),
 			'has_api_url'       => $has_api_url,
 			'has_api_token'     => $has_api_token,

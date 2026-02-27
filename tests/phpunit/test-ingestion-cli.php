@@ -678,6 +678,65 @@ class Ingestion_CLI_Test extends WP_UnitTestCase {
 		$this->assertSame( 3, $data['categories_count'] );
 	}
 
+	public function test_cli_preflight_check_reports_categories_array(): void {
+		$this->setup_ingestion_filters();
+
+		$expected_categories = [ 'News', 'Updates', 'Featured' ];
+
+		// Prime config with categories.
+		$this->prime_configs_cache(
+			[
+				'ingestion_api_instance_url' => 'https://test.salesforce.com',
+				'ingestion_api_token'        => 'test-token',
+				'ingestion_api_source_name'  => 'test-source',
+				'ingestion_api_object_name'  => 'test-object',
+				'ingestion_api_categories'   => $expected_categories,
+			]
+		);
+
+		$output = $this->run_cli_sync( [
+			'preflight-check' => '',
+			'format'          => 'json',
+		] );
+		$data   = json_decode( $output, true );
+
+		$this->assertNotNull( $data, 'Output should be valid JSON.' );
+		$this->assertArrayHasKey( 'categories', $data );
+		$this->assertIsArray( $data['categories'] );
+		$this->assertSame( $expected_categories, $data['categories'] );
+	}
+
+	public function test_cli_preflight_check_filter_registered_is_boolean(): void {
+		$this->setup_ingestion_filters();
+
+		$output = $this->run_cli_sync( [
+			'preflight-check' => '',
+			'format'          => 'json',
+		] );
+		$data   = json_decode( $output, true );
+
+		$this->assertNotNull( $data, 'Output should be valid JSON.' );
+		$this->assertArrayHasKey( 'filter_registered', $data );
+		$this->assertIsBool( $data['filter_registered'] );
+		$this->assertTrue( $data['filter_registered'] );
+	}
+
+	public function test_cli_preflight_check_filter_registered_is_boolean_when_no_filter(): void {
+		// Ensure no filter is registered.
+		remove_all_filters( 'vip_agentforce_should_ingest_post' );
+
+		$output = $this->run_cli_sync( [
+			'preflight-check' => '',
+			'format'          => 'json',
+		] );
+		$data   = json_decode( $output, true );
+
+		$this->assertNotNull( $data, 'Output should be valid JSON.' );
+		$this->assertArrayHasKey( 'filter_registered', $data );
+		$this->assertIsBool( $data['filter_registered'] );
+		$this->assertFalse( $data['filter_registered'] );
+	}
+
 	public function test_cli_preflight_check_does_not_start_sync(): void {
 		$this->setup_ingestion_filters();
 		$this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
