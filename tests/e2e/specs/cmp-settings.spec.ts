@@ -133,16 +133,23 @@ test.describe( 'CMP Settings', () => {
 			const anonymousPage = await anonymousContext.newPage();
 
 			try {
+				await anonymousPage.goto( '/wp-login.php?action=logout' );
+				const logoutLink = anonymousPage.locator( 'a[href*="action=logout"]' ).first();
+				if ( ( await logoutLink.count() ) > 0 ) {
+					await logoutLink.click();
+				}
+
+				await anonymousPage.goto( '/wp-admin/' );
+				await expect( anonymousPage ).toHaveURL( /wp-login\.php/ );
+
 				await anonymousPage.goto( '/?vip_agentforce_debug=true' );
 				await anonymousPage.waitForLoadState( 'domcontentloaded' );
 
 				const anonymousState = await anonymousPage.evaluate( () => ( {
-					isLoggedIn: Boolean( document.getElementById( 'wpadminbar' ) ),
 					hasScript: Boolean( document.getElementById( 'agentforce-sdk' ) ),
 					consent: window.AFConsentGranted === true,
 				} ) );
 
-				expect( anonymousState.isLoggedIn ).toBe( false );
 				expect( anonymousState.hasScript ).toBe( false );
 				expect( anonymousState.consent ).toBe( false );
 			} finally {
