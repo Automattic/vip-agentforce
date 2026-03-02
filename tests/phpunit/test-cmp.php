@@ -43,6 +43,21 @@ HTML;
 		// phpcs:enable WordPress.WP.EnqueuedResources.NonEnqueuedScript
 	}
 
+	/**
+	 * Set or clear the Agentforce debug query string for current request.
+	 *
+	 * @param string|null $value Query value.
+	 * @return void
+	 */
+	private function set_debug_query_value( ?string $value ): void {
+		if ( null === $value ) {
+			unset( $_GET['vip_agentforce_debug'] ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+			return;
+		}
+
+		$_GET['vip_agentforce_debug'] = $value; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+	}
+
 	public function tearDown(): void {
 		delete_option( 'vip_agentforce_consent_type' );
 		delete_option( 'vip_agentforce_onetrust_group_id' );
@@ -57,6 +72,9 @@ HTML;
 		$this->reset_consent_script( 'vip-af-onetrust-consent' );
 		$this->reset_consent_script( 'vip-af-iubenda-consent' );
 		$this->reset_consent_script( 'vip-af-custom-consent' );
+		remove_all_filters( 'vip_agentforce_debug_preview_capabilities' );
+		$this->set_debug_query_value( null );
+		wp_set_current_user( 0 );
 
 		Configs::flush_cache();
 
@@ -174,6 +192,153 @@ HTML;
 			$inline_data = implode( "\n", $inline_data );
 		}
 		$this->assertStringContainsString( 'function initEmbeddedMessaging()', strval( $inline_data ) );
+	}
+
+	public function test_debug_preview_enqueues_custom_cmp_for_users_with_manage_options(): void {
+		$this->prime_configs_cache(
+			[
+				'agentforce_js_sdk_activated' => true,
+				'agentforce_embedding_script' => $this->get_embedding_script_fixture(),
+			]
+		);
+
+		update_option( 'vip_agentforce_consent_type', 'CookieYes' );
+		$this->set_debug_query_value( 'true' );
+
+		$user_id = self::factory()->user->create( [ 'role' => 'administrator' ] );
+		wp_set_current_user( $user_id );
+
+		$this->reset_consent_script( 'vip-af-cookieyes-consent' );
+		$this->reset_consent_script( 'vip-af-custom-consent' );
+
+		Assets::get_instance()->enqueue_consent_scripts();
+
+		$this->assertTrue(
+			wp_script_is( 'vip-af-custom-consent', 'enqueued' ),
+			'Custom consent script should be enqueued when the logged-in user has manage_options.'
+		);
+		$this->assertFalse(
+			wp_script_is( 'vip-af-cookieyes-consent', 'enqueued' ),
+			'Provider-specific consent script should be skipped for debug preview requests.'
+		);
+	}
+
+	public function test_debug_preview_does_not_bypass_cmp_for_logged_in_users_without_required_capability(): void {
+		$this->prime_configs_cache(
+			[
+				'agentforce_js_sdk_activated' => true,
+				'agentforce_embedding_script' => $this->get_embedding_script_fixture(),
+			]
+		);
+
+		update_option( 'vip_agentforce_consent_type', 'CookieYes' );
+		$this->set_debug_query_value( 'true' );
+
+		$user_id = self::factory()->user->create( [ 'role' => 'subscriber' ] );
+		wp_set_current_user( $user_id );
+
+		$this->reset_consent_script( 'vip-af-cookieyes-consent' );
+		$this->reset_consent_script( 'vip-af-custom-consent' );
+
+		Assets::get_instance()->enqueue_consent_scripts();
+
+		$this->assertTrue(
+			wp_script_is( 'vip-af-cookieyes-consent', 'enqueued' ),
+			'Users without manage_options should still use the configured CMP flow.'
+		);
+		$this->assertFalse(
+			wp_script_is( 'vip-af-custom-consent', 'enqueued' ),
+			'Custom consent script should not be enqueued for users without required capability.'
+		);
+	}
+
+	public function test_debug_preview_capability_filter_can_allow_additional_capabilities(): void {
+		$this->prime_configs_cache(
+			[
+				'agentforce_js_sdk_activated' => true,
+				'agentforce_embedding_script' => $this->get_embedding_script_fixture(),
+			]
+		);
+
+		update_option( 'vip_agentforce_consent_type', 'CookieYes' );
+		$this->set_debug_query_value( 'true' );
+
+		$user_id = self::factory()->user->create( [ 'role' => 'editor' ] );
+		wp_set_current_user( $user_id );
+
+		$allowed_capabilities_filter = function (): array {
+			return [ 'manage_options', 'edit_pages' ];
+		};
+		add_filter( 'vip_agentforce_debug_preview_capabilities', $allowed_capabilities_filter );
+
+		$this->reset_consent_script( 'vip-af-cookieyes-consent' );
+		$this->reset_consent_script( 'vip-af-custom-consent' );
+
+		Assets::get_instance()->enqueue_consent_scripts();
+
+		remove_filter( 'vip_agentforce_debug_preview_capabilities', $allowed_capabilities_filter );
+
+		$this->assertTrue(
+			wp_script_is( 'vip-af-custom-consent', 'enqueued' ),
+			'Custom consent script should enqueue when filtered capabilities include a capability the user has.'
+		);
+		$this->assertFalse(
+			wp_script_is( 'vip-af-cookieyes-consent', 'enqueued' ),
+			'Configured CMP script should be skipped when filtered capability access is granted.'
+		);
+	}
+
+	public function test_debug_preview_does_not_bypass_cmp_for_logged_out_users(): void {
+		$this->prime_configs_cache(
+			[
+				'agentforce_js_sdk_activated' => true,
+				'agentforce_embedding_script' => $this->get_embedding_script_fixture(),
+			]
+		);
+
+		update_option( 'vip_agentforce_consent_type', 'CookieYes' );
+		$this->set_debug_query_value( 'true' );
+		wp_set_current_user( 0 );
+
+		$this->reset_consent_script( 'vip-af-cookieyes-consent' );
+		$this->reset_consent_script( 'vip-af-custom-consent' );
+
+		Assets::get_instance()->enqueue_consent_scripts();
+
+		$this->assertTrue(
+			wp_script_is( 'vip-af-cookieyes-consent', 'enqueued' ),
+			'Logged-out users should still use the configured CMP flow.'
+		);
+		$this->assertFalse(
+			wp_script_is( 'vip-af-custom-consent', 'enqueued' ),
+			'Custom consent script should not be enqueued for logged-out users.'
+		);
+	}
+
+	public function test_debug_preview_auto_loads_agentforce_sdk(): void {
+		$this->prime_configs_cache(
+			[
+				'agentforce_js_sdk_activated' => true,
+				'agentforce_embedding_script' => $this->get_embedding_script_fixture(),
+			]
+		);
+
+		update_option( 'vip_agentforce_consent_type', 'CookieYes' );
+		$this->set_debug_query_value( 'true' );
+
+		$user_id = self::factory()->user->create( [ 'role' => 'administrator' ] );
+		wp_set_current_user( $user_id );
+
+		$this->reset_consent_script( 'vip-af-custom-consent' );
+
+		Assets::get_instance()->enqueue_consent_scripts();
+
+		$inline_data = wp_scripts()->get_data( 'vip-af-custom-consent', 'after' );
+		if ( is_array( $inline_data ) ) {
+			$inline_data = implode( "\n", $inline_data );
+		}
+
+		$this->assertStringContainsString( 'window.AgentforceCMP.loadSDK()', strval( $inline_data ) );
 	}
 
 	public function test_supported_cmp_asset_files_are_present(): void {
