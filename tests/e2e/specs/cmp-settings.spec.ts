@@ -89,9 +89,9 @@ test.describe( 'CMP Settings', () => {
 	test( 'debug preview auto-injects only for authorized logged-in users', async ( { page, browser, baseURL } ) => {
 		const cmpSettings = new CmpSettingsPage( page );
 
-		await test.step( 'Configure CookieYes consent', async () => {
+		await test.step( 'Configure Custom consent', async () => {
 			await cmpSettings.visit();
-			await cmpSettings.setConsentType( 'CookieYes' );
+			await cmpSettings.setConsentType( 'Custom' );
 			await cmpSettings.save();
 		} );
 
