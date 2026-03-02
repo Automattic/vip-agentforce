@@ -99,7 +99,8 @@ class Assets {
 	 * @return void
 	 */
 	public function enqueue_consent_scripts() {
-		if ( ! Configs::is_js_sdk_activated() ) {
+		$debug_preview = $this->is_debug_preview_enabled();
+		if ( ! $debug_preview && ! Configs::is_js_sdk_activated() ) {
 			return;
 		}
 		$parsed_embedding_script = $this->parse_embedding_script( Configs::get_embedding_script() );
@@ -107,7 +108,6 @@ class Assets {
 			return;
 		}
 
-		$debug_preview    = $this->is_debug_preview_enabled();
 		$consent_type     = $this->get_consent_type_for_request( $debug_preview );
 		$integration_path = $this->get_integration_path();
 

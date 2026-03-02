@@ -223,6 +223,35 @@ HTML;
 		);
 	}
 
+	public function test_debug_preview_enqueues_even_when_sdk_is_disabled(): void {
+		$this->prime_configs_cache(
+			[
+				'agentforce_js_sdk_activated' => false,
+				'agentforce_embedding_script' => $this->get_embedding_script_fixture(),
+			]
+		);
+
+		update_option( 'vip_agentforce_consent_type', 'CookieYes' );
+		$this->set_debug_query_value( 'true' );
+
+		$user_id = self::factory()->user->create( [ 'role' => 'administrator' ] );
+		wp_set_current_user( $user_id );
+
+		$this->reset_consent_script( 'vip-af-cookieyes-consent' );
+		$this->reset_consent_script( 'vip-af-custom-consent' );
+
+		Assets::get_instance()->enqueue_consent_scripts();
+
+		$this->assertTrue(
+			wp_script_is( 'vip-af-custom-consent', 'enqueued' ),
+			'Debug preview should enqueue custom consent script even when SDK activation is disabled.'
+		);
+		$this->assertFalse(
+			wp_script_is( 'vip-af-cookieyes-consent', 'enqueued' ),
+			'Provider-specific consent script should still be skipped in debug preview mode.'
+		);
+	}
+
 	public function test_debug_preview_does_not_bypass_cmp_for_logged_in_users_without_required_capability(): void {
 		$this->prime_configs_cache(
 			[
