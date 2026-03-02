@@ -125,6 +125,10 @@ test.describe( 'CMP Settings', () => {
 				baseURL: baseURL as string,
 				ignoreHTTPSErrors: true,
 				extraHTTPHeaders: getAgentforceConfigHeaders(),
+				storageState: {
+					cookies: [],
+					origins: [],
+				},
 			} );
 			const anonymousPage = await anonymousContext.newPage();
 
@@ -133,10 +137,12 @@ test.describe( 'CMP Settings', () => {
 				await anonymousPage.waitForLoadState( 'domcontentloaded' );
 
 				const anonymousState = await anonymousPage.evaluate( () => ( {
+					isLoggedIn: Boolean( document.getElementById( 'wpadminbar' ) ),
 					hasScript: Boolean( document.getElementById( 'agentforce-sdk' ) ),
 					consent: window.AFConsentGranted === true,
 				} ) );
 
+				expect( anonymousState.isLoggedIn ).toBe( false );
 				expect( anonymousState.hasScript ).toBe( false );
 				expect( anonymousState.consent ).toBe( false );
 			} finally {
