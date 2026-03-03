@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 
+import { getAgentforceConfigHeaders } from '../lib/config-helper';
 import { CmpSettingsPage } from '../lib/pages/cmp-settings-page';
 
 declare global {
@@ -82,6 +83,78 @@ test.describe( 'CMP Settings', () => {
 
 			expect( afterUnload.hasScript ).toBe( false );
 			expect( afterUnload.consent ).toBe( false );
+		} );
+	} );
+
+	test( 'debug preview auto-injects only for authorized logged-in users', async ( { page, browser, baseURL } ) => {
+		const cmpSettings = new CmpSettingsPage( page );
+
+		await test.step( 'Configure Custom consent', async () => {
+			await cmpSettings.visit();
+			await cmpSettings.setConsentType( 'Custom' );
+			await cmpSettings.save();
+		} );
+
+		await test.step( 'Authorized logged-in user with debug query gets SDK injected', async () => {
+			await page.goto( '/?vip_agentforce_debug=true' );
+			await expect
+				.poll( () => page.evaluate( () => Boolean( document.getElementById( 'agentforce-sdk' ) ) ) )
+				.toBe( true );
+
+			const debugState = await page.evaluate( () => ( {
+				hasScript: Boolean( document.getElementById( 'agentforce-sdk' ) ),
+				consent: window.AFConsentGranted === true,
+			} ) );
+
+			expect( debugState.hasScript ).toBe( true );
+			expect( debugState.consent ).toBe( true );
+		} );
+
+		await test.step( 'Logged-in user without debug query does not auto-inject', async () => {
+			await page.goto( '/' );
+			await page.waitForLoadState( 'domcontentloaded' );
+
+			const noDebugHasScript = await page.evaluate(
+				() => Boolean( document.getElementById( 'agentforce-sdk' ) )
+			);
+			expect( noDebugHasScript ).toBe( false );
+		} );
+
+		await test.step( 'Anonymous user with debug query does not bypass CMP', async () => {
+			const anonymousContext = await browser.newContext( {
+				baseURL: baseURL as string,
+				ignoreHTTPSErrors: true,
+				extraHTTPHeaders: getAgentforceConfigHeaders(),
+				storageState: {
+					cookies: [],
+					origins: [],
+				},
+			} );
+			const anonymousPage = await anonymousContext.newPage();
+
+			try {
+				await anonymousPage.goto( '/wp-login.php?action=logout' );
+				const logoutLink = anonymousPage.locator( 'a[href*="action=logout"]' ).first();
+				if ( ( await logoutLink.count() ) > 0 ) {
+					await logoutLink.click();
+				}
+
+				await anonymousPage.goto( '/wp-admin/' );
+				await expect( anonymousPage ).toHaveURL( /wp-login\.php/ );
+
+				await anonymousPage.goto( '/?vip_agentforce_debug=true' );
+				await anonymousPage.waitForLoadState( 'domcontentloaded' );
+
+				const anonymousState = await anonymousPage.evaluate( () => ( {
+					hasScript: Boolean( document.getElementById( 'agentforce-sdk' ) ),
+					consent: window.AFConsentGranted === true,
+				} ) );
+
+				expect( anonymousState.hasScript ).toBe( false );
+				expect( anonymousState.consent ).toBe( false );
+			} finally {
+				await anonymousContext.close();
+			}
 		} );
 	} );
 } );
