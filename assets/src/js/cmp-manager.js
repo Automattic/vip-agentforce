@@ -12,6 +12,7 @@ const setupPrechatFields = () => {
 
 	window.addEventListener('onEmbeddedMessagingReady', () => {
 		try {
+			window.embeddedservice_bootstrap.settings.restrictSessionOnMessagingChannel = true;
 			window.embeddedservice_bootstrap.prechatAPI.setHiddenPrechatFields(
 				prechatFields
 			);
