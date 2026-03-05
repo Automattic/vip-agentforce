@@ -25,7 +25,6 @@ composer lint
 
 # PHP — auto-fix (PHPCBF)
 composer format
-# or: ./bin/phpcbf.sh
 
 # PHP — static analysis (PHPStan level 6)
 composer analyze
@@ -50,7 +49,7 @@ composer test
 composer test-noninteractive
 
 # Filter specific test class
-composer test -- --filter Test_Ingestion
+composer test -- --filter Ingestion_Test
 
 # Filter specific test method
 composer test -- --filter test_some_method

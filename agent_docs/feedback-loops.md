@@ -1,6 +1,7 @@
 # Feedback Loops
 
-**Every change MUST have a verification command. Run locally before finishing.**
+**Every change MUST have a verification command.** Run the relevant checks locally before finishing.
+Agents: only run these when explicitly asked — but know which checks apply to your change.
 
 Run checks in this order (validates correctness fastest first):
 

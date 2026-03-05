@@ -5,10 +5,9 @@
 Namespace: `vip-agentforce/v1`
 
 ```bash
-# Unauthenticated (public endpoints only)
-curl -s http://vip-agentforce.vipdev.lndo.site/wp-json/vip-agentforce/v1/sync-progress | jq
-
-# Authenticated REST call via wp eval (bypasses cookie auth)
+# Most endpoints require authentication (unauthenticated requests will 403).
+# Use wp eval to make authenticated REST calls locally:
+#
 vip dev-env exec --slug=vip-agentforce -- wp eval "
 wp_set_current_user(1);
 \$request = new WP_REST_Request('GET', '/vip-agentforce/v1/sync-progress');
