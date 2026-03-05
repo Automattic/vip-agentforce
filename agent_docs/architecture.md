@@ -34,7 +34,6 @@ utils/
   dev-env.php               # Dev environment helpers
   metrics.php               # Metrics collection
   traits/                   # Shared PHP traits
-client/                     # Frontend TypeScript config
 assets/                     # Frontend source (JS/CSS)
 tests/
   bootstrap.php             # Test bootstrap
