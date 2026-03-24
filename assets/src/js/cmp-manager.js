@@ -11,7 +11,14 @@ const setupEmbeddedMessagingReadyHandler = () => {
 	}
 
 	onEmbeddedMessagingReadyHandler = () => {
-		window.embeddedservice_bootstrap.settings.restrictSessionOnMessagingChannel = true;
+		const bootstrap = window.embeddedservice_bootstrap;
+		const settings = bootstrap?.settings;
+		if (!settings) {
+			return;
+		}
+
+		settings.restrictSessionOnMessagingChannel = true;
+
 		const prechatFields = getPrechatFields();
 		const hasPrechatFields =
 			prechatFields && Object.keys(prechatFields).length > 0;
@@ -20,10 +27,13 @@ const setupEmbeddedMessagingReadyHandler = () => {
 			return;
 		}
 
+		const prechatAPI = bootstrap?.prechatAPI;
+		if (!prechatAPI?.setHiddenPrechatFields) {
+			return;
+		}
+
 		try {
-			window.embeddedservice_bootstrap.prechatAPI.setHiddenPrechatFields(
-				prechatFields
-			);
+			prechatAPI.setHiddenPrechatFields( prechatFields );
 		} catch (error) {
 			// Silent fail — prechat fields are non-critical.
 		}
