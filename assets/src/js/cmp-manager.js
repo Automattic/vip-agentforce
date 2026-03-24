@@ -3,24 +3,49 @@
  */
 const getEmbeddingConfig = () => window.vipAgentforceConsentData?.embedding;
 const getPrechatFields = () => window.vipAgentforceConsentData?.prechatFields;
+let onEmbeddedMessagingReadyHandler;
 
-const setupPrechatFields = () => {
+const applyHiddenPrechatFields = () => {
 	const prechatFields = getPrechatFields();
-	const hasPrechatFields =
-		prechatFields && Object.keys(prechatFields).length > 0;
+	if (!prechatFields || Object.keys(prechatFields).length === 0) {
+		return;
+	}
 
-	window.addEventListener('onEmbeddedMessagingReady', () => {
-		try {
-			window.embeddedservice_bootstrap.settings.restrictSessionOnMessagingChannel = true;
-			if (hasPrechatFields) {
-				window.embeddedservice_bootstrap.prechatAPI.setHiddenPrechatFields(
-					prechatFields
-				);
-			}
-		} catch (error) {
-			// Silent fail — prechat fields are non-critical.
-		}
-	});
+	try {
+		window.embeddedservice_bootstrap.prechatAPI.setHiddenPrechatFields(
+			prechatFields
+		);
+	} catch (error) {
+		// Silent fail — prechat fields are non-critical.
+	}
+};
+
+const setupEmbeddedMessagingReadyHandler = () => {
+	if (onEmbeddedMessagingReadyHandler) {
+		return;
+	}
+
+	onEmbeddedMessagingReadyHandler = () => {
+		window.embeddedservice_bootstrap.settings.restrictSessionOnMessagingChannel = true;
+		applyHiddenPrechatFields();
+	};
+
+	window.addEventListener(
+		'onEmbeddedMessagingReady',
+		onEmbeddedMessagingReadyHandler
+	);
+};
+
+const teardownEmbeddedMessagingReadyHandler = () => {
+	if (!onEmbeddedMessagingReadyHandler) {
+		return;
+	}
+
+	window.removeEventListener(
+		'onEmbeddedMessagingReady',
+		onEmbeddedMessagingReadyHandler
+	);
+	onEmbeddedMessagingReadyHandler = undefined;
 };
 
 const invokeEmbeddedMessagingInit = () => {
@@ -39,7 +64,7 @@ export const loadAgentforceSDK = () => {
 		return;
 	}
 
-	setupPrechatFields();
+	setupEmbeddedMessagingReadyHandler();
 
 	const script = document.createElement('script');
 	script.id = 'agentforce-sdk';
@@ -61,5 +86,6 @@ export const unloadAgentforceSDK = () => {
 	) {
 		window.embeddedservice_bootstrap.utilAPI.removeAllComponents();
 	}
+	teardownEmbeddedMessagingReadyHandler();
 	window.AFConsentGranted = false;
 };
