@@ -11,7 +11,12 @@ const setupEmbeddedMessagingReadyHandler = () => {
 	}
 
 	onEmbeddedMessagingReadyHandler = () => {
-		window.embeddedservice_bootstrap?.settings?.restrictSessionOnMessagingChannel=true;
+		const settings = window.embeddedservice_bootstrap?.settings;
+		if (!settings) {
+			return;
+		}
+
+		settings.restrictSessionOnMessagingChannel = true;
 
 		const prechatFields = getPrechatFields();
 		const hasPrechatFields =

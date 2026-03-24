@@ -97,6 +97,9 @@ jobs:
       - name: Install VIP CLI
         run: npm install -g @automattic/vip
 
+      - name: Pin local dev-env hostname
+        run: echo "127.0.0.1 e2e-agentforce-test-site.vipdev.lndo.site" | sudo tee -a /etc/hosts
+
       - name: Determine WP version
         run: |
           if [ -z "${{ github.event.inputs.wpversion }}" ]; then
