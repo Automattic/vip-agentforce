@@ -6,16 +6,17 @@ const getPrechatFields = () => window.vipAgentforceConsentData?.prechatFields;
 
 const setupPrechatFields = () => {
 	const prechatFields = getPrechatFields();
-	if (!prechatFields || Object.keys(prechatFields).length === 0) {
-		return;
-	}
+	const hasPrechatFields =
+		prechatFields && Object.keys(prechatFields).length > 0;
 
 	window.addEventListener('onEmbeddedMessagingReady', () => {
 		try {
 			window.embeddedservice_bootstrap.settings.restrictSessionOnMessagingChannel = true;
-			window.embeddedservice_bootstrap.prechatAPI.setHiddenPrechatFields(
-				prechatFields
-			);
+			if (hasPrechatFields) {
+				window.embeddedservice_bootstrap.prechatAPI.setHiddenPrechatFields(
+					prechatFields
+				);
+			}
 		} catch (error) {
 			// Silent fail — prechat fields are non-critical.
 		}
