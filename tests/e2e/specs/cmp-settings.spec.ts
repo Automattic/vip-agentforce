@@ -124,19 +124,15 @@ test.describe( 'CMP Settings', () => {
 				};
 
 				const createBootstrap = () => {
-					const settings = {};
-
-					Object.defineProperty( settings, 'restrictSessionOnMessagingChannel', {
-						configurable: true,
-						enumerable: true,
-						get: () => undefined,
-						set: () => {
-							calls.sessionIsolation += 1;
-						},
-					} );
-
 					return {
-						settings,
+						settings: {
+							get restrictSessionOnMessagingChannel() {
+								return undefined;
+							},
+							set restrictSessionOnMessagingChannel( _value ) {
+								calls.sessionIsolation += 1;
+							},
+						},
 						prechatAPI: {
 							setHiddenPrechatFields: () => {
 								calls.hiddenPrechat += 1;

@@ -5,21 +5,6 @@ const getEmbeddingConfig = () => window.vipAgentforceConsentData?.embedding;
 const getPrechatFields = () => window.vipAgentforceConsentData?.prechatFields;
 let onEmbeddedMessagingReadyHandler;
 
-const applyHiddenPrechatFields = () => {
-	const prechatFields = getPrechatFields();
-	if (!prechatFields || Object.keys(prechatFields).length === 0) {
-		return;
-	}
-
-	try {
-		window.embeddedservice_bootstrap.prechatAPI.setHiddenPrechatFields(
-			prechatFields
-		);
-	} catch (error) {
-		// Silent fail — prechat fields are non-critical.
-	}
-};
-
 const setupEmbeddedMessagingReadyHandler = () => {
 	if (onEmbeddedMessagingReadyHandler) {
 		return;
@@ -27,7 +12,21 @@ const setupEmbeddedMessagingReadyHandler = () => {
 
 	onEmbeddedMessagingReadyHandler = () => {
 		window.embeddedservice_bootstrap.settings.restrictSessionOnMessagingChannel = true;
-		applyHiddenPrechatFields();
+		const prechatFields = getPrechatFields();
+		const hasPrechatFields =
+			prechatFields && Object.keys(prechatFields).length > 0;
+
+		if (!hasPrechatFields) {
+			return;
+		}
+
+		try {
+			window.embeddedservice_bootstrap.prechatAPI.setHiddenPrechatFields(
+				prechatFields
+			);
+		} catch (error) {
+			// Silent fail — prechat fields are non-critical.
+		}
 	};
 
 	window.addEventListener(
