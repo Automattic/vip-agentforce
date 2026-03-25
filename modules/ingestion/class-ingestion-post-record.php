@@ -143,7 +143,7 @@ class Ingestion_Post_Record {
 	 * @param array{
 	 *     site_id: string,
 	 *     blog_id: string,
-	 *     site_key: string,
+	 *     site_key?: string,
 	 *     post_id: string,
 	 *     site_id_blog_id: string,
 	 *     site_id_blog_id_post_id: string,
@@ -188,7 +188,7 @@ class Ingestion_Post_Record {
 	 * @return array{
 	 *     site_id: string,
 	 *     blog_id: string,
-	 *     site_key: string,
+	 *     site_key?: string,
 	 *     post_id: string,
 	 *     site_id_blog_id: string,
 	 *     site_id_blog_id_post_id: string,

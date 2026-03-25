@@ -47,6 +47,7 @@ class Default_Transformer_Test extends WP_UnitTestCase {
 			[
 				'site_id'                 => '999',
 				'blog_id'                 => '1',
+				'site_key'                => '',
 				'post_id'                 => '123',
 				'site_id_blog_id'         => '999_1',
 				'site_id_blog_id_post_id' => 'custom_id',
