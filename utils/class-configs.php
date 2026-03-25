@@ -186,26 +186,6 @@ class Configs {
 		return is_string( $key ) ? trim( $key ) : '';
 	}
 
-	/**
-	 * Returns the current site ID as a string when available.
-	 */
-	public static function get_site_id(): ?string {
-		if ( ! defined( 'VIP_GO_APP_ID' ) ) {
-			return null;
-		}
-
-		return (string) constant( 'VIP_GO_APP_ID' );
-	}
-
-	/**
-	 * Returns the current blog ID as a string.
-	 */
-	public static function get_blog_id(): string {
-		$get_current_blog_id = '\\get_current_blog_id';
-
-		return function_exists( $get_current_blog_id ) ? (string) $get_current_blog_id() : '1';
-	}
-
 	public static function is_local_env(): bool {
 		return ! defined( 'VIP_GO_APP_ENVIRONMENT' ) || 'local' === constant( 'VIP_GO_APP_ENVIRONMENT' );
 	}
