@@ -167,7 +167,7 @@ HTML;
 			[
 				'agentforce_js_sdk_activated' => true,
 				'agentforce_embedding_script' => $this->get_embedding_script_fixture(),
-				'site_key' => 'site-key-123',
+				'site_key'                    => 'site-key-123',
 			]
 		);
 
@@ -200,7 +200,7 @@ HTML;
 			[
 				'agentforce_js_sdk_activated' => true,
 				'agentforce_embedding_script' => $this->get_embedding_script_fixture(),
-				'site_key' => 'site-key-123',
+				'site_key'                    => 'site-key-123',
 			]
 		);
 
@@ -259,7 +259,7 @@ HTML;
 			[
 				'agentforce_js_sdk_activated' => true,
 				'agentforce_embedding_script' => $this->get_embedding_script_fixture(),
-				'site_key' => 'site-key-123',
+				'site_key'                    => 'site-key-123',
 			]
 		);
 
@@ -289,7 +289,7 @@ HTML;
 			[
 				'agentforce_js_sdk_activated' => true,
 				'agentforce_embedding_script' => $this->get_embedding_script_fixture(),
-				'site_key' => 'site-key-123',
+				'site_key'                    => 'site-key-123',
 			]
 		);
 
@@ -326,7 +326,7 @@ HTML;
 			[
 				'agentforce_js_sdk_activated' => true,
 				'agentforce_embedding_script' => $this->get_embedding_script_fixture(),
-				'site_key' => 'site-key-123',
+				'site_key'                    => 'site-key-123',
 			]
 		);
 
@@ -463,7 +463,7 @@ HTML;
 			[
 				'agentforce_js_sdk_activated' => true,
 				'agentforce_embedding_script' => $this->get_embedding_script_fixture(),
-				'site_key' => 'site-key-123',
+				'site_key'                    => 'site-key-123',
 			]
 		);
 
