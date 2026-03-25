@@ -165,7 +165,7 @@ class Ingestion_Post_Record {
 		$this->site_id_blog_id_post_id = $data['site_id_blog_id_post_id'];
 		$this->site_id                 = $data['site_id'];
 		$this->site_id_blog_id         = $data['site_id_blog_id'];
-		$this->site_key                = $data['site_key'];
+		$this->site_key                = $data['site_key'] ?? '';
 		$this->post_id                 = $data['post_id'];
 		$this->blog_id                 = $data['blog_id'];
 		$this->published               = $data['published'];
