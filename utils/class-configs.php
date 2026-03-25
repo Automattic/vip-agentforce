@@ -57,6 +57,7 @@ class Configs {
 	 * Get the config
 	 * @return array{
 	 *     salesforce_instance_url?: string,
+	 *     vip_agentforce_encryption_key?: string,
 	 *     ingestion_api_instance_url?: string,
 	 *     ingestion_api_token?: string,
 	 *     ingestion_api_endpoint?: string,
@@ -140,16 +141,15 @@ class Configs {
 	 * @return array<string, string> Key-value pairs of hidden prechat fields.
 	 */
 	public static function get_prechat_fields(): array {
-		if ( ! defined( 'VIP_GO_APP_ID' ) ) {
-			throw new \RuntimeException( 'VIP_GO_APP_ID is not defined.' );
+		$apply_filters = '\\apply_filters';
+
+		$site_key = self::get_site_key();
+
+		$fields = array();
+
+		if ( '' !== $site_key ) {
+			$fields['site_key'] = $site_key;
 		}
-
-		$site_id = (string) VIP_GO_APP_ID;
-		$blog_id = (string) get_current_blog_id();
-
-		$fields = array(
-			'site_id_blog_id' => $site_id . '_' . $blog_id,
-		);
 
 		/**
 		 * Filters the hidden prechat fields sent to the Agentforce widget.
@@ -158,7 +158,9 @@ class Configs {
 		 *
 		 * @param array<string, string> $fields Key-value pairs of prechat fields.
 		 */
-		$filtered_fields = apply_filters( 'vip_agentforce_prechat_fields', $fields );
+		$filtered_fields = function_exists( $apply_filters )
+			? $apply_filters( 'vip_agentforce_prechat_fields', $fields )
+			: $fields;
 
 		if ( ! is_array( $filtered_fields ) ) {
 			return $fields;
@@ -172,6 +174,36 @@ class Configs {
 		}
 
 		return $normalized;
+	}
+
+	/**
+	 * Returns the opaque per-site token used for prechat and ingestion filtering.
+	 */
+	public static function get_site_key(): string {
+		$config = self::get_config();
+		$key    = $config['site_key'] ?? '';
+
+		return is_string( $key ) ? trim( $key ) : '';
+	}
+
+	/**
+	 * Returns the current site ID as a string when available.
+	 */
+	public static function get_site_id(): ?string {
+		if ( ! defined( 'VIP_GO_APP_ID' ) ) {
+			return null;
+		}
+
+		return (string) constant( 'VIP_GO_APP_ID' );
+	}
+
+	/**
+	 * Returns the current blog ID as a string.
+	 */
+	public static function get_blog_id(): string {
+		$get_current_blog_id = '\\get_current_blog_id';
+
+		return function_exists( $get_current_blog_id ) ? (string) $get_current_blog_id() : '1';
 	}
 
 	public static function is_local_env(): bool {

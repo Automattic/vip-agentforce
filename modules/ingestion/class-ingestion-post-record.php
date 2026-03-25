@@ -33,6 +33,13 @@ class Ingestion_Post_Record {
 	public $site_id_blog_id;
 
 	/**
+	 * Opaque per-site prechat/search token.
+	 *
+	 * @var string
+	 */
+	public $site_key;
+
+	/**
 	 * WordPress post ID.
 	 *
 	 * @var string
@@ -136,6 +143,7 @@ class Ingestion_Post_Record {
 	 * @param array{
 	 *     site_id: string,
 	 *     blog_id: string,
+	 *     site_key: string,
 	 *     post_id: string,
 	 *     site_id_blog_id: string,
 	 *     site_id_blog_id_post_id: string,
@@ -157,6 +165,7 @@ class Ingestion_Post_Record {
 		$this->site_id_blog_id_post_id = $data['site_id_blog_id_post_id'];
 		$this->site_id                 = $data['site_id'];
 		$this->site_id_blog_id         = $data['site_id_blog_id'];
+		$this->site_key                = $data['site_key'];
 		$this->post_id                 = $data['post_id'];
 		$this->blog_id                 = $data['blog_id'];
 		$this->published               = $data['published'];
@@ -179,6 +188,7 @@ class Ingestion_Post_Record {
 	 * @return array{
 	 *     site_id: string,
 	 *     blog_id: string,
+	 *     site_key: string,
 	 *     post_id: string,
 	 *     site_id_blog_id: string,
 	 *     site_id_blog_id_post_id: string,
@@ -201,6 +211,7 @@ class Ingestion_Post_Record {
 			'site_id_blog_id_post_id' => $this->site_id_blog_id_post_id,
 			'site_id'                 => $this->site_id,
 			'site_id_blog_id'         => $this->site_id_blog_id,
+			'site_key'                => $this->site_key,
 			'post_id'                 => $this->post_id,
 			'blog_id'                 => $this->blog_id,
 			'published'               => $this->published,

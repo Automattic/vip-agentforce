@@ -61,6 +61,7 @@ if ( $is_local_env ) {
 if ( class_exists( 'Automattic\\VIP\\Prometheus\\Plugin' ) ) {
 	require __DIR__ . '/utils/metrics.php';
 }
+
 // Initialize tracking hooks
 \Automattic\VIP\Salesforce\Agentforce\Utils\Tracking::init();
 
