@@ -167,6 +167,7 @@ HTML;
 			[
 				'agentforce_js_sdk_activated' => true,
 				'agentforce_embedding_script' => $this->get_embedding_script_fixture(),
+				'site_key' => 'site-key-123',
 			]
 		);
 
@@ -199,6 +200,7 @@ HTML;
 			[
 				'agentforce_js_sdk_activated' => true,
 				'agentforce_embedding_script' => $this->get_embedding_script_fixture(),
+				'site_key' => 'site-key-123',
 			]
 		);
 
@@ -257,6 +259,7 @@ HTML;
 			[
 				'agentforce_js_sdk_activated' => true,
 				'agentforce_embedding_script' => $this->get_embedding_script_fixture(),
+				'site_key' => 'site-key-123',
 			]
 		);
 
@@ -286,6 +289,7 @@ HTML;
 			[
 				'agentforce_js_sdk_activated' => true,
 				'agentforce_embedding_script' => $this->get_embedding_script_fixture(),
+				'site_key' => 'site-key-123',
 			]
 		);
 
@@ -322,6 +326,7 @@ HTML;
 			[
 				'agentforce_js_sdk_activated' => true,
 				'agentforce_embedding_script' => $this->get_embedding_script_fixture(),
+				'site_key' => 'site-key-123',
 			]
 		);
 
@@ -458,6 +463,7 @@ HTML;
 			[
 				'agentforce_js_sdk_activated' => true,
 				'agentforce_embedding_script' => $this->get_embedding_script_fixture(),
+				'site_key' => 'site-key-123',
 			]
 		);
 
@@ -473,6 +479,8 @@ HTML;
 	}
 
 	public function test_prechat_fields_contain_site_key(): void {
+		$this->prime_configs_cache( [ 'site_key' => 'site-key-123' ] );
+
 		$fields = Configs::get_prechat_fields();
 
 		$this->assertArrayHasKey( 'site_key', $fields );
@@ -480,6 +488,8 @@ HTML;
 	}
 
 	public function test_prechat_fields_filter_adds_custom_fields(): void {
+		$this->prime_configs_cache( [ 'site_key' => 'site-key-123' ] );
+
 		$filter = function ( array $fields ): array {
 			$fields['custom_field'] = 'custom_value';
 			return $fields;
@@ -494,6 +504,8 @@ HTML;
 	}
 
 	public function test_prechat_fields_filter_rejects_non_array_return(): void {
+		$this->prime_configs_cache( [ 'site_key' => 'site-key-123' ] );
+
 		$filter = function (): string {
 			return 'garbage';
 		};
