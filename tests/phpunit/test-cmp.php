@@ -476,6 +476,7 @@ HTML;
 		$localized_data = wp_scripts()->get_data( 'vip-af-cookieyes-consent', 'data' );
 		$this->assertStringContainsString( '"prechatFields":', $localized_data );
 		$this->assertStringContainsString( '"site_key":', $localized_data );
+		$this->assertStringContainsString( '_site-key-123', $localized_data );
 	}
 
 	public function test_prechat_fields_contain_site_key(): void {
@@ -484,7 +485,10 @@ HTML;
 		$fields = Configs::get_prechat_fields();
 
 		$this->assertArrayHasKey( 'site_key', $fields );
-		$this->assertNotSame( '', $fields['site_key'] );
+		$expected_site_id = defined( 'VIP_GO_APP_ID' ) ? (string) VIP_GO_APP_ID : '0';
+		$expected_blog_id = function_exists( 'get_current_blog_id' ) ? (string) get_current_blog_id() : '1';
+		$this->assertStringStartsWith( $expected_site_id . '_' . $expected_blog_id . '_', $fields['site_key'] );
+		$this->assertStringEndsWith( 'site-key-123', $fields['site_key'] );
 	}
 
 	public function test_prechat_fields_filter_adds_custom_fields(): void {
