@@ -19,7 +19,7 @@ const setupPrechatFields = () => {
 		} catch (error) {
 			// Silent fail - prechat fields are non-critical.
 		}
-	});
+	}, { once: true });
 };
 
 const invokeEmbeddedMessagingInit = () => {

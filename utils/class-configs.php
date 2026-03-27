@@ -57,7 +57,7 @@ class Configs {
 	 * Get the config
 	 * @return array{
 	 *     salesforce_instance_url?: string,
-	 *     vip_agentforce_encryption_key?: string,
+	 *     site_key?: string,
 	 *     ingestion_api_instance_url?: string,
 	 *     ingestion_api_token?: string,
 	 *     ingestion_api_endpoint?: string,
@@ -141,8 +141,6 @@ class Configs {
 	 * @return array<string, string> Key-value pairs of hidden prechat fields.
 	 */
 	public static function get_prechat_fields(): array {
-		$apply_filters = '\\apply_filters';
-
 		$site_key = self::get_site_key();
 
 		$fields = array();
@@ -158,9 +156,7 @@ class Configs {
 		 *
 		 * @param array<string, string> $fields Key-value pairs of prechat fields.
 		 */
-		$filtered_fields = function_exists( $apply_filters )
-			? $apply_filters( 'vip_agentforce_prechat_fields', $fields )
-			: $fields;
+		$filtered_fields = apply_filters( 'vip_agentforce_prechat_fields', $fields );
 
 		if ( ! is_array( $filtered_fields ) ) {
 			return $fields;
