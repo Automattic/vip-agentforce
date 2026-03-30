@@ -253,7 +253,7 @@ class Ingestion_CLI extends WP_CLI_Command {
 	 */
 	private function preflight_check( array $assoc_args = [] ): void {
 		$restore_blog = $this->maybe_switch_to_network_site( $assoc_args );
-		$format = $assoc_args['format'] ?? 'json';
+		$format       = $assoc_args['format'] ?? 'json';
 
 		try {
 			$config = \Automattic\VIP\Salesforce\Agentforce\Utils\Configs::get_config();
@@ -538,6 +538,7 @@ class Ingestion_CLI extends WP_CLI_Command {
 			return false;
 		}
 
+		// phpcs:ignore WordPressVIPMinimum.Functions.RestrictedFunctions.switch_to_blog_switch_to_blog -- CLI targeting needs the selected site's DB/runtime context for config and blog-specific IDs.
 		switch_to_blog( $network_site_id );
 
 		return true;
