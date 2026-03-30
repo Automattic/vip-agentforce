@@ -146,7 +146,7 @@ class Configs {
 		$fields = array();
 
 		if ( '' !== $site_key ) {
-			$fields['site_key'] = $site_key;
+			$fields['site_id_blog_id'] = $site_key;
 		}
 
 		/**

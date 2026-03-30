@@ -475,8 +475,8 @@ HTML;
 
 		$localized_data = wp_scripts()->get_data( 'vip-af-cookieyes-consent', 'data' );
 		$this->assertStringContainsString( '"prechatFields":', $localized_data );
-		$this->assertStringContainsString( '"site_key":', $localized_data );
-		$this->assertStringContainsString( '"site_key":"site-key-123"', $localized_data );
+		$this->assertStringContainsString( '"site_id_blog_id":', $localized_data );
+		$this->assertStringContainsString( '"site_id_blog_id":"site-key-123"', $localized_data );
 	}
 
 	public function test_prechat_fields_contain_site_key(): void {
@@ -484,8 +484,8 @@ HTML;
 
 		$fields = Configs::get_prechat_fields();
 
-		$this->assertArrayHasKey( 'site_key', $fields );
-		$this->assertSame( 'site-key-123', $fields['site_key'] );
+		$this->assertArrayHasKey( 'site_id_blog_id', $fields );
+		$this->assertSame( 'site-key-123', $fields['site_id_blog_id'] );
 	}
 
 	public function test_prechat_fields_filter_adds_custom_fields(): void {
@@ -500,7 +500,7 @@ HTML;
 		$fields = Configs::get_prechat_fields();
 		remove_filter( 'vip_agentforce_prechat_fields', $filter );
 
-		$this->assertArrayHasKey( 'site_key', $fields );
+		$this->assertArrayHasKey( 'site_id_blog_id', $fields );
 		$this->assertSame( 'custom_value', $fields['custom_field'] );
 	}
 
@@ -516,7 +516,7 @@ HTML;
 		remove_filter( 'vip_agentforce_prechat_fields', $filter );
 
 		// Should fall back to the default fields.
-		$this->assertArrayHasKey( 'site_key', $fields );
+		$this->assertArrayHasKey( 'site_id_blog_id', $fields );
 	}
 
 	public function test_prechat_fields_filter_strips_non_string_values(): void {
