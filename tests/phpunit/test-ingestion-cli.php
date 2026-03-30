@@ -244,6 +244,67 @@ class Ingestion_CLI_Test extends WP_UnitTestCase {
 		$this->assertStringContainsString( '_2_', $result->record_id );
 	}
 
+	public function test_delete_uses_network_site_id_as_default_blog_id(): void {
+		if ( ! is_multisite() ) {
+			$this->markTestSkipped( 'This test requires multisite.' );
+		}
+
+		$site = self::factory()->blog->create_and_get();
+
+		$cli = new Ingestion_CLI();
+		ob_start();
+		$cli->delete( [ '456' ], [ 'network-site-id' => (string) $site->blog_id ] );
+		ob_end_clean();
+
+		$delete_requests = array_values(
+			array_filter(
+				$this->captured_requests,
+				fn( $req ) => 'DELETE' === $req['method']
+			)
+		);
+
+		$this->assertCount( 1, $delete_requests );
+		$body = json_decode( $delete_requests[0]['body'], true );
+		$this->assertSame(
+			( defined( 'VIP_GO_APP_ID' ) ? (string) VIP_GO_APP_ID : '0' ) . '_' . $site->blog_id . '_456',
+			$body['ids'][0]
+		);
+		$this->assertSame( 1, get_current_blog_id(), 'CLI should restore the original blog after switching.' );
+	}
+
+	public function test_delete_prefers_explicit_blog_id_over_network_site_id(): void {
+		if ( ! is_multisite() ) {
+			$this->markTestSkipped( 'This test requires multisite.' );
+		}
+
+		$site = self::factory()->blog->create_and_get();
+
+		$cli = new Ingestion_CLI();
+		ob_start();
+		$cli->delete(
+			[ '789' ],
+			[
+				'network-site-id' => (string) $site->blog_id,
+				'blog-id'         => '999',
+			]
+		);
+		ob_end_clean();
+
+		$delete_requests = array_values(
+			array_filter(
+				$this->captured_requests,
+				fn( $req ) => 'DELETE' === $req['method']
+			)
+		);
+
+		$this->assertCount( 1, $delete_requests );
+		$body = json_decode( $delete_requests[0]['body'], true );
+		$this->assertSame(
+			( defined( 'VIP_GO_APP_ID' ) ? (string) VIP_GO_APP_ID : '0' ) . '_999_789',
+			$body['ids'][0]
+		);
+	}
+
 	public function test_cli_can_delete_non_existent_post(): void {
 		// Post ID that doesn't exist in WordPress.
 		$non_existent_post_id = '999999';

@@ -34,6 +34,9 @@ class Ingestion_CLI extends WP_CLI_Command {
 	 * [--preflight-check]
 	 * : Check if the site is ready for sync (config propagated, filters registered). Returns JSON with readiness status.
 	 *
+	 * [--network-site-id=<network_site_id>]
+	 * : For multisite, switch to the specified site before running sync or preflight checks.
+	 *
 	 * [--format=<format>]
 	 * : Output format. Use 'json' for machine-readable output.
 	 * ---
@@ -56,6 +59,9 @@ class Ingestion_CLI extends WP_CLI_Command {
 	 *
 	 *     # Reset a completed/stuck sync
 	 *     wp vip-agentforce ingestion sync --reset
+	 *
+	 *     # Start async sync for a specific multisite subsite
+	 *     wp vip-agentforce ingestion sync --network-site-id=2
 	 *
 	 * @subcommand sync
 	 *
@@ -118,116 +124,123 @@ class Ingestion_CLI extends WP_CLI_Command {
 	 * @param array<string, string> $assoc_args Associative arguments.
 	 */
 	private function start_sync( array $assoc_args = [] ): void {
-		$format = $assoc_args['format'] ?? 'table';
+		$restore_blog = $this->maybe_switch_to_network_site( $assoc_args );
+		$format       = $assoc_args['format'] ?? 'table';
 
-		// Check that filters are registered.
-		if ( ! has_filter( 'vip_agentforce_should_ingest_post' ) ) {
-			$message = 'No vip_agentforce_should_ingest_post filter registered. Cannot determine which posts to sync.';
-			if ( 'json' === $format ) {
-				echo wp_json_encode( [
-					'success' => false,
-					'message' => $message,
-					'status'  => Ingestion_Sync_Progress::STATUS_IDLE,
-				] );
+		try {
+			// Check that filters are registered.
+			if ( ! has_filter( 'vip_agentforce_should_ingest_post' ) ) {
+				$message = 'No vip_agentforce_should_ingest_post filter registered. Cannot determine which posts to sync.';
+				if ( 'json' === $format ) {
+					echo wp_json_encode( [
+						'success' => false,
+						'message' => $message,
+						'status'  => Ingestion_Sync_Progress::STATUS_IDLE,
+					] );
+					return;
+				}
+
+				WP_CLI::error( $message, false );
 				return;
 			}
 
-			WP_CLI::error( $message, false );
-			return;
-		}
+			// Block if already running.
+			if ( Ingestion_Sync_Progress::is_running() ) {
+				$message = 'A sync is already in progress. Use --status to check progress or --reset to clear a stuck sync.';
+				if ( 'json' === $format ) {
+					echo wp_json_encode( [
+						'success' => false,
+						'message' => $message,
+						'status'  => Ingestion_Sync_Progress::STATUS_RUNNING,
+					] );
+					return;
+				}
 
-		// Block if already running.
-		if ( Ingestion_Sync_Progress::is_running() ) {
-			$message = 'A sync is already in progress. Use --status to check progress or --reset to clear a stuck sync.';
-			if ( 'json' === $format ) {
-				echo wp_json_encode( [
-					'success' => false,
-					'message' => $message,
-					'status'  => Ingestion_Sync_Progress::STATUS_RUNNING,
-				] );
+				WP_CLI::error( $message, false );
 				return;
 			}
 
-			WP_CLI::error( $message, false );
-			return;
-		}
+			// Count eligible posts.
+			$post_types = get_post_types( [ 'public' => true ] );
 
-		// Count eligible posts.
-		$post_types = get_post_types( [ 'public' => true ] );
+			$query = new \WP_Query(
+				[
+					'post_type'      => $post_types,
+					'post_status'    => 'publish',
+					'posts_per_page' => 1,
+					'no_found_rows'  => false,
+					'fields'         => 'ids',
+				]
+			);
 
-		$query = new \WP_Query(
-			[
-				'post_type'      => $post_types,
-				'post_status'    => 'publish',
-				'posts_per_page' => 1,
-				'no_found_rows'  => false,
-				'fields'         => 'ids',
-			]
-		);
+			$total = $query->found_posts;
 
-		$total = $query->found_posts;
+			if ( 0 === $total ) {
+				$message = 'No published posts found to sync.';
+				if ( 'json' === $format ) {
+					echo wp_json_encode( [
+						'success' => false,
+						'message' => $message,
+						'status'  => Ingestion_Sync_Progress::STATUS_IDLE,
+					] );
+					return;
+				}
 
-		if ( 0 === $total ) {
-			$message = 'No published posts found to sync.';
-			if ( 'json' === $format ) {
-				echo wp_json_encode( [
-					'success' => false,
-					'message' => $message,
-					'status'  => Ingestion_Sync_Progress::STATUS_IDLE,
-				] );
+				WP_CLI::warning( $message );
 				return;
 			}
 
-			WP_CLI::warning( $message );
-			return;
-		}
+			// Start the sync progress tracker.
+			$started = Ingestion_Sync_Progress::start( $total, array_values( $post_types ) );
 
-		// Start the sync progress tracker.
-		$started = Ingestion_Sync_Progress::start( $total, array_values( $post_types ) );
+			if ( ! $started ) {
+				$message = 'Failed to start sync. A sync may already be in progress.';
+				if ( 'json' === $format ) {
+					echo wp_json_encode( [
+						'success' => false,
+						'message' => $message,
+						'status'  => Ingestion_Sync_Progress::STATUS_FAILED,
+					] );
+					return;
+				}
 
-		if ( ! $started ) {
-			$message = 'Failed to start sync. A sync may already be in progress.';
-			if ( 'json' === $format ) {
-				echo wp_json_encode( [
-					'success' => false,
-					'message' => $message,
-					'status'  => Ingestion_Sync_Progress::STATUS_FAILED,
-				] );
+				WP_CLI::error( $message, false );
 				return;
 			}
 
-			WP_CLI::error( $message, false );
-			return;
+			// Ensure cron is scheduled to pick up the bulk sync.
+			Ingestion_Cron::schedule_processing();
+
+			$message = sprintf(
+				'Bulk sync queued: %s posts will be processed by cron. Use `wp vip-agentforce ingestion sync --status` to monitor progress.',
+				number_format_i18n( $total )
+			);
+
+			if ( 'json' === $format ) {
+				echo wp_json_encode( [
+					'success'    => true,
+					'message'    => $message,
+					'status'     => Ingestion_Sync_Progress::STATUS_RUNNING,
+					'total'      => $total,
+					'post_types' => array_values( $post_types ),
+				] );
+			} else {
+				WP_CLI::success( $message );
+			}
+
+			Logger::info(
+				'ingestion-cli',
+				'Bulk sync initiated via CLI',
+				[
+					'total'      => $total,
+					'post_types' => array_values( $post_types ),
+				]
+			);
+		} finally {
+			if ( $restore_blog ) {
+				restore_current_blog();
+			}
 		}
-
-		// Ensure cron is scheduled to pick up the bulk sync.
-		Ingestion_Cron::schedule_processing();
-
-		$message = sprintf(
-			'Bulk sync queued: %s posts will be processed by cron. Use `wp vip-agentforce ingestion sync --status` to monitor progress.',
-			number_format_i18n( $total )
-		);
-
-		if ( 'json' === $format ) {
-			echo wp_json_encode( [
-				'success'    => true,
-				'message'    => $message,
-				'status'     => Ingestion_Sync_Progress::STATUS_RUNNING,
-				'total'      => $total,
-				'post_types' => array_values( $post_types ),
-			] );
-		} else {
-			WP_CLI::success( $message );
-		}
-
-		Logger::info(
-			'ingestion-cli',
-			'Bulk sync initiated via CLI',
-			[
-				'total'      => $total,
-				'post_types' => array_values( $post_types ),
-			]
-		);
 	}
 
 	/**
@@ -239,47 +252,54 @@ class Ingestion_CLI extends WP_CLI_Command {
 	 * @param array<string, string> $assoc_args Associative arguments (supports 'format').
 	 */
 	private function preflight_check( array $assoc_args = [] ): void {
+		$restore_blog = $this->maybe_switch_to_network_site( $assoc_args );
 		$format = $assoc_args['format'] ?? 'json';
 
-		$config = \Automattic\VIP\Salesforce\Agentforce\Utils\Configs::get_config();
+		try {
+			$config = \Automattic\VIP\Salesforce\Agentforce\Utils\Configs::get_config();
 
-		$has_filter       = (bool) has_filter( 'vip_agentforce_should_ingest_post' );
-		$sync_all_posts   = \Automattic\VIP\Salesforce\Agentforce\Utils\Configs::should_sync_all_posts();
-		$categories       = \Automattic\VIP\Salesforce\Agentforce\Utils\Configs::get_ingestion_categories();
-		$has_api_url      = ! empty( $config['ingestion_api_instance_url'] );
-		$has_api_token    = ! empty( $config['ingestion_api_token'] );
-		$has_api_source   = ! empty( $config['ingestion_api_source_name'] );
-		$has_api_object   = ! empty( $config['ingestion_api_object_name'] );
-		$has_required_api = $has_api_url && $has_api_token && $has_api_source && $has_api_object;
+			$has_filter       = (bool) has_filter( 'vip_agentforce_should_ingest_post' );
+			$sync_all_posts   = \Automattic\VIP\Salesforce\Agentforce\Utils\Configs::should_sync_all_posts();
+			$categories       = \Automattic\VIP\Salesforce\Agentforce\Utils\Configs::get_ingestion_categories();
+			$has_api_url      = ! empty( $config['ingestion_api_instance_url'] );
+			$has_api_token    = ! empty( $config['ingestion_api_token'] );
+			$has_api_source   = ! empty( $config['ingestion_api_source_name'] );
+			$has_api_object   = ! empty( $config['ingestion_api_object_name'] );
+			$has_required_api = $has_api_url && $has_api_token && $has_api_source && $has_api_object;
 
-		// Ready if filter is registered AND all required API config is present.
-		$ready = $has_filter && $has_required_api;
+			// Ready if filter is registered AND all required API config is present.
+			$ready = $has_filter && $has_required_api;
 
-		$result = [
-			'ready'             => $ready,
-			'filter_registered' => $has_filter,
-			'sync_all_posts'    => $sync_all_posts,
-			'categories'        => $categories,
-			'categories_count'  => count( $categories ),
-			'has_api_url'       => $has_api_url,
-			'has_api_token'     => $has_api_token,
-			'has_api_source'    => $has_api_source,
-			'has_api_object'    => $has_api_object,
-		];
+			$result = [
+				'ready'             => $ready,
+				'filter_registered' => $has_filter,
+				'sync_all_posts'    => $sync_all_posts,
+				'categories'        => $categories,
+				'categories_count'  => count( $categories ),
+				'has_api_url'       => $has_api_url,
+				'has_api_token'     => $has_api_token,
+				'has_api_source'    => $has_api_source,
+				'has_api_object'    => $has_api_object,
+			];
 
-		if ( 'json' === $format ) {
-			// phpcs:ignore WordPress.WP.AlternativeFunctions.json_encode_json_encode -- CLI output.
-			echo json_encode( $result, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES );
-		} else {
-			WP_CLI::log( '=== Preflight Check ===' );
-			WP_CLI::log( sprintf( 'Ready: %s', $ready ? 'Yes' : 'No' ) );
-			WP_CLI::log( sprintf( 'Filter registered: %s', $has_filter ? 'Yes' : 'No' ) );
-			WP_CLI::log( sprintf( 'Sync all posts: %s', $sync_all_posts ? 'Yes' : 'No' ) );
-			WP_CLI::log( sprintf( 'Categories configured: %d', count( $categories ) ) );
-			WP_CLI::log( sprintf( 'API URL: %s', $has_api_url ? 'Set' : 'Missing' ) );
-			WP_CLI::log( sprintf( 'API token: %s', $has_api_token ? 'Set' : 'Missing' ) );
-			WP_CLI::log( sprintf( 'API source: %s', $has_api_source ? 'Set' : 'Missing' ) );
-			WP_CLI::log( sprintf( 'API object: %s', $has_api_object ? 'Set' : 'Missing' ) );
+			if ( 'json' === $format ) {
+				// phpcs:ignore WordPress.WP.AlternativeFunctions.json_encode_json_encode -- CLI output.
+				echo json_encode( $result, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES );
+			} else {
+				WP_CLI::log( '=== Preflight Check ===' );
+				WP_CLI::log( sprintf( 'Ready: %s', $ready ? 'Yes' : 'No' ) );
+				WP_CLI::log( sprintf( 'Filter registered: %s', $has_filter ? 'Yes' : 'No' ) );
+				WP_CLI::log( sprintf( 'Sync all posts: %s', $sync_all_posts ? 'Yes' : 'No' ) );
+				WP_CLI::log( sprintf( 'Categories configured: %d', count( $categories ) ) );
+				WP_CLI::log( sprintf( 'API URL: %s', $has_api_url ? 'Set' : 'Missing' ) );
+				WP_CLI::log( sprintf( 'API token: %s', $has_api_token ? 'Set' : 'Missing' ) );
+				WP_CLI::log( sprintf( 'API source: %s', $has_api_source ? 'Set' : 'Missing' ) );
+				WP_CLI::log( sprintf( 'API object: %s', $has_api_object ? 'Set' : 'Missing' ) );
+			}
+		} finally {
+			if ( $restore_blog ) {
+				restore_current_blog();
+			}
 		}
 	}
 
@@ -394,8 +414,8 @@ class Ingestion_CLI extends WP_CLI_Command {
 	 * - The post doesn't exist in WordPress
 	 * - The post was never ingested (no tracking meta)
 	 *
-	 * For multisite, use the --url flag to target a specific site. This ensures
-	 * the site's theme and plugins are loaded, allowing site-specific hooks to fire.
+	 * For multisite, use --network-site-id to target a specific site, or --url when
+	 * invoking WP-CLI so the site's theme and plugins are loaded.
 	 *
 	 * ## OPTIONS
 	 *
@@ -406,6 +426,9 @@ class Ingestion_CLI extends WP_CLI_Command {
 	 * : Blog ID for multisite. Doesn't require the blog to exist - useful for deleting
 	 *   records from deleted blogs. Defaults to current blog. If used in conjunction
 	 *   with --url to load site context, the blog ID should match the site loaded by --url.
+	 *
+	 * [--network-site-id=<network_site_id>]
+	 * : For multisite, switch to the specified site before computing the default blog ID.
 	 *
 	 * ## EXAMPLES
 	 *
@@ -418,66 +441,106 @@ class Ingestion_CLI extends WP_CLI_Command {
 	 *     # Delete on a specific site (multisite) - use --url to load site context
 	 *     wp vip-agentforce ingestion delete 123 --blog-id=2 --url=https://subsite.example.com
 	 *
+	 *     # Delete on a specific site (multisite) by network site ID
+	 *     wp vip-agentforce ingestion delete 123 --network-site-id=2
+	 *
 	 * @subcommand delete
 	 *
 	 * @param array<int, string> $args       Positional arguments (post IDs).
 	 * @param array<string, string> $assoc_args Associative arguments.
 	 */
 	public function delete( array $args, array $assoc_args ): void {
-		$blog_id = $assoc_args['blog-id'] ?? (string) get_current_blog_id();
-		$site_id = defined( 'VIP_GO_APP_ID' ) ? (string) VIP_GO_APP_ID : '0';
+		$restore_blog = $this->maybe_switch_to_network_site( $assoc_args );
+		try {
+			$blog_id = $assoc_args['blog-id'] ?? (string) get_current_blog_id();
+			$site_id = defined( 'VIP_GO_APP_ID' ) ? (string) VIP_GO_APP_ID : '0';
 
-		$success_count = 0;
-		$failure_count = 0;
+			$success_count = 0;
+			$failure_count = 0;
 
-		foreach ( $args as $post_id ) {
-			$record_id = $site_id . '_' . $blog_id . '_' . $post_id;
-
-			Logger::info(
-				'ingestion-cli',
-				'Attempting to force delete record from Salesforce',
-				[
-					'post_id'   => $post_id,
-					'blog_id'   => $blog_id,
-					'record_id' => $record_id,
-				]
-			);
-
-			$result = Ingestion::delete_record_id_from_api( $record_id );
-
-			if ( $result->success ) {
-				WP_CLI::success( sprintf( 'Deleted record %s from Salesforce.', $record_id ) );
-				++$success_count;
+			foreach ( $args as $post_id ) {
+				$record_id = $site_id . '_' . $blog_id . '_' . $post_id;
 
 				Logger::info(
 					'ingestion-cli',
-					'Record deleted from Salesforce successfully',
+					'Attempting to force delete record from Salesforce',
 					[
 						'post_id'   => $post_id,
+						'blog_id'   => $blog_id,
 						'record_id' => $record_id,
 					]
 				);
+
+				$result = Ingestion::delete_record_id_from_api( $record_id );
+
+				if ( $result->success ) {
+					WP_CLI::success( sprintf( 'Deleted record %s from Salesforce.', $record_id ) );
+					++$success_count;
+
+					Logger::info(
+						'ingestion-cli',
+						'Record deleted from Salesforce successfully',
+						[
+							'post_id'   => $post_id,
+							'record_id' => $record_id,
+						]
+					);
+				} else {
+					WP_CLI::warning( sprintf( 'Failed to delete record %s: %s', $record_id, $result->error_message ?? 'Unknown error' ) );
+					++$failure_count;
+
+					Logger::info(
+						'ingestion-cli',
+						'Failed to delete record from Salesforce',
+						[
+							'post_id'   => $post_id,
+							'record_id' => $record_id,
+							'result'    => $result,
+						]
+					);
+				}
+			}
+
+			if ( $failure_count > 0 ) {
+				WP_CLI::error( sprintf( 'Completed with %d success(es) and %d failure(s).', $success_count, $failure_count ), false );
 			} else {
-				WP_CLI::warning( sprintf( 'Failed to delete record %s: %s', $record_id, $result->error_message ?? 'Unknown error' ) );
-				++$failure_count;
-
-				Logger::info(
-					'ingestion-cli',
-					'Failed to delete record from Salesforce',
-					[
-						'post_id'   => $post_id,
-						'record_id' => $record_id,
-						'result'    => $result,
-					]
-				);
+				WP_CLI::success( sprintf( 'All %d record(s) deleted successfully.', $success_count ) );
+			}
+		} finally {
+			if ( $restore_blog ) {
+				restore_current_blog();
 			}
 		}
+	}
 
-		if ( $failure_count > 0 ) {
-			WP_CLI::error( sprintf( 'Completed with %d success(es) and %d failure(s).', $success_count, $failure_count ), false );
-		} else {
-			WP_CLI::success( sprintf( 'All %d record(s) deleted successfully.', $success_count ) );
+	/**
+	 * Switch to a requested multisite blog for the current command.
+	 *
+	 * @param array<string, string> $assoc_args Associative CLI arguments.
+	 * @return bool Whether the caller should restore the previous blog.
+	 */
+	private function maybe_switch_to_network_site( array $assoc_args ): bool {
+		if ( ! is_multisite() || empty( $assoc_args['network-site-id'] ) ) {
+			return false;
 		}
+
+		$network_site_id = (int) $assoc_args['network-site-id'];
+
+		if ( $network_site_id <= 0 ) {
+			WP_CLI::error( 'The --network-site-id value must be a positive integer.' );
+		}
+
+		if ( ! get_site( $network_site_id ) ) {
+			WP_CLI::error( sprintf( 'Network site %d does not exist.', $network_site_id ) );
+		}
+
+		if ( get_current_blog_id() === $network_site_id ) {
+			return false;
+		}
+
+		switch_to_blog( $network_site_id );
+
+		return true;
 	}
 
 	/**
