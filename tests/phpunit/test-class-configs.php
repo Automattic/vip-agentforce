@@ -90,15 +90,9 @@ class ClassConfigsTest extends WP_UnitTestCase {
 		$this->assertSame( '', Configs::get_site_key() );
 	}
 
-	public function test_get_site_key_returns_blog_aware_runtime_value(): void {
+	public function test_get_site_key_returns_stored_value(): void {
 		$this->prime_configs_cache( [ 'site_key' => 'site-key-123' ] );
 
-		$expected_site_id = defined( 'VIP_GO_APP_ID' ) ? (string) VIP_GO_APP_ID : '0';
-		$expected_blog_id = function_exists( 'get_current_blog_id' ) ? (string) get_current_blog_id() : '1';
-
-		$this->assertSame(
-			$expected_site_id . '_' . $expected_blog_id . '_site-key-123',
-			Configs::get_site_key()
-		);
+		$this->assertSame( 'site-key-123', Configs::get_site_key() );
 	}
 }

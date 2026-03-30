@@ -86,14 +86,14 @@ class Default_Transformer_Test extends WP_UnitTestCase {
 		$expected_blog_id  = (string) get_current_blog_id();
 		$expected_post_id  = (string) $post->ID;
 		$expected_compound = $expected_site_id . '_' . $expected_blog_id . '_' . $expected_post_id;
-		$expected_site_key = $expected_site_id . '_' . $expected_blog_id . '_';
+		$expected_site_key = 'site-key-123';
 
 		$this->assertSame( $expected_site_id, $record->site_id );
 		$this->assertSame( $expected_blog_id, $record->blog_id );
 		$this->assertSame( $expected_post_id, $record->post_id );
 		$this->assertSame( $expected_site_id . '_' . $expected_blog_id, $record->site_id_blog_id );
 		$this->assertSame( $expected_compound, $record->site_id_blog_id_post_id );
-		$this->assertStringStartsWith( $expected_site_key, $record->site_key );
+		$this->assertSame( $expected_site_key, $record->site_key );
 	}
 
 	public function test_dates_are_formatted_as_iso8601(): void {

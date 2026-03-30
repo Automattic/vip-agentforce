@@ -173,11 +173,7 @@ class Configs {
 	}
 
 	/**
-	 * Returns the blog-aware site key used for prechat and ingestion filtering.
-	 *
-	 * The stored config contains the persisted random suffix/base key. At runtime we
-	 * compose `<site_id>_<blog_id>_<random_suffix>` so multisite blogs get distinct
-	 * filtering keys.
+	 * Returns the stored site key used for prechat and ingestion filtering.
 	 */
 	public static function get_site_key(): string {
 		$config = self::get_config();
@@ -192,11 +188,7 @@ class Configs {
 			return '';
 		}
 
-		$site_id             = defined( 'VIP_GO_APP_ID' ) ? (string) VIP_GO_APP_ID : '0';
-		$get_current_blog_id = '\\get_current_blog_id';
-		$blog_id             = function_exists( $get_current_blog_id ) ? (string) $get_current_blog_id() : '1';
-
-		return $site_id . '_' . $blog_id . '_' . $key;
+		return $key;
 	}
 
 	public static function is_local_env(): bool {
