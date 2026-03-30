@@ -476,7 +476,7 @@ HTML;
 		$localized_data = wp_scripts()->get_data( 'vip-af-cookieyes-consent', 'data' );
 		$this->assertStringContainsString( '"prechatFields":', $localized_data );
 		$this->assertStringContainsString( '"site_key":', $localized_data );
-		$this->assertStringContainsString( '_site-key-123', $localized_data );
+		$this->assertStringContainsString( '"site_key":"site-key-123"', $localized_data );
 	}
 
 	public function test_prechat_fields_contain_site_key(): void {
