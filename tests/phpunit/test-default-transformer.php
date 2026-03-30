@@ -11,6 +11,7 @@ class Default_Transformer_Test extends WP_UnitTestCase {
 	}
 
 	public function tearDown(): void {
+		\Automattic\VIP\Salesforce\Agentforce\Utils\Configs::flush_cache();
 		parent::tearDown();
 		remove_all_filters( 'vip_agentforce_transform_post' );
 	}

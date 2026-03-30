@@ -479,7 +479,7 @@ HTML;
 		$this->assertStringContainsString( '"site_id_blog_id":"site-key-123"', $localized_data );
 	}
 
-	public function test_prechat_fields_contain_site_key(): void {
+	public function test_prechat_fields_use_legacy_site_id_blog_id_key(): void {
 		$this->prime_configs_cache( [ 'site_key' => 'site-key-123' ] );
 
 		$fields = Configs::get_prechat_fields();

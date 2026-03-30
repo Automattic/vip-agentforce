@@ -35,7 +35,7 @@ class Ingestion_CLI extends WP_CLI_Command {
 	 * : Check if the site is ready for sync (config propagated, filters registered). Returns JSON with readiness status.
 	 *
 	 * [--network-site-id=<network_site_id>]
-	 * : For multisite, switch to the specified site before running sync or preflight checks.
+	 * : For multisite, switch to the specified site/blog ID before running sync, status, reset, or preflight checks.
 	 *
 	 * [--format=<format>]
 	 * : Output format. Use 'json' for machine-readable output.
@@ -69,25 +69,33 @@ class Ingestion_CLI extends WP_CLI_Command {
 	 * @param array<string, string> $assoc_args Associative arguments.
 	 */
 	public function sync( array $args, array $assoc_args ): void {
-		// Handle --status flag.
-		if ( isset( $assoc_args['status'] ) ) {
-			$this->show_sync_status( $assoc_args );
-			return;
-		}
+		$restore_blog = $this->maybe_switch_to_network_site( $assoc_args );
 
-		// Handle --reset flag.
-		if ( isset( $assoc_args['reset'] ) ) {
-			$this->reset_sync();
-			return;
-		}
+		try {
+			// Handle --status flag.
+			if ( isset( $assoc_args['status'] ) ) {
+				$this->show_sync_status( $assoc_args );
+				return;
+			}
 
-		// Handle --preflight-check flag.
-		if ( isset( $assoc_args['preflight-check'] ) ) {
-			$this->preflight_check( $assoc_args );
-			return;
-		}
+			// Handle --reset flag.
+			if ( isset( $assoc_args['reset'] ) ) {
+				$this->reset_sync();
+				return;
+			}
 
-		$this->start_sync( $assoc_args );
+			// Handle --preflight-check flag.
+			if ( isset( $assoc_args['preflight-check'] ) ) {
+				$this->preflight_check( $assoc_args );
+				return;
+			}
+
+			$this->start_sync( $assoc_args );
+		} finally {
+			if ( $restore_blog ) {
+				restore_current_blog();
+			}
+		}
 	}
 
 	/**
@@ -124,41 +132,39 @@ class Ingestion_CLI extends WP_CLI_Command {
 	 * @param array<string, string> $assoc_args Associative arguments.
 	 */
 	private function start_sync( array $assoc_args = [] ): void {
-		$restore_blog = $this->maybe_switch_to_network_site( $assoc_args );
-		$format       = $assoc_args['format'] ?? 'table';
+		$format = $assoc_args['format'] ?? 'table';
 
-		try {
 			// Check that filters are registered.
-			if ( ! has_filter( 'vip_agentforce_should_ingest_post' ) ) {
-				$message = 'No vip_agentforce_should_ingest_post filter registered. Cannot determine which posts to sync.';
-				if ( 'json' === $format ) {
-					echo wp_json_encode( [
-						'success' => false,
-						'message' => $message,
-						'status'  => Ingestion_Sync_Progress::STATUS_IDLE,
-					] );
-					return;
-				}
-
-				WP_CLI::error( $message, false );
+		if ( ! has_filter( 'vip_agentforce_should_ingest_post' ) ) {
+			$message = 'No vip_agentforce_should_ingest_post filter registered. Cannot determine which posts to sync.';
+			if ( 'json' === $format ) {
+				echo wp_json_encode( [
+					'success' => false,
+					'message' => $message,
+					'status'  => Ingestion_Sync_Progress::STATUS_IDLE,
+				] );
 				return;
 			}
+
+			WP_CLI::error( $message, false );
+			return;
+		}
 
 			// Block if already running.
-			if ( Ingestion_Sync_Progress::is_running() ) {
-				$message = 'A sync is already in progress. Use --status to check progress or --reset to clear a stuck sync.';
-				if ( 'json' === $format ) {
-					echo wp_json_encode( [
-						'success' => false,
-						'message' => $message,
-						'status'  => Ingestion_Sync_Progress::STATUS_RUNNING,
-					] );
-					return;
-				}
-
-				WP_CLI::error( $message, false );
+		if ( Ingestion_Sync_Progress::is_running() ) {
+			$message = 'A sync is already in progress. Use --status to check progress or --reset to clear a stuck sync.';
+			if ( 'json' === $format ) {
+				echo wp_json_encode( [
+					'success' => false,
+					'message' => $message,
+					'status'  => Ingestion_Sync_Progress::STATUS_RUNNING,
+				] );
 				return;
 			}
+
+			WP_CLI::error( $message, false );
+			return;
+		}
 
 			// Count eligible posts.
 			$post_types = get_post_types( [ 'public' => true ] );
@@ -175,38 +181,38 @@ class Ingestion_CLI extends WP_CLI_Command {
 
 			$total = $query->found_posts;
 
-			if ( 0 === $total ) {
-				$message = 'No published posts found to sync.';
-				if ( 'json' === $format ) {
-					echo wp_json_encode( [
-						'success' => false,
-						'message' => $message,
-						'status'  => Ingestion_Sync_Progress::STATUS_IDLE,
-					] );
-					return;
-				}
-
-				WP_CLI::warning( $message );
+		if ( 0 === $total ) {
+			$message = 'No published posts found to sync.';
+			if ( 'json' === $format ) {
+				echo wp_json_encode( [
+					'success' => false,
+					'message' => $message,
+					'status'  => Ingestion_Sync_Progress::STATUS_IDLE,
+				] );
 				return;
 			}
+
+			WP_CLI::warning( $message );
+			return;
+		}
 
 			// Start the sync progress tracker.
 			$started = Ingestion_Sync_Progress::start( $total, array_values( $post_types ) );
 
-			if ( ! $started ) {
-				$message = 'Failed to start sync. A sync may already be in progress.';
-				if ( 'json' === $format ) {
-					echo wp_json_encode( [
-						'success' => false,
-						'message' => $message,
-						'status'  => Ingestion_Sync_Progress::STATUS_FAILED,
-					] );
-					return;
-				}
-
-				WP_CLI::error( $message, false );
+		if ( ! $started ) {
+			$message = 'Failed to start sync. A sync may already be in progress.';
+			if ( 'json' === $format ) {
+				echo wp_json_encode( [
+					'success' => false,
+					'message' => $message,
+					'status'  => Ingestion_Sync_Progress::STATUS_FAILED,
+				] );
 				return;
 			}
+
+			WP_CLI::error( $message, false );
+			return;
+		}
 
 			// Ensure cron is scheduled to pick up the bulk sync.
 			Ingestion_Cron::schedule_processing();
@@ -216,17 +222,17 @@ class Ingestion_CLI extends WP_CLI_Command {
 				number_format_i18n( $total )
 			);
 
-			if ( 'json' === $format ) {
-				echo wp_json_encode( [
-					'success'    => true,
-					'message'    => $message,
-					'status'     => Ingestion_Sync_Progress::STATUS_RUNNING,
-					'total'      => $total,
-					'post_types' => array_values( $post_types ),
-				] );
-			} else {
-				WP_CLI::success( $message );
-			}
+		if ( 'json' === $format ) {
+			echo wp_json_encode( [
+				'success'    => true,
+				'message'    => $message,
+				'status'     => Ingestion_Sync_Progress::STATUS_RUNNING,
+				'total'      => $total,
+				'post_types' => array_values( $post_types ),
+			] );
+		} else {
+			WP_CLI::success( $message );
+		}
 
 			Logger::info(
 				'ingestion-cli',
@@ -236,11 +242,6 @@ class Ingestion_CLI extends WP_CLI_Command {
 					'post_types' => array_values( $post_types ),
 				]
 			);
-		} finally {
-			if ( $restore_blog ) {
-				restore_current_blog();
-			}
-		}
 	}
 
 	/**
@@ -252,10 +253,8 @@ class Ingestion_CLI extends WP_CLI_Command {
 	 * @param array<string, string> $assoc_args Associative arguments (supports 'format').
 	 */
 	private function preflight_check( array $assoc_args = [] ): void {
-		$restore_blog = $this->maybe_switch_to_network_site( $assoc_args );
-		$format       = $assoc_args['format'] ?? 'json';
+		$format = $assoc_args['format'] ?? 'json';
 
-		try {
 			$config = \Automattic\VIP\Salesforce\Agentforce\Utils\Configs::get_config();
 
 			$has_filter       = (bool) has_filter( 'vip_agentforce_should_ingest_post' );
@@ -296,11 +295,6 @@ class Ingestion_CLI extends WP_CLI_Command {
 				WP_CLI::log( sprintf( 'API source: %s', $has_api_source ? 'Set' : 'Missing' ) );
 				WP_CLI::log( sprintf( 'API object: %s', $has_api_object ? 'Set' : 'Missing' ) );
 			}
-		} finally {
-			if ( $restore_blog ) {
-				restore_current_blog();
-			}
-		}
 	}
 
 	/**
@@ -414,7 +408,7 @@ class Ingestion_CLI extends WP_CLI_Command {
 	 * - The post doesn't exist in WordPress
 	 * - The post was never ingested (no tracking meta)
 	 *
-	 * For multisite, use --network-site-id to target a specific site, or --url when
+	 * For multisite, use --network-site-id to target a specific site/blog ID, or --url when
 	 * invoking WP-CLI so the site's theme and plugins are loaded.
 	 *
 	 * ## OPTIONS
@@ -428,7 +422,7 @@ class Ingestion_CLI extends WP_CLI_Command {
 	 *   with --url to load site context, the blog ID should match the site loaded by --url.
 	 *
 	 * [--network-site-id=<network_site_id>]
-	 * : For multisite, switch to the specified site before computing the default blog ID.
+	 * : For multisite, switch to the specified site/blog ID before computing the default blog ID.
 	 *
 	 * ## EXAMPLES
 	 *
@@ -527,11 +521,11 @@ class Ingestion_CLI extends WP_CLI_Command {
 		$network_site_id = (int) $assoc_args['network-site-id'];
 
 		if ( $network_site_id <= 0 ) {
-			WP_CLI::error( 'The --network-site-id value must be a positive integer.' );
+			WP_CLI::error( 'The --network-site-id value must be a positive site/blog ID integer.' );
 		}
 
 		if ( ! get_site( $network_site_id ) ) {
-			WP_CLI::error( sprintf( 'Network site %d does not exist.', $network_site_id ) );
+			WP_CLI::error( sprintf( 'Site/blog ID %d does not exist.', $network_site_id ) );
 		}
 
 		if ( get_current_blog_id() === $network_site_id ) {
