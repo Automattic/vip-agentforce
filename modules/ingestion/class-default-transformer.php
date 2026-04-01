@@ -37,11 +37,9 @@ class Default_Transformer {
 			return $record;
 		}
 
-		$site_id  = defined( 'VIP_GO_APP_ID' ) ? (string) VIP_GO_APP_ID : '0';
-		$blog_id  = (string) get_current_blog_id();
-		$post_id  = (string) $post->ID;
-		$site_key = \Automattic\VIP\Salesforce\Agentforce\Utils\Configs::get_site_key();
-
+		$site_id                 = defined( 'VIP_GO_APP_ID' ) ? (string) VIP_GO_APP_ID : '0';
+		$blog_id                 = (string) get_current_blog_id();
+		$post_id                 = (string) $post->ID;
 		$site_id_blog_id         = $site_id . '_' . $blog_id;
 		$site_id_blog_id_post_id = $site_id_blog_id . '_' . $post_id;
 
@@ -49,7 +47,6 @@ class Default_Transformer {
 			[
 				'site_id'                 => $site_id,
 				'blog_id'                 => $blog_id,
-				'site_key'                => $site_key,
 				'post_id'                 => $post_id,
 				'site_id_blog_id'         => $site_id_blog_id,
 				'site_id_blog_id_post_id' => $site_id_blog_id_post_id,

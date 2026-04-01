@@ -11,7 +11,6 @@ class Ingestion_Post_Record_Test extends WP_UnitTestCase {
 		$defaults = [
 			'site_id'                 => '123',
 			'blog_id'                 => '1',
-			'site_key'                => '',
 			'post_id'                 => '456',
 			'site_id_blog_id'         => '123_1',
 			'site_id_blog_id_post_id' => '123_1_456',
@@ -63,7 +62,6 @@ class Ingestion_Post_Record_Test extends WP_UnitTestCase {
 				'site_id_blog_id_post_id' => '123_1_456',
 				'site_id'                 => '123',
 				'site_id_blog_id'         => '123_1',
-				'site_key'                => '',
 				'post_id'                 => '456',
 				'blog_id'                 => '1',
 				'published'               => true,

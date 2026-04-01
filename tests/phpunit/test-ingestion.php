@@ -345,7 +345,6 @@ class Ingestion_Test extends WP_UnitTestCase {
 					[
 						'site_id'                 => '1',
 						'blog_id'                 => '1',
-						'site_key'                => '',
 						'post_id'                 => '1',
 						'site_id_blog_id'         => '1_1',
 						'site_id_blog_id_post_id' => '1_1_1',
