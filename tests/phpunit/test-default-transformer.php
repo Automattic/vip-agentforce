@@ -5,6 +5,18 @@ use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_Post_Record;
 
 class Default_Transformer_Test extends WP_UnitTestCase {
 
+	/**
+	 * Prime Configs cache for deterministic tests.
+	 *
+	 * @param array<string, mixed> $config
+	 */
+	private function prime_configs_cache( array $config ): void {
+		$ref  = new ReflectionClass( \Automattic\VIP\Salesforce\Agentforce\Utils\Configs::class );
+		$prop = $ref->getProperty( 'cached_config' );
+		$prop->setAccessible( true );
+		$prop->setValue( null, $config );
+	}
+
 	public function setUp(): void {
 		parent::setUp();
 		Default_Transformer::init();
