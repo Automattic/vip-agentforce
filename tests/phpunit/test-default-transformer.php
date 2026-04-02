@@ -74,6 +74,7 @@ class Default_Transformer_Test extends WP_UnitTestCase {
 	}
 
 	public function test_composite_ids_are_built_correctly(): void {
+		$this->prime_configs_cache( [ 'site_key' => '101_1_site-key-123' ] );
 		$post = $this->factory()->post->create_and_get();
 
 		$record = Default_Transformer::transform( null, $post );
@@ -86,7 +87,7 @@ class Default_Transformer_Test extends WP_UnitTestCase {
 		$this->assertSame( $expected_site_id, $record->site_id );
 		$this->assertSame( $expected_blog_id, $record->blog_id );
 		$this->assertSame( $expected_post_id, $record->post_id );
-		$this->assertSame( $expected_site_id . '_' . $expected_blog_id, $record->site_id_blog_id );
+		$this->assertSame( '101_1_site-key-123', $record->site_id_blog_id );
 		$this->assertSame( $expected_compound, $record->site_id_blog_id_post_id );
 	}
 
