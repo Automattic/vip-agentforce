@@ -260,18 +260,24 @@ class Ingestion_CLI_Test extends WP_UnitTestCase {
 		$this->assertSame( $record_id, $result->record_id );
 	}
 
-	public function test_cli_delete_uses_network_site_id(): void {
+	public function test_cli_delete_uses_current_site_context(): void {
 		if ( ! is_multisite() ) {
 			$this->markTestSkipped( 'This test requires multisite.' );
 		}
 
-		$original_blog_id = get_current_blog_id();
 		$site             = self::factory()->blog->create_and_get();
 
-		$cli = new Ingestion_CLI();
-		ob_start();
-		$cli->delete( [ '456' ], [ 'network-site-id' => (string) $site->blog_id ] );
-		ob_end_clean();
+		// Simulate WP-CLI booting against the target site via --url.
+		// phpcs:ignore WordPressVIPMinimum.Functions.RestrictedFunctions.switch_to_blog_switch_to_blog -- Test setup needs multisite blog context.
+		switch_to_blog( (int) $site->blog_id );
+		try {
+			$cli = new Ingestion_CLI();
+			ob_start();
+			$cli->delete( [ '456' ], [] );
+			ob_end_clean();
+		} finally {
+			restore_current_blog();
+		}
 
 		$delete_requests = array_values(
 			array_filter(
@@ -286,7 +292,6 @@ class Ingestion_CLI_Test extends WP_UnitTestCase {
 			( defined( 'VIP_GO_APP_ID' ) ? (string) VIP_GO_APP_ID : '0' ) . '_' . $site->blog_id . '_456',
 			$body['ids'][0]
 		);
-		$this->assertSame( $original_blog_id, get_current_blog_id(), 'CLI should restore the original blog after switching.' );
 	}
 
 	// =========================================================================
@@ -337,43 +342,45 @@ class Ingestion_CLI_Test extends WP_UnitTestCase {
 		$this->assertCount( 0, $ingestion_requests, 'Sync should not make API calls directly.' );
 	}
 
-	public function test_cli_sync_uses_network_site_id_before_counting_posts(): void {
+	public function test_cli_sync_uses_current_site_context(): void {
 		if ( ! is_multisite() ) {
 			$this->markTestSkipped( 'This test requires multisite.' );
 		}
 
-		$original_blog_id = get_current_blog_id();
 		$site             = self::factory()->blog->create_and_get();
 
 		// phpcs:ignore WordPressVIPMinimum.Functions.RestrictedFunctions.switch_to_blog_switch_to_blog -- Test setup needs multisite blog context.
 		switch_to_blog( (int) $site->blog_id );
-		$this->setup_ingestion_filters();
-		$this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
-		$post_types     = get_post_types( [ 'public' => true ] );
-		$query          = new WP_Query(
-			[
-				'post_type'      => $post_types,
-				'post_status'    => 'publish',
-				'posts_per_page' => 1,
-				'no_found_rows'  => false,
-				'fields'         => 'ids',
-			]
-		);
-		$expected_total = $query->found_posts;
-		restore_current_blog();
+		$data           = null;
+		$expected_total = 0;
+		try {
+			$this->setup_ingestion_filters();
+			$this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
+			$post_types     = get_post_types( [ 'public' => true ] );
+			$query          = new WP_Query(
+				[
+					'post_type'      => $post_types,
+					'post_status'    => 'publish',
+					'posts_per_page' => 1,
+					'no_found_rows'  => false,
+					'fields'         => 'ids',
+				]
+			);
+			$expected_total = $query->found_posts;
 
-		$output = $this->run_cli_sync(
-			[
-				'network-site-id' => (string) $site->blog_id,
-				'format'          => 'json',
-			]
-		);
-		$data   = json_decode( $output, true );
+			$output = $this->run_cli_sync(
+				[
+					'format' => 'json',
+				]
+			);
+			$data   = json_decode( $output, true );
+		} finally {
+			restore_current_blog();
+		}
 
 		$this->assertNotNull( $data, 'Output should be valid JSON.' );
 		$this->assertTrue( $data['success'] );
 		$this->assertSame( $expected_total, $data['total'] );
-		$this->assertSame( $original_blog_id, get_current_blog_id(), 'CLI should restore the original blog after switching.' );
 	}
 
 	public function test_cli_sync_reports_correct_total_count(): void {

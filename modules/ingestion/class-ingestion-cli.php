@@ -34,8 +34,7 @@ class Ingestion_CLI extends WP_CLI_Command {
 	 * [--preflight-check]
 	 * : Check if the site is ready for sync (config propagated, filters registered). Returns JSON with readiness status.
 	 *
-	 * [--network-site-id=<network_site_id>]
-	 * : For multisite, switch to the specified multisite site/blog ID before running sync, status, reset, or preflight checks. This is a site/blog ID, not a network ID.
+	 * For multisite, use `--url=<site-url>` so WP-CLI boots in the target site's context before running sync, status, reset, or preflight checks.
 	 *
 	 * [--format=<format>]
 	 * : Output format. Use 'json' for machine-readable output.
@@ -66,33 +65,25 @@ class Ingestion_CLI extends WP_CLI_Command {
 	 * @param array<string, string> $assoc_args Associative arguments.
 	 */
 	public function sync( array $args, array $assoc_args ): void {
-		$restore_blog = $this->maybe_switch_to_network_site( $assoc_args );
-
-		try {
-			// Handle --status flag.
-			if ( isset( $assoc_args['status'] ) ) {
-				$this->show_sync_status( $assoc_args );
-				return;
-			}
-
-			// Handle --reset flag.
-			if ( isset( $assoc_args['reset'] ) ) {
-				$this->reset_sync();
-				return;
-			}
-
-			// Handle --preflight-check flag.
-			if ( isset( $assoc_args['preflight-check'] ) ) {
-				$this->preflight_check( $assoc_args );
-				return;
-			}
-
-			$this->start_sync( $assoc_args );
-		} finally {
-			if ( $restore_blog ) {
-				restore_current_blog();
-			}
+		// Handle --status flag.
+		if ( isset( $assoc_args['status'] ) ) {
+			$this->show_sync_status( $assoc_args );
+			return;
 		}
+
+		// Handle --reset flag.
+		if ( isset( $assoc_args['reset'] ) ) {
+			$this->reset_sync();
+			return;
+		}
+
+		// Handle --preflight-check flag.
+		if ( isset( $assoc_args['preflight-check'] ) ) {
+			$this->preflight_check( $assoc_args );
+			return;
+		}
+
+		$this->start_sync( $assoc_args );
 	}
 
 	/**
@@ -405,8 +396,7 @@ class Ingestion_CLI extends WP_CLI_Command {
 	 * - The post doesn't exist in WordPress
 	 * - The post was never ingested (no tracking meta)
 	 *
-	 * For multisite, use --url when
-	 * invoking WP-CLI so the site's theme and plugins are loaded.
+	 * For multisite, use `--url=<site-url>` so WP-CLI boots in the target site's context before deleting.
 	 *
 	 * ## OPTIONS
 	 *
@@ -417,9 +407,6 @@ class Ingestion_CLI extends WP_CLI_Command {
 	 * : Blog ID for multisite. Doesn't require the blog to exist - useful for deleting
 	 *   records from deleted blogs. Defaults to current blog. If used in conjunction
 	 *   with --url to load site context, the blog ID should match the site loaded by --url.
-	 *
-	 * [--network-site-id=<network_site_id>]
-	 * : For multisite, switch to the specified multisite site/blog ID before deleting. This is a site/blog ID, not a network ID.
 	 *
 	 * ## EXAMPLES
 	 *
@@ -438,99 +425,60 @@ class Ingestion_CLI extends WP_CLI_Command {
 	 * @param array<string, string> $assoc_args Associative arguments.
 	 */
 	public function delete( array $args, array $assoc_args ): void {
-		$restore_blog = $this->maybe_switch_to_network_site( $assoc_args );
+		$blog_id = $assoc_args['blog-id'] ?? (string) get_current_blog_id();
+		$site_id = defined( 'VIP_GO_APP_ID' ) ? (string) VIP_GO_APP_ID : '0';
 
-		try {
-			$blog_id = $assoc_args['blog-id'] ?? (string) get_current_blog_id();
-			$site_id = defined( 'VIP_GO_APP_ID' ) ? (string) VIP_GO_APP_ID : '0';
+		$success_count = 0;
+		$failure_count = 0;
 
-			$success_count = 0;
-			$failure_count = 0;
+		foreach ( $args as $post_id ) {
+			$record_id = $site_id . '_' . $blog_id . '_' . $post_id;
 
-			foreach ( $args as $post_id ) {
-				$record_id = $site_id . '_' . $blog_id . '_' . $post_id;
+			Logger::info(
+				'ingestion-cli',
+				'Attempting to force delete record from Salesforce',
+				[
+					'post_id'   => $post_id,
+					'blog_id'   => $blog_id,
+					'record_id' => $record_id,
+				]
+			);
+
+			$result = Ingestion::delete_record_id_from_api( $record_id );
+
+			if ( $result->success ) {
+				WP_CLI::success( sprintf( 'Deleted record %s from Salesforce.', $record_id ) );
+				++$success_count;
 
 				Logger::info(
 					'ingestion-cli',
-					'Attempting to force delete record from Salesforce',
+					'Record deleted from Salesforce successfully',
 					[
 						'post_id'   => $post_id,
-						'blog_id'   => $blog_id,
 						'record_id' => $record_id,
 					]
 				);
-
-				$result = Ingestion::delete_record_id_from_api( $record_id );
-
-				if ( $result->success ) {
-					WP_CLI::success( sprintf( 'Deleted record %s from Salesforce.', $record_id ) );
-					++$success_count;
-
-					Logger::info(
-						'ingestion-cli',
-						'Record deleted from Salesforce successfully',
-						[
-							'post_id'   => $post_id,
-							'record_id' => $record_id,
-						]
-					);
-				} else {
-					WP_CLI::warning( sprintf( 'Failed to delete record %s: %s', $record_id, $result->error_message ?? 'Unknown error' ) );
-					++$failure_count;
-
-					Logger::info(
-						'ingestion-cli',
-						'Failed to delete record from Salesforce',
-						[
-							'post_id'   => $post_id,
-							'record_id' => $record_id,
-							'result'    => $result,
-						]
-					);
-				}
-			}
-
-			if ( $failure_count > 0 ) {
-				WP_CLI::error( sprintf( 'Completed with %d success(es) and %d failure(s).', $success_count, $failure_count ), false );
 			} else {
-				WP_CLI::success( sprintf( 'All %d record(s) deleted successfully.', $success_count ) );
+				WP_CLI::warning( sprintf( 'Failed to delete record %s: %s', $record_id, $result->error_message ?? 'Unknown error' ) );
+				++$failure_count;
+
+				Logger::info(
+					'ingestion-cli',
+					'Failed to delete record from Salesforce',
+					[
+						'post_id'   => $post_id,
+						'record_id' => $record_id,
+						'result'    => $result,
+					]
+				);
 			}
-		} finally {
-			if ( $restore_blog ) {
-				restore_current_blog();
-			}
-		}
-	}
-
-	/**
-	 * Switch to a requested multisite blog for the current command.
-	 *
-	 * @param array<string, string> $assoc_args Associative CLI arguments.
-	 * @return bool Whether the caller should restore the previous blog.
-	 */
-	private function maybe_switch_to_network_site( array $assoc_args ): bool {
-		if ( ! is_multisite() || empty( $assoc_args['network-site-id'] ) ) {
-			return false;
 		}
 
-		$network_site_id = (int) $assoc_args['network-site-id'];
-
-		if ( $network_site_id <= 0 ) {
-			WP_CLI::error( 'The --network-site-id value must be a positive multisite site/blog ID integer, not a network ID.' );
+		if ( $failure_count > 0 ) {
+			WP_CLI::error( sprintf( 'Completed with %d success(es) and %d failure(s).', $success_count, $failure_count ), false );
+		} else {
+			WP_CLI::success( sprintf( 'All %d record(s) deleted successfully.', $success_count ) );
 		}
-
-		if ( ! get_site( $network_site_id ) ) {
-			WP_CLI::error( sprintf( 'Site/blog ID %d does not exist.', $network_site_id ) );
-		}
-
-		if ( get_current_blog_id() === $network_site_id ) {
-			return false;
-		}
-
-		// phpcs:ignore WordPressVIPMinimum.Functions.RestrictedFunctions.switch_to_blog_switch_to_blog -- CLI targeting needs the selected site's DB/runtime context for config and blog-specific IDs.
-		switch_to_blog( $network_site_id );
-
-		return true;
 	}
 
 	/**
