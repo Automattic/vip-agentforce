@@ -265,7 +265,7 @@ class Ingestion_CLI_Test extends WP_UnitTestCase {
 			$this->markTestSkipped( 'This test requires multisite.' );
 		}
 
-		$site             = self::factory()->blog->create_and_get();
+		$site = self::factory()->blog->create_and_get();
 
 		// Simulate WP-CLI booting against the target site via --url.
 		// phpcs:ignore WordPressVIPMinimum.Functions.RestrictedFunctions.switch_to_blog_switch_to_blog -- Test setup needs multisite blog context.
@@ -347,7 +347,7 @@ class Ingestion_CLI_Test extends WP_UnitTestCase {
 			$this->markTestSkipped( 'This test requires multisite.' );
 		}
 
-		$site             = self::factory()->blog->create_and_get();
+		$site = self::factory()->blog->create_and_get();
 
 		// phpcs:ignore WordPressVIPMinimum.Functions.RestrictedFunctions.switch_to_blog_switch_to_blog -- Test setup needs multisite blog context.
 		switch_to_blog( (int) $site->blog_id );
