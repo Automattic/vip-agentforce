@@ -5,21 +5,21 @@ const getEmbeddingConfig = () => window.vipAgentforceConsentData?.embedding;
 const getPrechatFields = () => window.vipAgentforceConsentData?.prechatFields;
 
 const setupPrechatFields = () => {
-	const prechatFields = getPrechatFields();
-	if (!prechatFields || Object.keys(prechatFields).length === 0) {
-		return;
-	}
-
 	window.addEventListener('onEmbeddedMessagingReady', () => {
+		const prechatFields = getPrechatFields();
+		if (!prechatFields || Object.keys(prechatFields).length === 0) {
+			return;
+		}
+
 		try {
 			window.embeddedservice_bootstrap.settings.restrictSessionOnMessagingChannel = true;
 			window.embeddedservice_bootstrap.prechatAPI.setHiddenPrechatFields(
 				prechatFields
 			);
 		} catch (error) {
-			// Silent fail — prechat fields are non-critical.
+			// Silent fail - prechat fields are non-critical.
 		}
-	});
+	}, { once: true });
 };
 
 const invokeEmbeddedMessagingInit = () => {

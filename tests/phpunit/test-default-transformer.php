@@ -5,12 +5,25 @@ use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_Post_Record;
 
 class Default_Transformer_Test extends WP_UnitTestCase {
 
+	/**
+	 * Prime Configs cache for deterministic tests.
+	 *
+	 * @param array<string, mixed> $config
+	 */
+	private function prime_configs_cache( array $config ): void {
+		$ref  = new ReflectionClass( \Automattic\VIP\Salesforce\Agentforce\Utils\Configs::class );
+		$prop = $ref->getProperty( 'cached_config' );
+		$prop->setAccessible( true );
+		$prop->setValue( null, $config );
+	}
+
 	public function setUp(): void {
 		parent::setUp();
 		Default_Transformer::init();
 	}
 
 	public function tearDown(): void {
+		\Automattic\VIP\Salesforce\Agentforce\Utils\Configs::flush_cache();
 		parent::tearDown();
 		remove_all_filters( 'vip_agentforce_transform_post' );
 	}
@@ -47,6 +60,7 @@ class Default_Transformer_Test extends WP_UnitTestCase {
 			[
 				'site_id'                 => '999',
 				'blog_id'                 => '1',
+				'site_key'                => '',
 				'post_id'                 => '123',
 				'site_id_blog_id'         => '999_1',
 				'site_id_blog_id_post_id' => 'custom_id',
@@ -72,6 +86,7 @@ class Default_Transformer_Test extends WP_UnitTestCase {
 	}
 
 	public function test_composite_ids_are_built_correctly(): void {
+		$this->prime_configs_cache( [ 'site_key' => '101_1_site-key-123' ] );
 		$post = $this->factory()->post->create_and_get();
 
 		$record = Default_Transformer::transform( null, $post );
@@ -84,7 +99,7 @@ class Default_Transformer_Test extends WP_UnitTestCase {
 		$this->assertSame( $expected_site_id, $record->site_id );
 		$this->assertSame( $expected_blog_id, $record->blog_id );
 		$this->assertSame( $expected_post_id, $record->post_id );
-		$this->assertSame( $expected_site_id . '_' . $expected_blog_id, $record->site_id_blog_id );
+		$this->assertSame( '101_1_site-key-123', $record->site_id_blog_id );
 		$this->assertSame( $expected_compound, $record->site_id_blog_id_post_id );
 	}
 

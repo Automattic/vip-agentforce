@@ -84,4 +84,15 @@ class ClassConfigsTest extends WP_UnitTestCase {
 		$this->prime_configs_cache( [ 'agentforce_embedding_script' => null ] );
 		$this->assertSame( '', Configs::get_embedding_script() );
 	}
+
+	public function test_get_site_key_returns_empty_when_missing(): void {
+		$this->prime_configs_cache( [] );
+		$this->assertSame( '', Configs::get_site_key() );
+	}
+
+	public function test_get_site_key_returns_stored_value(): void {
+		$this->prime_configs_cache( [ 'site_key' => 'site-key-123' ] );
+
+		$this->assertSame( 'site-key-123', Configs::get_site_key() );
+	}
 }
