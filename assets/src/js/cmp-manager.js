@@ -31,7 +31,7 @@ const setupEmbeddedMessagingReadyHandler = () => {
 				prechatFields
 			);
 		} catch (error) {
-			// Silent fail — prechat fields are non-critical.
+			// Silent fail - prechat fields are non-critical.
 		}
 	};
 
