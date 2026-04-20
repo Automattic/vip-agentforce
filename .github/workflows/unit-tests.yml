@@ -53,6 +53,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Build JS assets
+        run: npm run build:js
+
       - uses: php-actions/composer@v6
         with:
           php_version: "${{ matrix.config.php }}"

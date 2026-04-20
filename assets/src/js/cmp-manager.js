@@ -3,23 +3,54 @@
  */
 const getEmbeddingConfig = () => window.vipAgentforceConsentData?.embedding;
 const getPrechatFields = () => window.vipAgentforceConsentData?.prechatFields;
+let onEmbeddedMessagingReadyHandler;
 
-const setupPrechatFields = () => {
-	window.addEventListener('onEmbeddedMessagingReady', () => {
+const setupEmbeddedMessagingReadyHandler = () => {
+	if (onEmbeddedMessagingReadyHandler) {
+		return;
+	}
+
+	onEmbeddedMessagingReadyHandler = () => {
+		const settings = window.embeddedservice_bootstrap?.settings;
+		if (!settings) {
+			return;
+		}
+
+		settings.restrictSessionOnMessagingChannel = true;
+
 		const prechatFields = getPrechatFields();
-		if (!prechatFields || Object.keys(prechatFields).length === 0) {
+		const hasPrechatFields =
+			prechatFields && Object.keys(prechatFields).length > 0;
+
+		if (!hasPrechatFields) {
 			return;
 		}
 
 		try {
-			window.embeddedservice_bootstrap.settings.restrictSessionOnMessagingChannel = true;
-			window.embeddedservice_bootstrap.prechatAPI.setHiddenPrechatFields(
+			window.embeddedservice_bootstrap?.prechatAPI?.setHiddenPrechatFields?.(
 				prechatFields
 			);
 		} catch (error) {
 			// Silent fail - prechat fields are non-critical.
 		}
-	}, { once: true });
+	};
+
+	window.addEventListener(
+		'onEmbeddedMessagingReady',
+		onEmbeddedMessagingReadyHandler
+	);
+};
+
+const teardownEmbeddedMessagingReadyHandler = () => {
+	if (!onEmbeddedMessagingReadyHandler) {
+		return;
+	}
+
+	window.removeEventListener(
+		'onEmbeddedMessagingReady',
+		onEmbeddedMessagingReadyHandler
+	);
+	onEmbeddedMessagingReadyHandler = undefined;
 };
 
 const invokeEmbeddedMessagingInit = () => {
@@ -38,7 +69,7 @@ export const loadAgentforceSDK = () => {
 		return;
 	}
 
-	setupPrechatFields();
+	setupEmbeddedMessagingReadyHandler();
 
 	const script = document.createElement('script');
 	script.id = 'agentforce-sdk';
@@ -60,5 +91,6 @@ export const unloadAgentforceSDK = () => {
 	) {
 		window.embeddedservice_bootstrap.utilAPI.removeAllComponents();
 	}
+	teardownEmbeddedMessagingReadyHandler();
 	window.AFConsentGranted = false;
 };

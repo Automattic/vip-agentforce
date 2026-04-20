@@ -10,6 +10,24 @@ declare global {
 			unloadSDK: () => void;
 		};
 		AFConsentGranted?: boolean;
+		vipAgentforceConsentData?: {
+			embedding?: {
+				bootstrapSrc?: string;
+			};
+			prechatFields?: Record<string, unknown>;
+		};
+		initEmbeddedMessaging?: () => void;
+		embeddedservice_bootstrap?: {
+			settings: {
+				restrictSessionOnMessagingChannel?: boolean;
+			};
+			prechatAPI: {
+				setHiddenPrechatFields: ( fields: Record<string, unknown> ) => void;
+			};
+			utilAPI: {
+				removeAllComponents: () => void;
+			};
+		};
 	}
 }
 
@@ -83,6 +101,82 @@ test.describe( 'CMP Settings', () => {
 
 			expect( afterUnload.hasScript ).toBe( false );
 			expect( afterUnload.consent ).toBe( false );
+		} );
+	} );
+
+	test( 'custom consent keeps messaging sessions isolated without prechat fields', async ( { page } ) => {
+		const cmpSettings = new CmpSettingsPage( page );
+
+		await test.step( 'Configure Custom consent', async () => {
+			await cmpSettings.visit();
+			await cmpSettings.setConsentType( 'Custom' );
+			await cmpSettings.save();
+		} );
+
+		await test.step( 'Verify session isolation is applied once per load and listeners do not stack', async () => {
+			await page.goto( '/' );
+
+			const state = await page.evaluate( () => {
+				const calls = {
+					sessionIsolation: 0,
+					hiddenPrechat: 0,
+					removeAllComponents: 0,
+				};
+
+				const createBootstrap = () => {
+					return {
+						settings: {
+							get restrictSessionOnMessagingChannel() {
+								return undefined;
+							},
+							set restrictSessionOnMessagingChannel( _value ) {
+								calls.sessionIsolation += 1;
+							},
+						},
+						prechatAPI: {
+							setHiddenPrechatFields: () => {
+								calls.hiddenPrechat += 1;
+							},
+						},
+						utilAPI: {
+							removeAllComponents: () => {
+								calls.removeAllComponents += 1;
+							},
+						},
+					};
+				};
+
+				window.vipAgentforceConsentData = {
+					...( window.vipAgentforceConsentData || {} ),
+					embedding: {
+						...( window.vipAgentforceConsentData?.embedding || {} ),
+						bootstrapSrc: 'data:text/javascript,',
+					},
+					prechatFields: undefined,
+				};
+				window.initEmbeddedMessaging = () => {};
+				window.embeddedservice_bootstrap = createBootstrap();
+
+				window.AgentforceCMP.loadSDK();
+				window.dispatchEvent( new Event( 'onEmbeddedMessagingReady' ) );
+				window.AgentforceCMP.unloadSDK();
+
+				window.embeddedservice_bootstrap = createBootstrap();
+				window.AgentforceCMP.loadSDK();
+				window.dispatchEvent( new Event( 'onEmbeddedMessagingReady' ) );
+
+				return {
+					hasScript: Boolean( document.getElementById( 'agentforce-sdk' ) ),
+					consent: window.AFConsentGranted === true,
+					...calls,
+				};
+			} );
+
+			expect( state.hasScript ).toBe( true );
+			expect( state.consent ).toBe( true );
+			expect( state.sessionIsolation ).toBe( 2 );
+			expect( state.hiddenPrechat ).toBe( 0 );
+			expect( state.removeAllComponents ).toBe( 1 );
 		} );
 	} );
 

@@ -42,7 +42,6 @@ jobs:
           allowed-endpoints:
             1.gravatar.com:443
             1.gravatar.com:80
-            140.82.114.22:443
             2.gravatar.com:443
             2.gravatar.com:80
             api.github.com:443
@@ -97,6 +96,9 @@ jobs:
 
       - name: Install VIP CLI
         run: npm install -g @automattic/vip
+
+      - name: Pin local dev-env hostname
+        run: echo "127.0.0.1 e2e-agentforce-test-site.vipdev.lndo.site" | sudo tee -a /etc/hosts
 
       - name: Determine WP version
         run: |
