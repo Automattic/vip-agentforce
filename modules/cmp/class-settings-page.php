@@ -155,7 +155,8 @@ class Settings_Page {
 	/** Render: Custom CSS textarea */
 	public function render_custom_css_field(): void {
 		$value = get_option( 'vip_agentforce_custom_css', '' );
-		echo '<textarea name="vip_agentforce_custom_css" rows="3" class="large-text code" placeholder="/* Paste CSS to override agentforce styles */">' . esc_textarea( $value ) . '</textarea>';
+		echo '<textarea name="vip_agentforce_custom_css" rows="3" class="large-text code" placeholder="/* Paste CSS to adjust the outer chat container */">' . esc_textarea( $value ) . '</textarea>';
+		echo '<p class="description">' . esc_html__( 'Applies only to the outer chat container and page positioning. To customize the chat experience itself, use Salesforce UI.', 'vip-agentforce' ) . '</p>';
 	}
 
 	/**
@@ -287,7 +288,7 @@ class Settings_Page {
 
 		add_settings_field(
 			'vip_agentforce_custom_css',
-			__( 'Custom CSS (optional)', 'vip-agentforce' ),
+			__( 'Custom CSS (container only)', 'vip-agentforce' ),
 			array( $this, 'render_custom_css_field' ),
 			'vip-agentforce-settings',
 			'agentforce_bot_ui_section'
@@ -484,7 +485,7 @@ class Settings_Page {
 									<td><?php $this->render_alignment_field(); ?></td>
 								</tr>
 								<tr id="row_custom_css">
-									<th scope="row"><?php esc_html_e( 'Custom CSS (optional)', 'vip-agentforce' ); ?></th>
+									<th scope="row"><?php esc_html_e( 'Custom CSS (container only)', 'vip-agentforce' ); ?></th>
 									<td><?php $this->render_custom_css_field(); ?></td>
 								</tr>
 							</table>
