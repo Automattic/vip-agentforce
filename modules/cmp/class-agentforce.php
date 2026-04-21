@@ -63,7 +63,7 @@ class Agentforce {
 		}
 
 		if ( is_string( $custom_css ) && '' !== trim( $custom_css ) ) {
-			$custom_css = Settings_Page::normalize_custom_css( $custom_css );
+			$custom_css = Settings_Page::sanitize_custom_css( $custom_css );
 			$styles[]   = $custom_css;
 		}
 
