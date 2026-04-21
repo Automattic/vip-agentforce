@@ -8,6 +8,11 @@ use Automattic\VIP\Salesforce\Agentforce\Utils\Configs;
 
 class Cmp_Tests extends WP_UnitTestCase {
 
+	public function setUp(): void {
+		parent::setUp();
+		$this->reset_frontend_style();
+	}
+
 	/**
 	 * Dequeue and deregister consent scripts to keep tests isolated.
 	 *
@@ -16,6 +21,14 @@ class Cmp_Tests extends WP_UnitTestCase {
 	private function reset_consent_script( string $handle ): void {
 		wp_dequeue_script( $handle );
 		wp_deregister_script( $handle );
+	}
+
+	/**
+	 * Dequeue and deregister frontend styles to keep inline CSS tests isolated.
+	 */
+	private function reset_frontend_style(): void {
+		wp_dequeue_style( 'vip-agentforce-style' );
+		wp_deregister_style( 'vip-agentforce-style' );
 	}
 
 	/**
@@ -72,6 +85,7 @@ HTML;
 		$this->reset_consent_script( 'vip-af-onetrust-consent' );
 		$this->reset_consent_script( 'vip-af-iubenda-consent' );
 		$this->reset_consent_script( 'vip-af-custom-consent' );
+		$this->reset_frontend_style();
 		remove_all_filters( 'vip_agentforce_debug_preview_capabilities' );
 		$this->set_debug_query_value( null );
 		wp_set_current_user( 0 );

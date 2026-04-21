@@ -118,6 +118,20 @@ class Settings_Page {
 	}
 
 	/**
+	 * Normalize custom CSS so valid selectors are preserved while HTML payloads are stripped.
+	 *
+	 * @param mixed $css The CSS to sanitize.
+	 *
+	 * @return string Sanitized CSS.
+	 */
+	public static function normalize_custom_css( $css ): string {
+		$css = is_string( $css ) ? $css : '';
+		$css = html_entity_decode( $css, ENT_QUOTES | ENT_HTML5, 'UTF-8' );
+
+		return wp_strip_all_tags( $css );
+	}
+
+	/**
 	 * Sanitize custom CSS.
 	 *
 	 * @param mixed $css The CSS to sanitize.
@@ -125,10 +139,7 @@ class Settings_Page {
 	 * @return string Sanitized CSS.
 	 */
 	public function sanitize_custom_css( $css ) {
-		$css = is_string( $css ) ? $css : '';
-		$css = html_entity_decode( $css, ENT_QUOTES | ENT_HTML5, 'UTF-8' );
-
-		return wp_strip_all_tags( $css );
+		return self::normalize_custom_css( $css );
 	}
 
 	/** Render: Enable log checkbox */
@@ -155,7 +166,7 @@ class Settings_Page {
 
 	/** Render: Custom CSS textarea */
 	public function render_custom_css_field(): void {
-		$value = $this->sanitize_custom_css( get_option( 'vip_agentforce_custom_css', '' ) );
+		$value = self::normalize_custom_css( get_option( 'vip_agentforce_custom_css', '' ) );
 		echo '<textarea name="vip_agentforce_custom_css" rows="3" class="large-text code" placeholder="/* Paste CSS to adjust the outer chat container */">' . esc_textarea( $value ) . '</textarea>';
 		echo '<p class="description">' . esc_html__( 'Applies only to the outer chat container and page positioning. To customize the chat experience itself, use Salesforce UI.', 'vip-agentforce' ) . '</p>';
 	}
