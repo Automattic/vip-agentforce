@@ -630,6 +630,27 @@ HTML;
 		$this->assertStringContainsString( '.embedded-messaging > .launcher { color: red; }', $inline_css );
 	}
 
+	public function test_render_custom_css_decodes_legacy_entities(): void {
+		update_option( 'vip_agentforce_custom_css', '.embedded-messaging &gt; .launcher { color: red; }' );
+
+		Assets::get_instance()->enqueue_scripts();
+		Agentforce::get_instance()->render_custom_css();
+		$inline_styles = wp_styles()->get_data( 'vip-agentforce-style', 'after' );
+		$inline_css    = is_array( $inline_styles ) ? implode( "\n", $inline_styles ) : '';
+
+		$this->assertStringContainsString( '.embedded-messaging > .launcher { color: red; }', $inline_css );
+		$this->assertStringNotContainsString( '&gt;', $inline_css );
+	}
+
+	public function test_sanitize_custom_css_preserves_css_combinators(): void {
+		$settings = Settings_Page::get_instance();
+
+		$this->assertSame(
+			'.embedded-messaging > .launcher { color: red; }',
+			$settings->sanitize_custom_css( '.embedded-messaging > .launcher { color: red; }' )
+		);
+	}
+
 	public function test_validation_returns_old_values_on_invalid_input(): void {
 		$settings = Settings_Page::get_instance();
 

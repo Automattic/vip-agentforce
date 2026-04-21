@@ -126,8 +126,9 @@ class Settings_Page {
 	 */
 	public function sanitize_custom_css( $css ) {
 		$css = is_string( $css ) ? $css : '';
+		$css = html_entity_decode( $css, ENT_QUOTES | ENT_HTML5, 'UTF-8' );
 
-		return wp_kses( $css, array() );
+		return wp_kses_no_null( $css );
 	}
 
 	/** Render: Enable log checkbox */
@@ -155,6 +156,7 @@ class Settings_Page {
 	/** Render: Custom CSS textarea */
 	public function render_custom_css_field(): void {
 		$value = get_option( 'vip_agentforce_custom_css', '' );
+		$value = is_string( $value ) ? html_entity_decode( $value, ENT_QUOTES | ENT_HTML5, 'UTF-8' ) : '';
 		echo '<textarea name="vip_agentforce_custom_css" rows="3" class="large-text code" placeholder="/* Paste CSS to adjust the outer chat container */">' . esc_textarea( $value ) . '</textarea>';
 		echo '<p class="description">' . esc_html__( 'Applies only to the outer chat container and page positioning. To customize the chat experience itself, use Salesforce UI.', 'vip-agentforce' ) . '</p>';
 	}

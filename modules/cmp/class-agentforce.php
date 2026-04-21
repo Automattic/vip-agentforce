@@ -63,7 +63,8 @@ class Agentforce {
 		}
 
 		if ( is_string( $custom_css ) && '' !== trim( $custom_css ) ) {
-			$styles[] = $custom_css;
+			$custom_css = html_entity_decode( $custom_css, ENT_QUOTES | ENT_HTML5, 'UTF-8' );
+			$styles[]   = $custom_css;
 		}
 
 		return implode( "\n", $styles );
