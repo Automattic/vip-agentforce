@@ -617,17 +617,17 @@ HTML;
 		$this->assertStringNotContainsString( 'Salesforce SDK URL', $output );
 	}
 
-	public function test_render_custom_css_includes_alignment_and_sanitizes_css(): void {
+	public function test_render_custom_css_adds_alignment_and_custom_css_inline(): void {
 		update_option( 'vip_agentforce_alignment', 'bottom-left' );
-		update_option( 'vip_agentforce_custom_css', 'body { color: red; }' );
+		update_option( 'vip_agentforce_custom_css', '.embedded-messaging > .launcher { color: red; }' );
 
-		ob_start();
+		Assets::get_instance()->enqueue_scripts();
 		Agentforce::get_instance()->render_custom_css();
-		$output = ob_get_clean();
+		$inline_styles = wp_styles()->get_data( 'vip-agentforce-style', 'after' );
+		$inline_css    = is_array( $inline_styles ) ? implode( "\n", $inline_styles ) : '';
 
-		$this->assertStringContainsString( '.embedded-messaging > .embeddedMessagingFrame { left: 10px }', $output );
-		$this->assertStringNotContainsString( '<script', $output );
-		$this->assertStringContainsString( 'style id="agentforce-custom-css">body { color: red; }</style>', $output );
+		$this->assertStringContainsString( '.embedded-messaging > .embeddedMessagingFrame { left: 10px }', $inline_css );
+		$this->assertStringContainsString( '.embedded-messaging > .launcher { color: red; }', $inline_css );
 	}
 
 	public function test_validation_returns_old_values_on_invalid_input(): void {

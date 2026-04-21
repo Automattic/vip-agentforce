@@ -27,32 +27,45 @@ class Agentforce {
 	 * @return void
 	 */
 	protected function setup_hooks() {
-
-		/**
-		 * Action
-		 */
-		add_action( 'wp_head', array( $this, 'render_custom_css' ) );
+		add_action( 'wp_enqueue_scripts', array( $this, 'render_custom_css' ), 20 );
 	}
 
 	/**
-	 * Render custom CSS in the head section.
+	 * Add custom CSS to the frontend stylesheet.
 	 *
 	 * @return void
 	 */
-	public function render_custom_css() {
-		$custom_css = get_option( 'vip_agentforce_custom_css', '' );
-		$alignment  = get_option( 'vip_agentforce_alignment', 'bottom-right' );
-		if ( 'bottom-left' === $alignment ) {
-			echo '<style>
-		          .embedded-messaging > .embeddedMessagingFrame { left: 10px }
-		          .embedded-messaging > .embeddedMessagingFrame.isMinimized { right: unset; }
-		          .embedded-messaging > .embeddedMessagingFrame.isMaximized { right: unset; }
-		          button#embeddedMessagingConversationButton { right: unset; left: 10px; }
-                 </style>';
+	public function render_custom_css(): void {
+		$css = $this->get_custom_css();
+
+		if ( '' === $css ) {
+			return;
 		}
 
-		if ( ! empty( $custom_css ) ) {
-			echo '<style id="agentforce-custom-css">' . esc_html( wp_strip_all_tags( $custom_css ) ) . '</style>';
+		wp_add_inline_style( 'vip-agentforce-style', $css );
+	}
+
+	/**
+	 * Build the custom CSS that should be appended to the frontend stylesheet.
+	 *
+	 * @return string
+	 */
+	private function get_custom_css(): string {
+		$custom_css = get_option( 'vip_agentforce_custom_css', '' );
+		$alignment  = get_option( 'vip_agentforce_alignment', 'bottom-right' );
+		$styles     = array();
+
+		if ( 'bottom-left' === $alignment ) {
+			$styles[] = '.embedded-messaging > .embeddedMessagingFrame { left: 10px }
+			.embedded-messaging > .embeddedMessagingFrame.isMinimized { right: unset; }
+			.embedded-messaging > .embeddedMessagingFrame.isMaximized { right: unset; }
+			button#embeddedMessagingConversationButton { right: unset; left: 10px; }';
 		}
+
+		if ( is_string( $custom_css ) && '' !== trim( $custom_css ) ) {
+			$styles[] = $custom_css;
+		}
+
+		return implode( "\n", $styles );
 	}
 }
