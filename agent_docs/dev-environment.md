@@ -12,6 +12,46 @@ Run `vip dev-env info --slug=vip-agentforce` to get current URLs and ports. Defa
 
 These values (especially ports and login URLs) may change between restarts.
 
+## Local Configuration (`env.php`)
+
+`env.php` lives in the plugin root, is gitignored, and is auto-loaded if present.
+Use it to inject `VIP_AGENTFORCE_CONFIGS` and feature flags so the WP Admin
+settings page and frontend behave as if the integration is wired up — without
+hitting a real Salesforce org. See `docs/setup.md` for the full reference.
+
+Minimum useful template for agent-driven testing:
+
+```php
+<?php
+// Pretend the org-level integration config came back from the VIP Config API.
+define( 'VIP_AGENTFORCE_CONFIGS', [
+    'salesforce_instance_url'    => 'https://example.my.salesforce.com',
+    'ingestion_api_instance_url' => 'https://your-instance.salesforce.com',
+    'ingestion_api_token'        => 'fake-token-for-local-dev',
+    'ingestion_api_source_name'  => 'wpvip_agents',
+    'ingestion_api_object_name'  => 'wordpress_post',
+] );
+
+// Unlocks `dev/setup.php` (extra admin tools, debug helpers).
+define( 'VIP_AGENTFORCE_DEVELOPER_MODE', true );
+
+// Short-circuits real Salesforce HTTP calls and logs request bodies via
+// `error_log()` — visible in `vip dev-env logs --service=php`.
+define( 'VIP_AGENTFORCE_MOCK_INGESTION_API', true );
+```
+
+`env.php` is `require_once`'d on every plugin bootstrap (see
+`vip-agentforce.php`), so edits take effect on the next request — no
+container restart required. Verify the constants are live:
+
+```bash
+vip dev-env exec --slug=vip-agentforce -- wp eval "
+var_export( defined( 'VIP_AGENTFORCE_CONFIGS' ) ? VIP_AGENTFORCE_CONFIGS : 'undefined' );
+echo PHP_EOL;
+var_export( defined( 'VIP_AGENTFORCE_MOCK_INGESTION_API' ) ? VIP_AGENTFORCE_MOCK_INGESTION_API : false );
+" --user=1
+```
+
 ## WP-CLI (via vip dev-env exec)
 
 All `wp` commands go through `vip dev-env exec`:
