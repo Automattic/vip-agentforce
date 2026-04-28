@@ -219,7 +219,7 @@ class Settings_Page {
 			'vip_agentforce_custom_css',
 			array(
 				'sanitize_callback' => array(
-					$this,
+					self::class,
 					'sanitize_custom_css',
 				),
 			)

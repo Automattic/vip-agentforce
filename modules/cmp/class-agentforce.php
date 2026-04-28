@@ -56,10 +56,15 @@ class Agentforce {
 		$styles     = array();
 
 		if ( 'bottom-left' === $alignment ) {
-			$styles[] = '.embedded-messaging > .embeddedMessagingFrame { left: 10px }
-			.embedded-messaging > .embeddedMessagingFrame.isMinimized { right: unset; }
-			.embedded-messaging > .embeddedMessagingFrame.isMaximized { right: unset; }
-			button#embeddedMessagingConversationButton { right: unset; left: 10px; }';
+			$styles[] = implode(
+				"\n",
+				array(
+					'.embedded-messaging > .embeddedMessagingFrame { left: 10px }',
+					'.embedded-messaging > .embeddedMessagingFrame.isMinimized { right: unset; }',
+					'.embedded-messaging > .embeddedMessagingFrame.isMaximized { right: unset; }',
+					'button#embeddedMessagingConversationButton { right: unset; left: 10px; }',
+				)
+			);
 		}
 
 		if ( is_string( $custom_css ) && '' !== trim( $custom_css ) ) {
