@@ -69,6 +69,7 @@ if ( class_exists( 'Automattic\\VIP\\Prometheus\\Plugin' ) ) {
 // Load the modules
 require_once __DIR__ . '/modules/ingestion/class-ingestion-post-record.php';
 require_once __DIR__ . '/modules/ingestion/class-ingestion-api-result.php';
+require_once __DIR__ . '/modules/ingestion/class-ingestion-api-client.php';
 require_once __DIR__ . '/modules/ingestion/class-default-transformer.php';
 require_once __DIR__ . '/modules/ingestion/class-sync-result.php';
 require_once __DIR__ . '/modules/ingestion/class-ingestion.php';

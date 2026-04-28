@@ -101,14 +101,20 @@ class Ingestion_API_Client {
 		$attempt = 0;
 
 		while ( $attempt <= self::MAX_RETRIES ) {
-			// Calculate total wait time before making request.
-			// Order: block_remaining (Retry-After) + jitter + exponential backoff.
+			// Sleep the server-directed wait exactly, then apply jitter only
+			// to the client-side exponential backoff. Jittering the whole
+			// thing would inflate Retry-After windows by up to 50% and
+			// delay ingestion well past what the server asked for; the
+			// jitter exists to smear out our own retries (thundering herd),
+			// not to second-guess the server.
 			$block_remaining = $this->get_rate_limit_block_remaining();
-			$backoff_delay   = $this->calculate_backoff_delay( $attempt );
-			$total_wait      = $block_remaining + $backoff_delay;
+			if ( $block_remaining > 0 ) {
+				$this->sleep_exact( $block_remaining );
+			}
 
-			if ( $total_wait > 0 ) {
-				$this->sleep_with_jitter( $total_wait );
+			$backoff_delay = $this->calculate_backoff_delay( $attempt );
+			if ( $backoff_delay > 0 ) {
+				$this->sleep_with_jitter( $backoff_delay );
 			}
 
 			$response = $this->execute_request( $method, $body );
@@ -462,6 +468,10 @@ class Ingestion_API_Client {
 	/**
 	 * Sleep for the specified duration plus random jitter.
 	 *
+	 * Used for client-side waits (exponential backoff) where smearing helps
+	 * avoid synchronized retries across many workers. NOT for server-directed
+	 * waits — see `sleep_exact()`.
+	 *
 	 * @param float $base_seconds The base sleep duration in seconds.
 	 */
 	protected function sleep_with_jitter( float $base_seconds ): void {
@@ -471,6 +481,23 @@ class Ingestion_API_Client {
 
 		// Convert to microseconds for usleep.
 		$microseconds = (int) ( $total_seconds * 1000000 );
+
+		if ( $microseconds > 0 ) {
+			usleep( $microseconds );
+		}
+	}
+
+	/**
+	 * Sleep for exactly the specified duration, no jitter.
+	 *
+	 * Used for server-directed waits (Retry-After / rate-limit block) where
+	 * the server has told us how long to wait and adding jitter would only
+	 * delay us beyond that.
+	 *
+	 * @param float $seconds The sleep duration in seconds.
+	 */
+	protected function sleep_exact( float $seconds ): void {
+		$microseconds = (int) round( $seconds * 1000000 );
 
 		if ( $microseconds > 0 ) {
 			usleep( $microseconds );

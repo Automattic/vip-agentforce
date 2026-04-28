@@ -19,6 +19,10 @@ class Test_Ingestion_API_Client extends Ingestion_API_Client {
 	protected function sleep_with_jitter( float $base_seconds ): void {
 		// No-op for tests.
 	}
+
+	protected function sleep_exact( float $seconds ): void {
+		// No-op for tests.
+	}
 }
 
 class Ingestion_API_Client_Test extends WP_UnitTestCase {
