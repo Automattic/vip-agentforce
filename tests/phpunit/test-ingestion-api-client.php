@@ -10,21 +10,6 @@ use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_Post_Record;
 use Automattic\VIP\Salesforce\Agentforce\Utils\Configs;
 use Automattic\VIP\Salesforce\Agentforce\Utils\Logger;
 
-// phpcs:disable Generic.Files.OneObjectStructurePerFile.MultipleFound -- Test double is private to this file.
-
-/**
- * Test double that skips sleeping for faster tests.
- */
-class Test_Ingestion_API_Client extends Ingestion_API_Client {
-	protected function sleep_with_jitter( float $base_seconds ): void {
-		// No-op for tests.
-	}
-
-	protected function sleep_exact( float $seconds ): void {
-		// No-op for tests.
-	}
-}
-
 class Ingestion_API_Client_Test extends WP_UnitTestCase {
 
 	/**
@@ -221,7 +206,7 @@ class Ingestion_API_Client_Test extends WP_UnitTestCase {
 	public function test_send_returns_success_on_202_response(): void {
 		$this->mock_http_responses( [ $this->success_response() ] );
 
-		$client = new Test_Ingestion_API_Client();
+		$client = new Ingestion_API_Client();
 		$record = $this->create_test_record();
 
 		$result = $client->send( $record );
@@ -234,7 +219,7 @@ class Ingestion_API_Client_Test extends WP_UnitTestCase {
 	public function test_send_makes_post_request_with_correct_body(): void {
 		$this->mock_http_responses( [ $this->success_response() ] );
 
-		$client = new Test_Ingestion_API_Client();
+		$client = new Ingestion_API_Client();
 		$record = $this->create_test_record();
 
 		$client->send( $record );
@@ -251,7 +236,7 @@ class Ingestion_API_Client_Test extends WP_UnitTestCase {
 	public function test_delete_returns_success_on_202_response(): void {
 		$this->mock_http_responses( [ $this->success_response() ] );
 
-		$client = new Test_Ingestion_API_Client();
+		$client = new Ingestion_API_Client();
 
 		$result = $client->delete( '1_1_456' );
 
@@ -262,7 +247,7 @@ class Ingestion_API_Client_Test extends WP_UnitTestCase {
 	public function test_delete_makes_delete_request_with_correct_body(): void {
 		$this->mock_http_responses( [ $this->success_response() ] );
 
-		$client = new Test_Ingestion_API_Client();
+		$client = new Ingestion_API_Client();
 
 		$client->delete( '1_1_456' );
 
@@ -277,7 +262,7 @@ class Ingestion_API_Client_Test extends WP_UnitTestCase {
 	public function test_request_includes_auth_header(): void {
 		$this->mock_http_responses( [ $this->success_response() ] );
 
-		$client = new Test_Ingestion_API_Client();
+		$client = new Ingestion_API_Client();
 		$record = $this->create_test_record();
 
 		$client->send( $record );
@@ -288,7 +273,7 @@ class Ingestion_API_Client_Test extends WP_UnitTestCase {
 	public function test_request_uses_correct_url(): void {
 		$this->mock_http_responses( [ $this->success_response() ] );
 
-		$client = new Test_Ingestion_API_Client();
+		$client = new Ingestion_API_Client();
 		$record = $this->create_test_record();
 
 		$client->send( $record );
@@ -307,7 +292,7 @@ class Ingestion_API_Client_Test extends WP_UnitTestCase {
 		$this->prime_configs_cache( [] );
 		$this->mock_http_responses( [ $this->success_response() ] );
 
-		$client = new Test_Ingestion_API_Client();
+		$client = new Ingestion_API_Client();
 		$record = $this->create_test_record();
 
 		$result = $client->send( $record );
@@ -326,7 +311,7 @@ class Ingestion_API_Client_Test extends WP_UnitTestCase {
 		);
 		$this->mock_http_responses( [ $this->success_response() ] );
 
-		$client = new Test_Ingestion_API_Client();
+		$client = new Ingestion_API_Client();
 		$record = $this->create_test_record();
 
 		$result = $client->send( $record );
@@ -344,7 +329,7 @@ class Ingestion_API_Client_Test extends WP_UnitTestCase {
 		// Use 400 (Bad Request) which is a non-retryable client error.
 		$this->mock_http_responses( [ $this->error_response( 400, 'Bad Request' ) ] );
 
-		$client = new Test_Ingestion_API_Client();
+		$client = new Ingestion_API_Client();
 		$record = $this->create_test_record();
 
 		$result = $client->send( $record );
@@ -356,7 +341,7 @@ class Ingestion_API_Client_Test extends WP_UnitTestCase {
 	public function test_returns_failure_on_wp_error(): void {
 		$this->mock_http_responses( [ new WP_Error( 'http_error', 'Connection failed' ) ] );
 
-		$client = new Test_Ingestion_API_Client();
+		$client = new Ingestion_API_Client();
 		$record = $this->create_test_record();
 
 		$result = $client->send( $record );
@@ -366,124 +351,63 @@ class Ingestion_API_Client_Test extends WP_UnitTestCase {
 	}
 
 	// =========================================================================
-	// Rate limiting tests
+	// Rate limiting + retryability tests
 	// =========================================================================
+	//
+	// Retry of transient failures lives in `Ingestion_Cron`, not here. The
+	// client's job is to make exactly one HTTP call per invocation and
+	// surface a result whose `is_retryable()` tells the cron whether to
+	// keep the queue item around for the next tick. The shared rate-limit
+	// cache block is the coordination mechanism that prevents a swarm of
+	// workers from pile-driving SF inside a 429 window.
 
-	public function test_retries_on_429_and_eventually_succeeds(): void {
-		$this->mock_http_responses(
-			[
-				$this->rate_limited_response( 0 ), // First attempt: rate limited.
-				$this->success_response(),         // Second attempt: success.
-			]
-		);
+	public function test_429_returns_retryable_failure_and_sets_cache_block(): void {
+		$this->mock_http_responses( [ $this->rate_limited_response( 1 ) ] );
 
-		$client = new Test_Ingestion_API_Client();
-		$record = $this->create_test_record();
-
-		$result = $client->send( $record );
-
-		$this->assertTrue( $result->success );
-		$this->assertCount( 2, $this->captured_requests, 'Should retry after 429' );
-	}
-
-	public function test_retries_after_429_with_retry_after_header(): void {
-		$this->mock_http_responses(
-			[
-				$this->rate_limited_response( 1 ),
-				$this->success_response(),
-			]
-		);
-
-		$client = new Test_Ingestion_API_Client();
-		$record = $this->create_test_record();
-
-		$result = $client->send( $record );
-
-		$this->assertTrue( $result->success );
-		$this->assertCount( 2, $this->captured_requests, 'Should retry after 429' );
-	}
-
-	public function test_fails_after_max_retries(): void {
-		// 11 responses for 1 initial + 10 retries.
-		$this->mock_http_responses(
-			array_fill( 0, 11, $this->rate_limited_response( 0 ) )
-		);
-
-		$client = new Test_Ingestion_API_Client();
+		$client = new Ingestion_API_Client();
 		$record = $this->create_test_record();
 
 		$result = $client->send( $record );
 
 		$this->assertFalse( $result->success );
-		$this->assertStringContainsString( 'Rate limited after', $result->error_message );
-		$this->assertCount( 11, $this->captured_requests, 'Should make 11 attempts (1 + 10 retries)' );
-	}
+		$this->assertTrue( $result->is_retryable(), '429 must be marked retryable so cron re-queues.' );
+		$this->assertCount( 1, $this->captured_requests, 'Client makes exactly one attempt; retry is the cron\'s job.' );
 
-	public function test_succeeds_after_rate_limit_block_expires(): void {
-		// Set up an already-expired rate limit block in cache.
-		$blocked_until = microtime( true ) - 1; // Expired 1 second ago.
-		// phpcs:ignore WordPressVIPMinimum.Performance.LowExpiryCacheTime.LowCacheTime -- Test fixture mirrors production rate-limit TTL semantics; not a real cache write.
-		wp_cache_set( 'vip_agentforce_rate_limit_blocked_until', $blocked_until, 'vip_agentforce', 2 );
-
-		$this->mock_http_responses( [ $this->success_response() ] );
-
-		$client = new Test_Ingestion_API_Client();
-		$record = $this->create_test_record();
-
-		$result = $client->send( $record );
-
-		$this->assertTrue( $result->success );
-		$this->assertCount( 1, $this->captured_requests );
-	}
-
-	public function test_processes_rate_limit_headers_on_success(): void {
-		// Response with rate limit headers indicating low remaining.
-		$headers = [
-			'x-ratelimit-remaining' => '0',
-			'x-ratelimit-reset'     => (string) ( time() + 2 ),
-		];
-		$this->mock_http_responses( [ $this->success_response( $headers ) ] );
-
-		$client = new Test_Ingestion_API_Client();
-		$record = $this->create_test_record();
-
-		$result = $client->send( $record );
-
-		$this->assertTrue( $result->success );
-
-		// Check that a rate limit block was set.
 		$blocked_until = wp_cache_get( 'vip_agentforce_rate_limit_blocked_until', 'vip_agentforce' );
-		$this->assertNotFalse( $blocked_until, 'Should set rate limit block when remaining is low' );
+		$this->assertNotFalse( $blocked_until, '429 must store the Retry-After block in shared cache.' );
+		$this->assertGreaterThan( microtime( true ), (float) $blocked_until );
 	}
 
-	// =========================================================================
-	// Multiple retry tests
-	// =========================================================================
-
-	public function test_retries_multiple_times_before_success(): void {
+	public function test_429_without_retry_after_header_uses_short_default_block(): void {
+		// Retry-After absent — client should still set a short default block
+		// so other workers know to back off.
 		$this->mock_http_responses(
 			[
-				$this->rate_limited_response( 0 ),
-				$this->rate_limited_response( 0 ),
-				$this->success_response(),
+				[
+					'response' => [
+						'code'    => 429,
+						'message' => 'Too Many Requests',
+					],
+					'headers'  => [],
+					'body'     => '',
+				],
 			]
 		);
 
-		$client = new Test_Ingestion_API_Client();
+		$client = new Ingestion_API_Client();
 		$record = $this->create_test_record();
 
 		$result = $client->send( $record );
 
-		$this->assertTrue( $result->success );
-		$this->assertCount( 3, $this->captured_requests, 'Should make 3 attempts before success' );
+		$this->assertFalse( $result->success );
+		$this->assertTrue( $result->is_retryable() );
+
+		$blocked_until = wp_cache_get( 'vip_agentforce_rate_limit_blocked_until', 'vip_agentforce' );
+		$this->assertNotFalse( $blocked_until );
 	}
 
-	// =========================================================================
-	// HTTP-date Retry-After format test
-	// =========================================================================
-
-	public function test_parses_http_date_retry_after(): void {
-		$retry_date = gmdate( 'D, d M Y H:i:s', time() + 1 ) . ' GMT';
+	public function test_429_parses_http_date_retry_after(): void {
+		$retry_date = gmdate( 'D, d M Y H:i:s', time() + 5 ) . ' GMT';
 		$this->mock_http_responses(
 			[
 				[
@@ -496,58 +420,116 @@ class Ingestion_API_Client_Test extends WP_UnitTestCase {
 					],
 					'body'     => '',
 				],
-				$this->success_response(),
 			]
 		);
 
-		$client = new Test_Ingestion_API_Client();
-		$record = $this->create_test_record();
+		$client = new Ingestion_API_Client();
+		$client->send( $this->create_test_record() );
 
-		$result = $client->send( $record );
+		$blocked_until = (float) wp_cache_get( 'vip_agentforce_rate_limit_blocked_until', 'vip_agentforce' );
+		$this->assertGreaterThan( microtime( true ) + 3, $blocked_until, 'HTTP-date Retry-After should park the block several seconds out.' );
+	}
+
+	public function test_active_cache_block_defers_request_without_calling_sf(): void {
+		// Park a block 10 seconds in the future.
+		$blocked_until = microtime( true ) + 10;
+		// phpcs:ignore WordPressVIPMinimum.Performance.LowExpiryCacheTime.LowCacheTime -- Test fixture mirrors production rate-limit TTL semantics; not a real cache write.
+		wp_cache_set( 'vip_agentforce_rate_limit_blocked_until', $blocked_until, 'vip_agentforce', 12 );
+
+		// Mock a success response so we'd notice if the client actually called.
+		$this->mock_http_responses( [ $this->success_response() ] );
+
+		$client = new Ingestion_API_Client();
+		$result = $client->send( $this->create_test_record() );
+
+		$this->assertFalse( $result->success );
+		$this->assertTrue( $result->is_retryable(), 'Deferred-by-block result must be retryable.' );
+		$this->assertCount( 0, $this->captured_requests, 'Client must skip the HTTP call entirely while the block is active.' );
+		$this->assertStringContainsString( 'block active', $result->error_message );
+	}
+
+	public function test_expired_cache_block_does_not_defer(): void {
+		// Block already expired.
+		$blocked_until = microtime( true ) - 1;
+		// phpcs:ignore WordPressVIPMinimum.Performance.LowExpiryCacheTime.LowCacheTime -- Test fixture mirrors production rate-limit TTL semantics; not a real cache write.
+		wp_cache_set( 'vip_agentforce_rate_limit_blocked_until', $blocked_until, 'vip_agentforce', 2 );
+
+		$this->mock_http_responses( [ $this->success_response() ] );
+
+		$client = new Ingestion_API_Client();
+		$result = $client->send( $this->create_test_record() );
 
 		$this->assertTrue( $result->success );
-		$this->assertCount( 2, $this->captured_requests );
+		$this->assertCount( 1, $this->captured_requests, 'Expired block should not stop the request.' );
+	}
+
+	public function test_preemptive_block_set_when_remaining_is_low_on_success(): void {
+		// SF says "this one was OK but you have 1 left until reset" — client
+		// should park the block preemptively so the next caller backs off.
+		$reset_at = time() + 5;
+		$headers  = [
+			'x-ratelimit-remaining' => '1',
+			'x-ratelimit-reset'     => (string) $reset_at,
+		];
+		$this->mock_http_responses( [ $this->success_response( $headers ) ] );
+
+		$client = new Ingestion_API_Client();
+		$result = $client->send( $this->create_test_record() );
+
+		$this->assertTrue( $result->success );
+
+		$blocked_until = wp_cache_get( 'vip_agentforce_rate_limit_blocked_until', 'vip_agentforce' );
+		$this->assertNotFalse( $blocked_until, 'Preemptive block should land in cache when X-RateLimit-Remaining <= 1.' );
+	}
+
+	public function test_preemptive_block_not_set_when_remaining_is_healthy(): void {
+		$headers = [
+			'x-ratelimit-remaining' => '50',
+			'x-ratelimit-reset'     => (string) ( time() + 60 ),
+		];
+		$this->mock_http_responses( [ $this->success_response( $headers ) ] );
+
+		$client = new Ingestion_API_Client();
+		$client->send( $this->create_test_record() );
+
+		$blocked_until = wp_cache_get( 'vip_agentforce_rate_limit_blocked_until', 'vip_agentforce' );
+		$this->assertFalse( $blocked_until, 'Healthy budget should not preempt; block is for the edge case only.' );
 	}
 
 	// =========================================================================
-	// Server error (5xx) retry tests
+	// Server-side error (5xx / 408) tests — single attempt, retryable result
 	// =========================================================================
 
-	public function test_retries_on_500_and_eventually_succeeds(): void {
-		$this->mock_http_responses(
-			[
-				$this->error_response( 500, 'Internal Server Error' ),
-				$this->success_response(),
-			]
-		);
+	public function test_5xx_returns_retryable_failure(): void {
+		foreach ( [ 500, 502, 503, 504 ] as $status_code ) {
+			$this->captured_requests = [];
+			remove_all_filters( 'pre_http_request' );
 
-		$client = new Test_Ingestion_API_Client();
-		$record = $this->create_test_record();
+			$this->mock_http_responses( [ $this->error_response( $status_code ) ] );
 
-		$result = $client->send( $record );
+			$client = new Ingestion_API_Client();
+			$result = $client->send( $this->create_test_record() );
 
-		$this->assertTrue( $result->success );
-		$this->assertCount( 2, $this->captured_requests, 'Should retry after 500' );
+			$this->assertFalse( $result->success, "{$status_code} should fail" );
+			$this->assertTrue( $result->is_retryable(), "{$status_code} should be retryable" );
+			$this->assertCount( 1, $this->captured_requests, "{$status_code} must be a single attempt" );
+		}
 	}
 
-	public function test_retries_on_502_and_eventually_succeeds(): void {
-		$this->mock_http_responses(
-			[
-				$this->error_response( 502, 'Bad Gateway' ),
-				$this->success_response(),
-			]
-		);
+	public function test_408_returns_retryable_failure(): void {
+		$this->mock_http_responses( [ $this->error_response( 408, 'Request Timeout' ) ] );
 
-		$client = new Test_Ingestion_API_Client();
-		$record = $this->create_test_record();
+		$client = new Ingestion_API_Client();
+		$result = $client->send( $this->create_test_record() );
 
-		$result = $client->send( $record );
-
-		$this->assertTrue( $result->success );
-		$this->assertCount( 2, $this->captured_requests, 'Should retry after 502' );
+		$this->assertFalse( $result->success );
+		$this->assertTrue( $result->is_retryable() );
+		$this->assertCount( 1, $this->captured_requests );
 	}
 
-	public function test_retries_on_503_with_retry_after_header(): void {
+	public function test_503_with_retry_after_sets_cache_block(): void {
+		// 503 with Retry-After should propagate to the shared block, same
+		// way as 429 — so other workers also back off.
 		$this->mock_http_responses(
 			[
 				[
@@ -556,71 +538,18 @@ class Ingestion_API_Client_Test extends WP_UnitTestCase {
 						'message' => 'Service Unavailable',
 					],
 					'headers'  => [
-						'retry-after' => '0',
+						'retry-after' => '5',
 					],
 					'body'     => '',
 				],
-				$this->success_response(),
 			]
 		);
 
-		$client = new Test_Ingestion_API_Client();
-		$record = $this->create_test_record();
+		$client = new Ingestion_API_Client();
+		$client->send( $this->create_test_record() );
 
-		$result = $client->send( $record );
-
-		$this->assertTrue( $result->success );
-		$this->assertCount( 2, $this->captured_requests, 'Should retry after 503' );
-	}
-
-	public function test_retries_on_504_and_eventually_succeeds(): void {
-		$this->mock_http_responses(
-			[
-				$this->error_response( 504, 'Gateway Timeout' ),
-				$this->success_response(),
-			]
-		);
-
-		$client = new Test_Ingestion_API_Client();
-		$record = $this->create_test_record();
-
-		$result = $client->send( $record );
-
-		$this->assertTrue( $result->success );
-		$this->assertCount( 2, $this->captured_requests, 'Should retry after 504' );
-	}
-
-	public function test_retries_on_408_request_timeout(): void {
-		$this->mock_http_responses(
-			[
-				$this->error_response( 408, 'Request Timeout' ),
-				$this->success_response(),
-			]
-		);
-
-		$client = new Test_Ingestion_API_Client();
-		$record = $this->create_test_record();
-
-		$result = $client->send( $record );
-
-		$this->assertTrue( $result->success );
-		$this->assertCount( 2, $this->captured_requests, 'Should retry after 408' );
-	}
-
-	public function test_fails_after_max_retries_on_5xx(): void {
-		// 11 responses for 1 initial + 10 retries.
-		$this->mock_http_responses(
-			array_fill( 0, 11, $this->error_response( 500 ) )
-		);
-
-		$client = new Test_Ingestion_API_Client();
-		$record = $this->create_test_record();
-
-		$result = $client->send( $record );
-
-		$this->assertFalse( $result->success );
-		$this->assertStringContainsString( 'Server error (500)', $result->error_message );
-		$this->assertCount( 11, $this->captured_requests, 'Should make 11 attempts (1 + 10 retries)' );
+		$blocked_until = wp_cache_get( 'vip_agentforce_rate_limit_blocked_until', 'vip_agentforce' );
+		$this->assertNotFalse( $blocked_until, '503 Retry-After must set the block to coordinate workers.' );
 	}
 
 	// =========================================================================
@@ -635,7 +564,7 @@ class Ingestion_API_Client_Test extends WP_UnitTestCase {
 			]
 		);
 
-		$client = new Test_Ingestion_API_Client();
+		$client = new Ingestion_API_Client();
 		$record = $this->create_test_record();
 
 		$result = $client->send( $record );
@@ -653,7 +582,7 @@ class Ingestion_API_Client_Test extends WP_UnitTestCase {
 			]
 		);
 
-		$client = new Test_Ingestion_API_Client();
+		$client = new Ingestion_API_Client();
 		$record = $this->create_test_record();
 
 		$result = $client->send( $record );
@@ -670,7 +599,7 @@ class Ingestion_API_Client_Test extends WP_UnitTestCase {
 			]
 		);
 
-		$client = new Test_Ingestion_API_Client();
+		$client = new Ingestion_API_Client();
 		$record = $this->create_test_record();
 
 		$result = $client->send( $record );
@@ -687,7 +616,7 @@ class Ingestion_API_Client_Test extends WP_UnitTestCase {
 			]
 		);
 
-		$client = new Test_Ingestion_API_Client();
+		$client = new Ingestion_API_Client();
 		$record = $this->create_test_record();
 
 		$result = $client->send( $record );

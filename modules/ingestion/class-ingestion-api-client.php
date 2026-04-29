@@ -2,7 +2,11 @@
 /**
  * Ingestion API Client.
  *
- * Handles API calls to Salesforce Data Cloud Ingestion API with rate limiting.
+ * Handles single-attempt API calls to the Salesforce Data Cloud Ingestion API
+ * and maintains a shared rate-limit cache block that coordinates back-off
+ * across workers. Retry of transient failures is owned by `Ingestion_Cron`,
+ * which keeps queued items in place across cron ticks until they succeed
+ * or the retry cap is exhausted.
  *
  * @package vip-agentforce
  */
@@ -15,8 +19,18 @@ use Automattic\VIP\Salesforce\Agentforce\Utils\Logger;
 /**
  * Client for making API calls to the Salesforce Data Cloud Ingestion API.
  *
- * Implements reactive rate limiting based on response headers with exponential
- * backoff and jitter for retry handling.
+ * Responsibilities are deliberately narrow:
+ *
+ * - Make exactly one HTTP request per call. The caller (cron) decides whether
+ *   to retry based on `Ingestion_API_Result::is_retryable()`.
+ * - Maintain a shared rate-limit cache block:
+ *   - Reactive: a 429 response stores the Retry-After window so other workers
+ *     and other queue items defer the same way until it expires.
+ *   - Preemptive: a successful 202 with `X-RateLimit-Remaining: 1` parks the
+ *     next call until `X-RateLimit-Reset` instead of waiting for an actual 429.
+ * - Skip the HTTP call entirely when the cache block is active — there's no
+ *   point firing a request we already know SF will reject. The result is
+ *   marked retryable so cron picks it up after the block expires.
  */
 class Ingestion_API_Client {
 	/**
@@ -30,19 +44,11 @@ class Ingestion_API_Client {
 	private const CACHE_GROUP = 'vip_agentforce';
 
 	/**
-	 * Maximum number of retry attempts.
+	 * Default rate-limit block duration when SF returns 429 without a
+	 * Retry-After header. Short — the block exists primarily to coordinate
+	 * other workers; if we guess wrong, the next 429 will reset it.
 	 */
-	private const MAX_RETRIES = 10;
-
-	/**
-	 * Base delay for exponential backoff in seconds.
-	 */
-	private const BASE_DELAY_SECONDS = 1;
-
-	/**
-	 * Maximum delay cap for exponential backoff in seconds.
-	 */
-	private const MAX_DELAY_SECONDS = 30;
+	private const DEFAULT_BLOCK_SECONDS = 1;
 
 	/**
 	 * Default request timeout in seconds.
@@ -85,7 +91,8 @@ class Ingestion_API_Client {
 	}
 
 	/**
-	 * Make an API request with rate limiting and retry logic.
+	 * Make a single API request, honoring the shared rate-limit block and
+	 * returning a result that the cron can act on (retry or give up).
 	 *
 	 * @param string $method    HTTP method ('POST' or 'DELETE').
 	 * @param string $body      JSON-encoded request body.
@@ -95,105 +102,52 @@ class Ingestion_API_Client {
 	private function make_request( string $method, string $body, string $record_id ): Ingestion_API_Result {
 		$config_error = $this->validate_config();
 		if ( null !== $config_error ) {
+			// Permanent — don't mark retryable; cron will fire the failure event.
 			return Ingestion_API_Result::failure( $config_error, null, $record_id );
 		}
 
-		$attempt = 0;
+		// If a previous 429 (or our own preemptive block) said "back off",
+		// defer this call entirely. Cron will pick it up on a later tick once
+		// the block expires. Saves us a guaranteed-rejected request to SF.
+		$block_remaining = $this->get_rate_limit_block_remaining();
+		if ( $block_remaining > 0 ) {
+			return Ingestion_API_Result::deferred(
+				sprintf( 'Rate-limit block active for %.1fs; deferring request', $block_remaining ),
+				$record_id
+			);
+		}
 
-		while ( $attempt <= self::MAX_RETRIES ) {
-			// Sleep the server-directed wait exactly, then apply jitter only
-			// to the client-side exponential backoff. Jittering the whole
-			// thing would inflate Retry-After windows by up to 50% and
-			// delay ingestion well past what the server asked for; the
-			// jitter exists to smear out our own retries (thundering herd),
-			// not to second-guess the server.
-			$block_remaining = $this->get_rate_limit_block_remaining();
-			if ( $block_remaining > 0 ) {
-				$this->sleep_exact( $block_remaining );
-			}
+		$response = $this->execute_request( $method, $body );
 
-			$backoff_delay = $this->calculate_backoff_delay( $attempt );
-			if ( $backoff_delay > 0 ) {
-				$this->sleep_with_jitter( $backoff_delay );
-			}
-
-			$response = $this->execute_request( $method, $body );
-
-			if ( is_wp_error( $response ) ) {
-				return Ingestion_API_Result::failure( $response->get_error_message(), $response, $record_id );
-			}
-
-			$status_code = wp_remote_retrieve_response_code( $response );
-
-			// Success.
-			if ( 202 === $status_code ) {
-				$this->process_rate_limit_headers( $response );
-				return Ingestion_API_Result::success( $record_id, $response );
-			}
-
-			// Rate limited (429) - set block in cache and retry.
-			if ( 429 === $status_code ) {
-				$this->handle_rate_limit_response( $response );
-
-				++$attempt;
-				if ( $attempt <= self::MAX_RETRIES ) {
-					continue;
-				}
-
-				Logger::error(
-					'ingestion-api',
-					'Rate limited after max retries',
-					[
-						'record_id'     => $record_id,
-						'attempts'      => $attempt,
-						'status_code'   => $status_code,
-						'response_body' => wp_remote_retrieve_body( $response ),
-					]
-				);
-
-				return Ingestion_API_Result::failure(
-					'Rate limited after ' . self::MAX_RETRIES . ' retries',
-					$response,
-					$record_id
-				);
-			}
-
-			// Retryable server errors (5xx) and timeout (408) - retry with backoff.
-			if ( $this->is_retryable_error( $status_code ) ) {
-				// Check for Retry-After header (503 may include it).
-				$retry_after = $this->parse_retry_after_header( $response );
-				if ( $retry_after > 0 ) {
-					$this->set_rate_limit_block( $retry_after );
-				}
-
-				++$attempt;
-				if ( $attempt <= self::MAX_RETRIES ) {
-					continue;
-				}
-
-				Logger::error(
-					'ingestion-api',
-					'Server error after max retries',
-					[
-						'record_id'     => $record_id,
-						'attempts'      => $attempt,
-						'status_code'   => $status_code,
-						'response_body' => wp_remote_retrieve_body( $response ),
-					]
-				);
-
-				return Ingestion_API_Result::failure(
-					'Server error (' . $status_code . ') after ' . self::MAX_RETRIES . ' retries',
-					$response,
-					$record_id
-				);
-			}
-
-			// Non-retryable error (4xx client errors) - fail immediately.
-			// This should not happen in normal operation - indicates a bug or misconfiguration.
-			Logger::error(
+		if ( is_wp_error( $response ) ) {
+			Logger::warning(
 				'ingestion-api',
-				'Unexpected non-retryable error',
+				'HTTP error contacting Salesforce',
+				[
+					'record_id' => $record_id,
+					'error'     => $response->get_error_message(),
+				]
+			);
+			return Ingestion_API_Result::failure( $response->get_error_message(), $response, $record_id );
+		}
+
+		$status_code = (int) wp_remote_retrieve_response_code( $response );
+
+		// Success.
+		if ( 202 === $status_code ) {
+			$this->process_rate_limit_headers( $response );
+			return Ingestion_API_Result::success( $record_id, $response );
+		}
+
+		// Rate limited: store the block for other workers, return failure.
+		// The cron caller will see is_retryable() === true and keep the
+		// queue item in place for the next tick.
+		if ( 429 === $status_code ) {
+			$this->handle_rate_limit_response( $response );
+
+			Logger::warning(
+				'ingestion-api',
+				'Rate limited by Salesforce',
 				[
 					'record_id'     => $record_id,
 					'status_code'   => $status_code,
@@ -202,14 +156,55 @@ class Ingestion_API_Client {
 			);
 
 			return Ingestion_API_Result::failure(
-				'Unexpected response code: ' . $status_code,
+				'Rate limited by Salesforce',
 				$response,
 				$record_id
 			);
 		}
 
-		// Should never reach here, but just in case.
-		return Ingestion_API_Result::failure( 'Max retries exceeded', null, $record_id );
+		// Server-side / transient errors. 503 occasionally includes
+		// Retry-After; honor it the same way we honor 429 so the next
+		// cron tick observes the block.
+		if ( in_array( $status_code, [ 408, 500, 502, 503, 504 ], true ) ) {
+			$retry_after = $this->parse_retry_after_header( $response );
+			if ( $retry_after > 0 ) {
+				$this->set_rate_limit_block( $retry_after );
+			}
+
+			Logger::warning(
+				'ingestion-api',
+				'Transient server error from Salesforce',
+				[
+					'record_id'     => $record_id,
+					'status_code'   => $status_code,
+					'response_body' => wp_remote_retrieve_body( $response ),
+				]
+			);
+
+			return Ingestion_API_Result::failure(
+				'Server error (' . $status_code . ')',
+				$response,
+				$record_id
+			);
+		}
+
+		// Permanent error (4xx other than 408/429). Cron will see
+		// is_retryable() === false and surface a failure event.
+		Logger::error(
+			'ingestion-api',
+			'Permanent error from Salesforce',
+			[
+				'record_id'     => $record_id,
+				'status_code'   => $status_code,
+				'response_body' => wp_remote_retrieve_body( $response ),
+			]
+		);
+
+		return Ingestion_API_Result::failure(
+			'Unexpected response code: ' . $status_code,
+			$response,
+			$record_id
+		);
 	}
 
 	/**
@@ -342,8 +337,8 @@ class Ingestion_API_Client {
 		if ( $retry_after > 0 ) {
 			$this->set_rate_limit_block( $retry_after );
 		} else {
-			// Default to base delay if no Retry-After header.
-			$this->set_rate_limit_block( self::BASE_DELAY_SECONDS );
+			// Default to a short block if Retry-After was missing.
+			$this->set_rate_limit_block( self::DEFAULT_BLOCK_SECONDS );
 		}
 	}
 
@@ -368,24 +363,6 @@ class Ingestion_API_Client {
 				$this->set_rate_limit_block( (float) ( $reset_time - $now ) );
 			}
 		}
-	}
-
-	/**
-	 * Check if an HTTP status code is a retryable error.
-	 *
-	 * Retryable errors are server-side issues that may succeed on retry:
-	 * - 408: Request Timeout
-	 * - 500: Internal Server Error
-	 * - 502: Bad Gateway
-	 * - 503: Service Unavailable
-	 * - 504: Gateway Timeout
-	 *
-	 * @param int $status_code The HTTP status code.
-	 * @return bool Whether the error should be retried.
-	 */
-	private function is_retryable_error( int $status_code ): bool {
-		$retryable_codes = [ 408, 500, 502, 503, 504 ];
-		return in_array( $status_code, $retryable_codes, true );
 	}
 
 	/**
@@ -446,61 +423,5 @@ class Ingestion_API_Client {
 		}
 
 		return null;
-	}
-
-	/**
-	 * Calculate exponential backoff delay.
-	 *
-	 * @param int $attempt The current attempt number (1-based).
-	 * @return float The delay in seconds.
-	 */
-	private function calculate_backoff_delay( int $attempt ): float {
-		if ( $attempt < 1 ) {
-			return 0;
-		}
-
-		// Exponential backoff: base * 2^(attempt-1).
-		$delay = self::BASE_DELAY_SECONDS * pow( 2, $attempt - 1 );
-
-		return min( $delay, self::MAX_DELAY_SECONDS );
-	}
-
-	/**
-	 * Sleep for the specified duration plus random jitter.
-	 *
-	 * Used for client-side waits (exponential backoff) where smearing helps
-	 * avoid synchronized retries across many workers. NOT for server-directed
-	 * waits — see `sleep_exact()`.
-	 *
-	 * @param float $base_seconds The base sleep duration in seconds.
-	 */
-	protected function sleep_with_jitter( float $base_seconds ): void {
-		// Add 0-50% jitter.
-		$jitter        = $base_seconds * ( wp_rand( 0, 500 ) / 1000 );
-		$total_seconds = $base_seconds + $jitter;
-
-		// Convert to microseconds for usleep.
-		$microseconds = (int) ( $total_seconds * 1000000 );
-
-		if ( $microseconds > 0 ) {
-			usleep( $microseconds );
-		}
-	}
-
-	/**
-	 * Sleep for exactly the specified duration, no jitter.
-	 *
-	 * Used for server-directed waits (Retry-After / rate-limit block) where
-	 * the server has told us how long to wait and adding jitter would only
-	 * delay us beyond that.
-	 *
-	 * @param float $seconds The sleep duration in seconds.
-	 */
-	protected function sleep_exact( float $seconds ): void {
-		$microseconds = (int) round( $seconds * 1000000 );
-
-		if ( $microseconds > 0 ) {
-			usleep( $microseconds );
-		}
 	}
 }

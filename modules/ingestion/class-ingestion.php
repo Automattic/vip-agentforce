@@ -70,10 +70,20 @@ class Ingestion {
 	 * - If it doesn't pass but was previously ingested, it will be deleted.
 	 * - If it doesn't pass and wasn't ingested, it will be skipped.
 	 *
-	 * @param \WP_Post $post The post to sync.
+	 * @param \WP_Post $post                    The post to sync.
+	 * @param bool     $defer_retryable_events  When true, the failure events
+	 *                                          (`vip_agentforce_post_ingestion_failed`,
+	 *                                          `vip_agentforce_post_deletion_failed`)
+	 *                                          are NOT fired for retryable
+	 *                                          API failures. The caller is
+	 *                                          expected to fire them later
+	 *                                          if the retry cap is hit.
+	 *                                          Cron uses this; sync-mode
+	 *                                          callers leave it false because
+	 *                                          they have no retry path.
 	 * @return Sync_Result The result of the sync operation.
 	 */
-	public static function sync_post( \WP_Post $post ): Sync_Result {
+	public static function sync_post( \WP_Post $post, bool $defer_retryable_events = false ): Sync_Result {
 		$should_ingest = self::should_ingest_post( $post );
 
 		if ( ! $should_ingest ) {
@@ -84,8 +94,31 @@ class Ingestion {
 				if ( ! has_filter( 'vip_agentforce_should_ingest_post' ) ) {
 					return new Sync_Result( Sync_Result::SKIPPED, $post );
 				}
-				$deleted = self::delete_post_from_salesforce( $post );
-				return new Sync_Result( $deleted ? Sync_Result::DELETED : Sync_Result::FAILED_API, $post );
+
+				$delete_result = self::delete_post_from_salesforce( $post );
+
+				if ( $delete_result->success ) {
+					return new Sync_Result( Sync_Result::DELETED, $post );
+				}
+
+				$is_retryable = $delete_result->is_retryable();
+
+				// Fire the deletion failure event unless the caller asked
+				// to defer retryable events (cron-only).
+				if ( ! $is_retryable || ! $defer_retryable_events ) {
+					self::fire_deletion_failure(
+						$post->ID,
+						self::build_record_id( $post ),
+						Deletion_Failure::CODE_DELETE_API_ERROR,
+						[ 'result' => $delete_result ]
+					);
+				}
+
+				return new Sync_Result(
+					$is_retryable ? Sync_Result::FAILED_API_RETRYABLE : Sync_Result::FAILED_API,
+					$post,
+					$delete_result->error_message
+				);
 			}
 			return new Sync_Result( Sync_Result::SKIPPED, $post );
 		}
@@ -106,8 +139,20 @@ class Ingestion {
 		$result = static::send_to_api( $record );
 
 		if ( ! $result->success ) {
-			self::fire_ingestion_failure( $post->ID, Ingestion_Failure::CODE_API_ERROR, [ 'result' => $result ] );
-			return new Sync_Result( Sync_Result::FAILED_API, $post, $result->error_message );
+			$is_retryable = $result->is_retryable();
+
+			// Fire the ingestion failure event unless the caller asked to
+			// defer retryable events (cron defers and re-fires only after
+			// the retry cap is exhausted).
+			if ( ! $is_retryable || ! $defer_retryable_events ) {
+				self::fire_ingestion_failure( $post->ID, Ingestion_Failure::CODE_API_ERROR, [ 'result' => $result ] );
+			}
+
+			return new Sync_Result(
+				$is_retryable ? Sync_Result::FAILED_API_RETRYABLE : Sync_Result::FAILED_API,
+				$post,
+				$result->error_message
+			);
 		}
 
 		return new Sync_Result( Sync_Result::INGESTED, $post );
@@ -120,7 +165,7 @@ class Ingestion {
 	 * @param string               $failure_code One of the Ingestion_Failure::CODE_* constants.
 	 * @param array<string, mixed> $details      Optional additional details about the failure.
 	 */
-	private static function fire_ingestion_failure( int $post_id, string $failure_code, array $details = [] ): void {
+	public static function fire_ingestion_failure( int $post_id, string $failure_code, array $details = [] ): void {
 		$post = get_post( $post_id );
 
 		$error_codes = [
@@ -254,7 +299,19 @@ class Ingestion {
 			return;
 		}
 
-		self::delete_post_from_salesforce( $post );
+		$result = self::delete_post_from_salesforce( $post );
+
+		// This path is the WP `before_delete_post` hook running in sync mode —
+		// there's no cron to retry on, so any failure (retryable or not)
+		// surfaces as a deletion failure event right away.
+		if ( ! $result->success ) {
+			self::fire_deletion_failure(
+				$post_id,
+				self::build_record_id( $post ),
+				Deletion_Failure::CODE_DELETE_API_ERROR,
+				[ 'result' => $result ]
+			);
+		}
 	}
 
 	/**
@@ -287,29 +344,25 @@ class Ingestion {
 	/**
 	 * Delete a post from Salesforce.
 	 *
+	 * Returns the raw API result so the caller can decide whether the
+	 * failure is retryable (cron should keep trying on the next tick) or
+	 * permanent (fire the deletion failure event and give up). The hook
+	 * handler `handle_before_delete_post` and the queued sync path both
+	 * route through here; each fires `vip_agentforce_post_deletion_failed`
+	 * on its own terms.
+	 *
 	 * @param \WP_Post $post The post to delete.
-	 * @return bool True if deletion succeeded, false if it failed.
+	 * @return Ingestion_API_Result The API result.
 	 */
-	private static function delete_post_from_salesforce( \WP_Post $post ): bool {
-		$record_id = self::build_record_id( $post );
-		$result    = static::delete_from_api( $post );
+	private static function delete_post_from_salesforce( \WP_Post $post ): Ingestion_API_Result {
+		$result = static::delete_from_api( $post );
 
-		if ( ! $result->success ) {
-			self::fire_deletion_failure(
-				$post->ID,
-				$record_id,
-				Deletion_Failure::CODE_DELETE_API_ERROR,
-				[
-					'result' => $result,
-				]
-			);
-			return false;
+		if ( $result->success ) {
+			// Clear the ingestion tracking meta since the post is no longer in Salesforce.
+			delete_post_meta( $post->ID, self::META_KEY_INGESTION_ATTEMPTED );
 		}
 
-		// Clear the ingestion tracking meta since the post is no longer in Salesforce.
-		delete_post_meta( $post->ID, self::META_KEY_INGESTION_ATTEMPTED );
-
-		return true;
+		return $result;
 	}
 
 	/**
@@ -359,7 +412,7 @@ class Ingestion {
 	 * @param string               $failure_code One of the Deletion_Failure::CODE_* constants.
 	 * @param array<string, mixed> $details      Optional additional details about the failure.
 	 */
-	private static function fire_deletion_failure( int $post_id, string $record_id, string $failure_code, array $details = [] ): void {
+	public static function fire_deletion_failure( int $post_id, string $record_id, string $failure_code, array $details = [] ): void {
 		$post = get_post( $post_id );
 
 		$error_codes = [

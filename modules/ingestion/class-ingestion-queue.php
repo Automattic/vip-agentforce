@@ -26,6 +26,23 @@ class Ingestion_Queue {
 	public const META_KEY_QUEUED_FOR_SYNC = 'vip_agentforce_queued_for_sync';
 
 	/**
+	 * Post meta key for tracking how many times the cron tried (and got a
+	 * retryable failure on) a queued sync.
+	 */
+	public const META_KEY_SYNC_ATTEMPTS = 'vip_agentforce_sync_attempts';
+
+	/**
+	 * Maximum number of cron attempts for a single queued sync or delete
+	 * before we give up and fire a permanent failure event.
+	 *
+	 * 60 attempts × 60s cron interval = 1 hour, which lines up with SF's
+	 * typical rate-limit window — by the time we hit the cap, if we're
+	 * still failing, it's almost certainly not rate limiting anymore
+	 * (auth, sustained outage, config) and silent retry would just hide it.
+	 */
+	public const MAX_RETRYABLE_ATTEMPTS = 60;
+
+	/**
 	 * Option name for storing the delete queue.
 	 *
 	 * We use an option instead of post meta because wp_delete_post() removes
@@ -278,10 +295,93 @@ class Ingestion_Queue {
 	/**
 	 * Remove a post from the sync queue.
 	 *
+	 * Also clears the retry attempt counter so a future re-queue starts
+	 * from attempt 0.
+	 *
 	 * @param int $post_id Post ID.
 	 */
 	public static function dequeue_sync( int $post_id ): void {
 		delete_post_meta( $post_id, self::META_KEY_QUEUED_FOR_SYNC );
+		delete_post_meta( $post_id, self::META_KEY_SYNC_ATTEMPTS );
+	}
+
+	/**
+	 * Get the current retry attempt count for a queued sync.
+	 *
+	 * @param int $post_id Post ID.
+	 * @return int Attempt count (0 if not yet attempted).
+	 */
+	public static function get_sync_attempts( int $post_id ): int {
+		return (int) get_post_meta( $post_id, self::META_KEY_SYNC_ATTEMPTS, true );
+	}
+
+	/**
+	 * Increment and persist the retry attempt count for a queued sync.
+	 *
+	 * @param int $post_id Post ID.
+	 * @return int The new attempt count after increment.
+	 */
+	public static function increment_sync_attempts( int $post_id ): int {
+		$attempts = self::get_sync_attempts( $post_id ) + 1;
+		update_post_meta( $post_id, self::META_KEY_SYNC_ATTEMPTS, $attempts );
+		return $attempts;
+	}
+
+	/**
+	 * Get the current retry attempt count for a queued delete.
+	 *
+	 * @param int $post_id Post ID.
+	 * @return int Attempt count (0 if not yet attempted).
+	 */
+	public static function get_delete_attempts( int $post_id ): int {
+		$queue = get_option( self::OPTION_DELETE_QUEUE, [] );
+		if ( ! is_array( $queue ) ) {
+			return 0;
+		}
+
+		$record_id = self::build_record_id_for_post( $post_id );
+
+		return (int) ( $queue[ $record_id ]['attempts'] ?? 0 );
+	}
+
+	/**
+	 * Increment and persist the retry attempt count for a queued delete.
+	 *
+	 * @param int $post_id Post ID.
+	 * @return int The new attempt count after increment.
+	 */
+	public static function increment_delete_attempts( int $post_id ): int {
+		$queue = get_option( self::OPTION_DELETE_QUEUE, [] );
+		if ( ! is_array( $queue ) ) {
+			$queue = [];
+		}
+
+		$record_id = self::build_record_id_for_post( $post_id );
+
+		if ( ! isset( $queue[ $record_id ] ) ) {
+			// Item already dequeued or never queued — nothing to track.
+			return 0;
+		}
+
+		$attempts                        = (int) ( $queue[ $record_id ]['attempts'] ?? 0 ) + 1;
+		$queue[ $record_id ]['attempts'] = $attempts;
+		update_option( self::OPTION_DELETE_QUEUE, $queue, false );
+
+		return $attempts;
+	}
+
+	/**
+	 * Build the record_id (`{site}_{blog}_{post}`) for a post — used by the
+	 * delete queue, which keys entries on record_id rather than post_id so
+	 * the queue still has a handle after `wp_delete_post()` removes the post.
+	 *
+	 * @param int $post_id Post ID.
+	 * @return string The record_id.
+	 */
+	private static function build_record_id_for_post( int $post_id ): string {
+		$site_id = defined( 'VIP_GO_APP_ID' ) ? (string) VIP_GO_APP_ID : '0';
+		$blog_id = (string) get_current_blog_id();
+		return $site_id . '_' . $blog_id . '_' . $post_id;
 	}
 
 	/**
