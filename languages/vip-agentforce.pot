@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-05-25T15:26:39+00:00\n"
+"POT-Creation-Date: 2026-05-25T15:57:44+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: vip-agentforce\n"
@@ -34,11 +34,15 @@ msgstr ""
 msgid "WordPress VIP"
 msgstr ""
 
-#: modules/cmp/class-assets.php:83
+#: modules/cmp/class-assets.php:85
 msgid "The admin asset file is missing. Run `npm run build` to generate it."
 msgstr ""
 
-#: modules/cmp/class-assets.php:90
+#: modules/cmp/class-assets.php:89
+msgid "The admin script file is missing. Run `npm run build` to generate it."
+msgstr ""
+
+#: modules/cmp/class-assets.php:96
 msgid "The admin asset metadata is invalid. Run `npm run build` to regenerate it."
 msgstr ""
 
@@ -75,118 +79,122 @@ msgstr ""
 msgid "You do not have permission to view sync progress."
 msgstr ""
 
-#: assets/build/js/admin.js:197
+#: assets/build/js/admin.js:222
 msgid "CookieYes"
 msgstr ""
 
-#: assets/build/js/admin.js:200
+#: assets/build/js/admin.js:225
 msgid "CookieBot"
 msgstr ""
 
-#: assets/build/js/admin.js:203
+#: assets/build/js/admin.js:228
 msgid "OneTrust"
 msgstr ""
 
-#: assets/build/js/admin.js:206
+#: assets/build/js/admin.js:231
 msgid "iubenda"
 msgstr ""
 
-#: assets/build/js/admin.js:209
+#: assets/build/js/admin.js:234
 msgid "Custom"
 msgstr ""
 
-#: assets/build/js/admin.js:228
+#: assets/build/js/admin.js:253
 msgid "General Settings"
 msgstr ""
 
-#: assets/build/js/admin.js:229
-msgid "Select a repository and choose where you'd like your files to deploy."
+#: assets/build/js/admin.js:254
+msgid "Choose how Agentforce loads based on your consent provider."
 msgstr ""
 
-#: assets/build/js/admin.js:236
+#: assets/build/js/admin.js:261
 msgid "This lets you control when the Agentforce SDK loads after consent is granted."
 msgstr ""
 
-#: assets/build/js/admin.js:236
+#: assets/build/js/admin.js:261
 msgid "Activate Agentforce after consent: <code>window.AgentforceCMP.loadSDK()</code>"
 msgstr ""
 
-#: assets/build/js/admin.js:238
+#: assets/build/js/admin.js:263
 msgid "If consent is revoked: <code>window.AgentforceCMP.unloadSDK()</code>"
 msgstr ""
 
-#: assets/build/js/admin.js:242
+#: assets/build/js/admin.js:267
 msgid "Consent Type"
 msgstr ""
 
-#: assets/build/js/admin.js:252
+#: assets/build/js/admin.js:277
 msgid "OneTrust Group ID"
 msgstr ""
 
-#: assets/build/js/admin.js:262
+#: assets/build/js/admin.js:287
 msgid "Enter the Cookiebot category (e.g., necessary, preferences, statistics, marketing)."
 msgstr ""
 
-#: assets/build/js/admin.js:262
+#: assets/build/js/admin.js:287
 msgid "To see all available categories for your site, open browser console and run:"
 msgstr ""
 
-#: assets/build/js/admin.js:266
+#: assets/build/js/admin.js:291
 msgid "Cookiebot Category"
 msgstr ""
 
-#: assets/build/js/admin.js:276
+#: assets/build/js/admin.js:301
 msgid "Enter the iubenda Purpose ID (1 to 5). See the <link>iubenda documentation</link>."
 msgstr ""
 
-#: assets/build/js/admin.js:278
+#: assets/build/js/admin.js:303
 msgid "iubenda documentation"
 msgstr ""
 
-#: assets/build/js/admin.js:283
+#: assets/build/js/admin.js:308
 msgid "To see all available purpose IDs for your site, open browser console and run:"
 msgstr ""
 
-#: assets/build/js/admin.js:287
+#: assets/build/js/admin.js:312
 msgid "iubenda Purpose ID"
 msgstr ""
 
-#: assets/build/js/admin.js:294
+#: assets/build/js/admin.js:319
 msgid "Agent UI"
 msgstr ""
 
-#: assets/build/js/admin.js:295
+#: assets/build/js/admin.js:320
 msgid "Alignment and custom styles for the launcher/widget."
 msgstr ""
 
-#: assets/build/js/admin.js:299
+#: assets/build/js/admin.js:324
 msgid "Alignment"
 msgstr ""
 
-#: assets/build/js/admin.js:301
+#: assets/build/js/admin.js:326
 msgid "Bottom right"
 msgstr ""
 
-#: assets/build/js/admin.js:304
+#: assets/build/js/admin.js:329
 msgid "Bottom left"
 msgstr ""
 
-#: assets/build/js/admin.js:314
+#: assets/build/js/admin.js:339
 msgid "Custom CSS (optional)"
 msgstr ""
 
-#: assets/build/js/admin.js:315
+#: assets/build/js/admin.js:340
 msgid "/* Paste CSS to override agentforce styles */"
 msgstr ""
 
-#: assets/build/js/admin.js:322
+#: assets/build/js/admin.js:347
 msgid "Debug"
 msgstr ""
 
-#: assets/build/js/admin.js:327
+#: assets/build/js/admin.js:352
 msgid "Enable log"
 msgstr ""
 
-#: assets/build/js/admin.js:360
+#: assets/build/js/admin.js:385
 msgid "Save Changes"
+msgstr ""
+
+#: assets/build/js/admin.js:394
+msgid "Agentforce settings could not be loaded. Refresh the page and try again."
 msgstr ""

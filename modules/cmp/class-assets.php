@@ -67,8 +67,9 @@ class Assets {
 	}
 
 	/**
-	 * To enqueue scripts and styles. in admin.
+	 * To enqueue scripts and styles in admin.
 	 *
+	 * @param string $hook_suffix The current admin page hook suffix.
 	 * @return void
 	 */
 	public function admin_enqueue_scripts( string $hook_suffix = '' ): void {
@@ -77,10 +78,15 @@ class Assets {
 		}
 
 		$admin_script_asset_path = $this->get_integration_path() . '/assets/build/js/admin.asset.php';
+		$admin_script_path       = $this->get_integration_path() . '/assets/build/js/admin.js';
 		$admin_style_path        = $this->get_integration_path() . '/assets/build/css/admin.css';
 
 		if ( ! is_readable( $admin_script_asset_path ) ) {
 			wp_die( esc_html__( 'The admin asset file is missing. Run `npm run build` to generate it.', 'vip-agentforce' ) );
+		}
+
+		if ( ! is_readable( $admin_script_path ) ) {
+			wp_die( esc_html__( 'The admin script file is missing. Run `npm run build` to generate it.', 'vip-agentforce' ) );
 		}
 
 		// phpcs:ignore WordPressVIPMinimum.Files.IncludingFile.UsingVariable

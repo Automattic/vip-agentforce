@@ -68,6 +68,53 @@ function isAlignment(value: string): value is Alignment {
 	return value === 'bottom-right' || value === 'bottom-left';
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === 'object' && value !== null;
+}
+
+function isSettingsValues(value: unknown): value is SettingsValues {
+	if (!isRecord(value)) {
+		return false;
+	}
+
+	return (
+		typeof value.consentType === 'string' &&
+		isConsentType(value.consentType) &&
+		typeof value.oneTrustGroupId === 'string' &&
+		typeof value.cookiebotCategory === 'string' &&
+		typeof value.iubendaPurposeId === 'string' &&
+		typeof value.alignment === 'string' &&
+		isAlignment(value.alignment) &&
+		typeof value.customCss === 'string' &&
+		typeof value.enableLog === 'boolean'
+	);
+}
+
+function parseSettingsData(
+	rawSettings: string | undefined
+): SettingsData | null {
+	if (!rawSettings) {
+		return null;
+	}
+
+	try {
+		const parsedSettings: unknown = JSON.parse(rawSettings);
+
+		if (
+			isRecord(parsedSettings) &&
+			isSettingsValues(parsedSettings.values)
+		) {
+			return {
+				values: parsedSettings.values,
+			};
+		}
+	} catch {
+		return null;
+	}
+
+	return null;
+}
+
 const HiddenField = ({ name, value }: HiddenFieldProps) => (
 	<input type="hidden" name={name} value={value} />
 );
@@ -128,7 +175,7 @@ function AgentforceSettingsApp({ settings }: { settings: SettingsData }) {
 					<SettingsSection
 						title={__('General Settings', 'vip-agentforce')}
 						description={__(
-							"Select a repository and choose where you'd like your files to deploy.",
+							'Choose how Agentforce loads based on your consent provider.',
 							'vip-agentforce'
 						)}
 					>
@@ -241,7 +288,7 @@ function AgentforceSettingsApp({ settings }: { settings: SettingsData }) {
 															)}
 															href="https://www.iubenda.com/en/help/1205-how-to-configure-your-cookie-solution-advanced-guide#per-category-consent"
 															target="_blank"
-															rel="noreferrer"
+															rel="noopener noreferrer"
 														/>
 													),
 												}
@@ -364,6 +411,19 @@ function AgentforceSettingsApp({ settings }: { settings: SettingsData }) {
 	);
 }
 
+function AgentforceSettingsError() {
+	return (
+		<div className="notice notice-error inline">
+			<p>
+				{__(
+					'Agentforce settings could not be loaded. Refresh the page and try again.',
+					'vip-agentforce'
+				)}
+			</p>
+		</div>
+	);
+}
+
 function initAgentforceSettingsApp() {
 	const rootElement = document.getElementById('vip-agentforce-settings-app');
 
@@ -371,11 +431,14 @@ function initAgentforceSettingsApp() {
 		return;
 	}
 
-	const settings = JSON.parse(
-		rootElement.dataset.settings || '{}'
-	) as SettingsData;
+	const settings = parseSettingsData(rootElement.dataset.settings);
+
 	createRoot(rootElement).render(
-		<AgentforceSettingsApp settings={settings} />
+		settings ? (
+			<AgentforceSettingsApp settings={settings} />
+		) : (
+			<AgentforceSettingsError />
+		)
 	);
 }
 
