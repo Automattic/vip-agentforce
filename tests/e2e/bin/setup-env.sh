@@ -4,7 +4,7 @@ set -ex
 
 basedir="${0%/*}/.."
 
-version=7.0
+version=latest
 clientCodePath=demo
 
 while getopts v:p:c: flag
@@ -18,7 +18,7 @@ do
 done
 
 if [ -z "${version}" ]; then
-    version=${WORDPRESS_VERSION:-7.0}
+    version=${WORDPRESS_VERSION:-latest}
 fi
 
 if [ "${version}" = "latest" ]; then
