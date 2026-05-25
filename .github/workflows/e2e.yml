@@ -6,7 +6,7 @@ on:
       wpversion:
         description: 'WordPress version to run tests against'
         required: false
-        default: 'latest'
+        default: '7.0'
       url:
         description: 'Alternative Test URL'
         required: false
@@ -103,7 +103,7 @@ jobs:
       - name: Determine WP version
         run: |
           if [ -z "${{ github.event.inputs.wpversion }}" ]; then
-            echo "WORDPRESS_VERSION=latest" >> $GITHUB_ENV
+            echo "WORDPRESS_VERSION=7.0" >> $GITHUB_ENV
           else
             echo "WORDPRESS_VERSION=${{ github.event.inputs.wpversion }}" >> $GITHUB_ENV
           fi
