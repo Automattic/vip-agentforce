@@ -563,71 +563,18 @@ HTML;
 		$this->assertSame( Constants::DEFAULT_CMP, $settings->sanitize_consent_type( 'onetrust' ) );
 	}
 
-	public function test_sdk_activation_status_is_readonly_and_reflects_config(): void {
-		$settings = Settings_Page::get_instance();
-
-		$this->prime_configs_cache(
-			[
-				'agentforce_js_sdk_activated' => false,
-			]
-		);
-
-		ob_start();
-		$settings->render_enable_sdk_field();
-		$output = ob_get_clean();
-
-		$this->assertStringContainsString( 'id="agentforce-sdk-activation-status"', $output );
-		$this->assertStringContainsString( 'data-status="inactive"', $output );
-		$this->assertStringNotContainsString( '<input', $output );
-	}
-
-	public function test_embedding_script_status_is_readonly_and_reflects_config(): void {
-		$settings = Settings_Page::get_instance();
-
-		$this->prime_configs_cache(
-			[
-				'agentforce_embedding_script' => $this->get_embedding_script_fixture(),
-			]
-		);
-
-		ob_start();
-		$settings->render_embedding_script_field();
-		$output = ob_get_clean();
-
-		$this->assertStringContainsString( 'id="agentforce-embedding-script-status"', $output );
-		$this->assertStringContainsString( 'data-status="configured"', $output );
-		$this->assertStringContainsString( 'Configured', $output );
-		$this->assertStringNotContainsString( '<input', $output );
-	}
-
-	public function test_embedding_script_status_is_not_configured_when_script_is_invalid(): void {
-		$settings = Settings_Page::get_instance();
-
-		$this->prime_configs_cache(
-			[
-				// phpcs:ignore WordPress.WP.EnqueuedResources.NonEnqueuedScript -- Test fixture intentionally contains script tags.
-				'agentforce_embedding_script' => '<script src="http://example.local/assets/js/bootstrap.min.js"></script>',
-			]
-		);
-
-		ob_start();
-		$settings->render_embedding_script_field();
-		$output = ob_get_clean();
-
-		$this->assertStringContainsString( 'id="agentforce-embedding-script-status"', $output );
-		$this->assertStringContainsString( 'data-status="not-configured"', $output );
-		$this->assertStringContainsString( 'Not configured', $output );
-		$this->assertStringNotContainsString( '<input', $output );
-	}
-
-	public function test_settings_page_uses_salesforce_js_embed_label(): void {
+	public function test_settings_page_renders_react_root_with_serialized_values(): void {
 		$settings = Settings_Page::get_instance();
 
 		ob_start();
 		$settings->render_settings_page();
 		$output = ob_get_clean();
 
-		$this->assertStringContainsString( 'Salesforce JS Embed', $output );
+		$this->assertStringContainsString( 'id="vip-agentforce-settings-app"', $output );
+		$this->assertStringContainsString( '&quot;values&quot;', $output );
+		$this->assertStringContainsString( '&quot;consentType&quot;:&quot;Custom&quot;', $output );
+		$this->assertStringNotContainsString( '&quot;strings&quot;', $output );
+		$this->assertStringNotContainsString( 'Salesforce JS Embed', $output );
 		$this->assertStringNotContainsString( 'Salesforce SDK URL', $output );
 	}
 

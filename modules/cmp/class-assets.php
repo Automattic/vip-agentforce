@@ -71,7 +71,7 @@ class Assets {
 	 *
 	 * @return void
 	 */
-	public function admin_enqueue_scripts( $hook_suffix = '' ) {
+	public function admin_enqueue_scripts( string $hook_suffix = '' ): void {
 		if ( 'toplevel_page_vip-agentforce-settings' !== $hook_suffix ) {
 			return;
 		}
