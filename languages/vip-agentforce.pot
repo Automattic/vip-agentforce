@@ -1,15 +1,15 @@
-# Copyright (C) 2025 WordPress VIP
+# Copyright (C) 2026 WordPress VIP
 # This file is distributed under the GPL version 2 or later - http://www.gnu.org/licenses/old-licenses/gpl-2.0.html.
 msgid ""
 msgstr ""
-"Project-Id-Version: VIP Agentforce 0.1.0\n"
+"Project-Id-Version: VIP Agentforce 0.1.9\n"
 "Report-Msgid-Bugs-To: https://wordpress.org/support/plugin/vip-agentforce\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2025-12-16T12:07:23+00:00\n"
+"POT-Creation-Date: 2026-05-25T15:26:39+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: vip-agentforce\n"
@@ -34,6 +34,14 @@ msgstr ""
 msgid "WordPress VIP"
 msgstr ""
 
+#: modules/cmp/class-assets.php:83
+msgid "The admin asset file is missing. Run `npm run build` to generate it."
+msgstr ""
+
+#: modules/cmp/class-assets.php:90
+msgid "The admin asset metadata is invalid. Run `npm run build` to regenerate it."
+msgstr ""
+
 #: modules/cmp/class-settings-page.php:50
 msgid "Settings Saved"
 msgstr ""
@@ -46,186 +54,139 @@ msgstr ""
 msgid "iubenda Purpose ID must be between 1 and 5."
 msgstr ""
 
-#: modules/cmp/class-settings-page.php:135
-#: modules/cmp/class-settings-page.php:298
-#: modules/cmp/class-settings-page.php:483
-msgid "Enable log"
-msgstr ""
-
-#: modules/cmp/class-settings-page.php:142
-msgid "Bottom right"
-msgstr ""
-
-#: modules/cmp/class-settings-page.php:143
-msgid "Bottom left"
-msgstr ""
-
-#: modules/cmp/class-settings-page.php:165
-#: modules/cmp/class-settings-page.php:423
+#: modules/cmp/class-settings-page.php:138
+#: modules/cmp/class-settings-page.php:228
 msgid "Agentforce Settings"
 msgstr ""
 
-#: modules/cmp/class-settings-page.php:166
+#: modules/cmp/class-settings-page.php:139
 msgid "Agentforce"
 msgstr ""
 
-#: modules/cmp/class-settings-page.php:221
-msgid "General Settings"
+#: modules/cmp/class-settings-page.php:229
+msgid "Saved changes will be applied on the next page load."
 msgstr ""
 
-#: modules/cmp/class-settings-page.php:228
-#: modules/cmp/class-settings-page.php:438
-msgid "Salesforce SDK URL"
+#: modules/ingestion/class-ingestion-cron.php:60
+msgid "VIP Agentforce Ingestion"
 msgstr ""
 
-#: modules/cmp/class-settings-page.php:236
-#: modules/cmp/class-settings-page.php:444
-msgid "Consent Type"
+#: modules/ingestion/class-ingestion-rest.php:54
+msgid "You do not have permission to view sync progress."
 msgstr ""
 
-#: modules/cmp/class-settings-page.php:244
-#: modules/cmp/class-settings-page.php:450
-msgid "OneTrust Group ID"
-msgstr ""
-
-#: modules/cmp/class-settings-page.php:252
-#: modules/cmp/class-settings-page.php:454
-msgid "Cookiebot Category"
-msgstr ""
-
-#: modules/cmp/class-settings-page.php:260
-#: modules/cmp/class-settings-page.php:458
-msgid "iubenda Purpose ID"
-msgstr ""
-
-#: modules/cmp/class-settings-page.php:268
-#: modules/cmp/class-settings-page.php:465
-msgid "Agent UI"
-msgstr ""
-
-#: modules/cmp/class-settings-page.php:275
-#: modules/cmp/class-settings-page.php:469
-msgid "Alignment"
-msgstr ""
-
-#: modules/cmp/class-settings-page.php:160
-msgid "Applies only to the outer chat container and page positioning. To customize the chat experience itself, use Salesforce UI."
-msgstr ""
-
-#: modules/cmp/class-settings-page.php:284
-#: modules/cmp/class-settings-page.php:474
-msgid "Custom CSS (container only)"
-msgstr ""
-
-#: modules/cmp/class-settings-page.php:291
-#: modules/cmp/class-settings-page.php:480
-msgid "Debug"
-msgstr ""
-
-#: modules/cmp/class-settings-page.php:311
-msgid "Activated"
-msgstr ""
-
-#: modules/cmp/class-settings-page.php:311
-msgid "Not activated"
-msgstr ""
-
-#: modules/cmp/class-settings-page.php:334
-msgid "Not configured"
-msgstr ""
-
-#: modules/cmp/class-settings-page.php:347
+#: assets/build/js/admin.js:197
 msgid "CookieYes"
 msgstr ""
 
-#: modules/cmp/class-settings-page.php:350
+#: assets/build/js/admin.js:200
 msgid "CookieBot"
 msgstr ""
 
-#: modules/cmp/class-settings-page.php:353
+#: assets/build/js/admin.js:203
 msgid "OneTrust"
 msgstr ""
 
-#: modules/cmp/class-settings-page.php:356
+#: assets/build/js/admin.js:206
 msgid "iubenda"
 msgstr ""
 
-#: modules/cmp/class-settings-page.php:359
+#: assets/build/js/admin.js:209
 msgid "Custom"
 msgstr ""
 
-#: modules/cmp/class-settings-page.php:388
+#: assets/build/js/admin.js:228
+msgid "General Settings"
+msgstr ""
+
+#: assets/build/js/admin.js:229
+msgid "Select a repository and choose where you'd like your files to deploy."
+msgstr ""
+
+#: assets/build/js/admin.js:236
+msgid "This lets you control when the Agentforce SDK loads after consent is granted."
+msgstr ""
+
+#: assets/build/js/admin.js:236
+msgid "Activate Agentforce after consent: <code>window.AgentforceCMP.loadSDK()</code>"
+msgstr ""
+
+#: assets/build/js/admin.js:238
+msgid "If consent is revoked: <code>window.AgentforceCMP.unloadSDK()</code>"
+msgstr ""
+
+#: assets/build/js/admin.js:242
+msgid "Consent Type"
+msgstr ""
+
+#: assets/build/js/admin.js:252
+msgid "OneTrust Group ID"
+msgstr ""
+
+#: assets/build/js/admin.js:262
 msgid "Enter the Cookiebot category (e.g., necessary, preferences, statistics, marketing)."
 msgstr ""
 
-#: modules/cmp/class-settings-page.php:389
+#: assets/build/js/admin.js:262
 msgid "To see all available categories for your site, open browser console and run:"
 msgstr ""
 
-#: modules/cmp/class-settings-page.php:404
-msgid "Enter the iubenda Purpose ID (1-5)."
+#: assets/build/js/admin.js:266
+msgid "Cookiebot Category"
 msgstr ""
 
-#: modules/cmp/class-settings-page.php:405
-msgid "See the"
+#: assets/build/js/admin.js:276
+msgid "Enter the iubenda Purpose ID (1 to 5). See the <link>iubenda documentation</link>."
 msgstr ""
 
-#: modules/cmp/class-settings-page.php:406
+#: assets/build/js/admin.js:278
 msgid "iubenda documentation"
 msgstr ""
 
-#: modules/cmp/class-settings-page.php:407
+#: assets/build/js/admin.js:283
 msgid "To see all available purpose IDs for your site, open browser console and run:"
 msgstr ""
 
-#: modules/cmp/class-settings-page.php:419
-msgid "Enabled"
+#: assets/build/js/admin.js:287
+msgid "iubenda Purpose ID"
 msgstr ""
 
-#: modules/cmp/class-settings-page.php:419
-msgid "Disabled"
+#: assets/build/js/admin.js:294
+msgid "Agent UI"
 msgstr ""
 
-#: modules/cmp/class-settings-page.php:431
-msgid "General"
-msgstr ""
-
-#: modules/cmp/class-settings-page.php:434
-msgid "SDK activation"
-msgstr ""
-
-#: modules/cmp/class-settings-page.php:440
-msgid "This is read-only and comes from the VIP integration configuration."
-msgstr ""
-
-#: modules/cmp/class-settings-page.php:466
+#: assets/build/js/admin.js:295
 msgid "Alignment and custom styles for the launcher/widget."
 msgstr ""
 
-#: modules/cmp/class-settings-page.php:491
+#: assets/build/js/admin.js:299
+msgid "Alignment"
+msgstr ""
+
+#: assets/build/js/admin.js:301
+msgid "Bottom right"
+msgstr ""
+
+#: assets/build/js/admin.js:304
+msgid "Bottom left"
+msgstr ""
+
+#: assets/build/js/admin.js:314
+msgid "Custom CSS (optional)"
+msgstr ""
+
+#: assets/build/js/admin.js:315
+msgid "/* Paste CSS to override agentforce styles */"
+msgstr ""
+
+#: assets/build/js/admin.js:322
+msgid "Debug"
+msgstr ""
+
+#: assets/build/js/admin.js:327
+msgid "Enable log"
+msgstr ""
+
+#: assets/build/js/admin.js:360
 msgid "Save Changes"
-msgstr ""
-
-#: modules/cmp/class-settings-page.php:493
-msgid "Changes apply on next page load."
-msgstr ""
-
-#: modules/cmp/class-settings-page.php:499
-msgid "Documentation"
-msgstr ""
-
-#: modules/cmp/class-settings-page.php:521
-msgid "Status"
-msgstr ""
-
-#: modules/cmp/class-settings-page.php:524
-msgid "PHP version"
-msgstr ""
-
-#: modules/cmp/class-settings-page.php:528
-msgid "Xdebug"
-msgstr ""
-
-#: modules/cmp/class-settings-page.php:532
-msgid "Site URL"
 msgstr ""

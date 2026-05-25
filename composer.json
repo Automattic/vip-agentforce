@@ -46,6 +46,6 @@
 		"test-ci": "./bin/test.sh ",
 		"test:multisite": "./bin/test.sh --php 8.1 --wp 6.6 --multisite 1",
 		"test:integration": "./vendor/bin/phpunit --bootstrap tests/integration/bootstrap.php tests/integration/",
-		"pot": "wp i18n make-pot . ./languages/vip-agentforce.pot --domain=vip-agentforce --include=\"modules,utils,assets/js\""
+		"pot": "wp i18n make-pot . ./languages/vip-agentforce.pot --domain=vip-agentforce --include=\"modules,utils,assets/src/js,assets/build/js/admin.js\""
 	}
 }
