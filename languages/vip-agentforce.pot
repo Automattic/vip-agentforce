@@ -108,9 +108,13 @@ msgstr ""
 msgid "Alignment"
 msgstr ""
 
-#: modules/cmp/class-settings-page.php:283
-#: modules/cmp/class-settings-page.php:473
-msgid "Custom CSS (optional)"
+#: modules/cmp/class-settings-page.php:160
+msgid "Applies only to the outer chat container and page positioning. To customize the chat experience itself, use Salesforce UI."
+msgstr ""
+
+#: modules/cmp/class-settings-page.php:284
+#: modules/cmp/class-settings-page.php:474
+msgid "Custom CSS (container only)"
 msgstr ""
 
 #: modules/cmp/class-settings-page.php:291
