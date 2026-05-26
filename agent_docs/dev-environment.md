@@ -1,6 +1,6 @@
 # Dev Environment
 
-The dev environment is `vip dev-env` with slug `vip-agentforce`.
+The default dev environment is `vip dev-env` with slug `vip-agentforce`.
 
 Run `vip dev-env info --slug=vip-agentforce` to get current URLs and ports. Defaults:
 
@@ -11,6 +11,37 @@ Run `vip dev-env info --slug=vip-agentforce` to get current URLs and ports. Defa
 - **Multisite**: yes (single site at blog_id=1)
 
 These values (especially ports and login URLs) may change between restarts.
+
+## Running Multiple Worktrees
+
+Use a unique VIP dev-env slug per worktree. The slug controls the local domain,
+container names, and `vip dev-env` command target.
+
+```bash
+# From the worktree you want this environment to load:
+pwd
+
+# Use the printed path as --app-code. Pick a slug that identifies the worktree.
+vip dev-env create --slug=vip-agentforce-pr48 --app-code=<absolute-path-to-this-worktree> --multisite=y --php=8.2
+vip dev-env start --slug=vip-agentforce-pr48 --skip-wp-versions-check
+
+# Get the current frontend, admin, auto-login, phpMyAdmin, and Mailpit URLs.
+vip dev-env info --slug=vip-agentforce-pr48
+```
+
+Do not use `composer start-dev` for alternate slugs; that script runs
+`vip dev-env start` without a slug. Build assets explicitly, then start the
+named environment:
+
+```bash
+npm run build:dev
+vip dev-env start --slug=vip-agentforce-pr48 --skip-wp-versions-check
+vip dev-env info --slug=vip-agentforce-pr48
+```
+
+The default frontend URL pattern is usually
+`http://<slug>.vipdev.lndo.site/`, but always use `vip dev-env info` as the
+source of truth because login URLs and ports can change.
 
 ## Local Configuration (`env.php`)
 
@@ -35,9 +66,65 @@ define( 'VIP_AGENTFORCE_CONFIGS', [
 // Unlocks `dev/setup.php` (extra admin tools, debug helpers).
 define( 'VIP_AGENTFORCE_DEVELOPER_MODE', true );
 
-// Short-circuits real Salesforce HTTP calls and logs request bodies via
-// `error_log()` — visible in `vip dev-env logs --service=php`.
+// Short-circuits real Salesforce Ingestion API HTTP calls through
+// `dev/mock-ingestion-api.php` when developer mode is enabled.
 define( 'VIP_AGENTFORCE_MOCK_INGESTION_API', true );
+```
+
+For testing different integration shapes, keep named fixtures inside `env.php`
+and switch the active fixture by changing one variable:
+
+```php
+<?php
+$local_embedding_script = <<<'HTML'
+<script>
+function initEmbeddedMessaging() {
+    window.__vipAgentforceLocalInit = true;
+}
+</script>
+<script src="https://example.my.site.com/assets/js/bootstrap.min.js" onload="initEmbeddedMessaging()"></script>
+HTML;
+
+$agentforce_config_fixtures = [
+    // Fixture names are local labels; only the nested array is assigned to
+    // VIP_AGENTFORCE_CONFIGS.
+    'chat_widget_enabled' => [
+        'agentforce_js_sdk_activated' => true,
+        'agentforce_embedding_script' => $local_embedding_script,
+    ],
+    'ingestion_enabled' => [
+        'salesforce_instance_url'      => 'https://ingestion.example.my.salesforce.com',
+        'ingestion_api_instance_url'   => 'https://ingestion-api.example.my.salesforce.com',
+        'ingestion_api_token'          => 'fake-token-for-local-dev',
+        'ingestion_api_source_name'    => 'wpvip_agents',
+        'ingestion_api_object_name'    => 'wordpress_post',
+        'ingestion_api_sync_all_posts' => true,
+    ],
+    'missing_ingestion_token' => [
+        'salesforce_instance_url'    => 'https://missing-token.example.my.salesforce.com',
+        'ingestion_api_instance_url' => 'https://ingestion-api.example.my.salesforce.com',
+        'ingestion_api_source_name'  => 'wpvip_agents',
+        'ingestion_api_object_name'  => 'wordpress_post',
+    ],
+];
+
+$active_agentforce_config = 'ingestion_enabled';
+
+define( 'VIP_AGENTFORCE_CONFIGS', $agentforce_config_fixtures[ $active_agentforce_config ] );
+define( 'VIP_AGENTFORCE_DEVELOPER_MODE', true );
+define( 'VIP_AGENTFORCE_MOCK_INGESTION_API', true );
+```
+
+Each worktree has its own plugin root, so each worktree can keep a different
+gitignored `env.php` while using a different dev-env slug.
+
+When one `env.php` needs to support multiple slugs, select the active fixture
+from the request host:
+
+```php
+$active_agentforce_config = str_contains( $_SERVER['HTTP_HOST'] ?? '', 'vip-agentforce-pr48' )
+    ? 'ingestion_enabled'
+    : 'chat_widget_enabled';
 ```
 
 `env.php` is `require_once`'d on every plugin bootstrap (see
@@ -51,6 +138,67 @@ echo PHP_EOL;
 var_export( defined( 'VIP_AGENTFORCE_MOCK_INGESTION_API' ) ? VIP_AGENTFORCE_MOCK_INGESTION_API : false );
 " --user=1
 ```
+
+For a custom slug, run the same check against that environment:
+
+```bash
+vip dev-env exec --slug=vip-agentforce-pr48 -- wp eval "
+var_export( defined( 'VIP_AGENTFORCE_CONFIGS' ) ? VIP_AGENTFORCE_CONFIGS : 'undefined' );
+echo PHP_EOL;
+var_export( defined( 'VIP_AGENTFORCE_MOCK_INGESTION_API' ) ? VIP_AGENTFORCE_MOCK_INGESTION_API : false );
+" --user=1
+```
+
+## Local Smoke Tests
+
+Use these checks after changing `env.php`. They do not require a Salesforce org
+when the mock ingestion API is enabled.
+
+### Browser Config and Prechat Data
+
+Use the `chat_widget_enabled` fixture, build assets, then set the consent type
+to Custom so the local custom CMP script is enqueued without a third-party CMP:
+
+```bash
+npm run build:dev
+vip dev-env exec --slug=vip-agentforce -- wp option update vip_agentforce_consent_type Custom
+```
+
+Open the frontend URL from `vip dev-env info --slug=vip-agentforce`, then check
+the browser console:
+
+```js
+window.vipAgentforceConsentData?.embedding
+window.vipAgentforceConsentData?.prechatFields
+Object.keys( window.vipAgentforceConsentData?.prechatFields || {} )
+```
+
+Expected: `embedding.bootstrapSrc` is present, `prechatFields.site_id_blog_id`
+is present, and the only default prechat key is `site_id_blog_id`.
+
+Only call `window.AgentforceCMP.loadSDK()` when the fixture contains a real
+Salesforce embedding script. A placeholder bootstrap URL is enough to verify
+localization, but it cannot load a working chat widget.
+
+### Mock Ingestion CLI
+
+Use the `ingestion_enabled` fixture with `VIP_AGENTFORCE_MOCK_INGESTION_API`
+enabled. The fixture must include the four ingestion API fields and either
+`ingestion_api_sync_all_posts` or `ingestion_api_categories`, otherwise the sync
+preflight should fail closed.
+
+```bash
+vip dev-env exec --slug=vip-agentforce -- wp vip-agentforce ingestion sync --preflight-check --format=json
+vip dev-env exec --slug=vip-agentforce -- wp post create --post_title="Agentforce Local Smoke" --post_status=publish
+vip dev-env exec --slug=vip-agentforce -- wp vip-agentforce ingestion sync --reset
+vip dev-env exec --slug=vip-agentforce -- wp vip-agentforce ingestion sync
+vip dev-env exec --slug=vip-agentforce -- wp vip-agentforce ingestion process-queue --all
+vip dev-env exec --slug=vip-agentforce -- wp vip-agentforce ingestion sync --status
+```
+
+Expected: preflight reports `ready: true`, queue processing prints mock API
+output instead of calling Salesforce, and sync status shows the test post was
+processed.
 
 ## WP-CLI (via vip dev-env exec)
 
