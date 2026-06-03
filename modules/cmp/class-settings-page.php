@@ -62,18 +62,32 @@ class Settings_Page {
 	 * @return string|mixed The validated Purpose ID or old value if invalid.
 	 */
 	public function validate_iubenda_category( $purpose_id ) {
-		$purpose_id = trim( $purpose_id );
-		$old_value  = get_option( 'vip_agentforce_iubenda_category' );
+		$purpose_id            = trim( (string) $purpose_id );
+		$old_value             = get_option( 'vip_agentforce_iubenda_category' );
+		$selected_consent_type = $this->sanitize_consent_type( (string) get_option( 'vip_agentforce_consent_type', Constants::DEFAULT_CMP ) );
+
+		if ( isset( $_POST['vip_agentforce_consent_type'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Missing
+			// phpcs:ignore WordPress.Security.NonceVerification.Missing,WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- options.php verifies the nonce, and the value is sanitized after confirming it is a string.
+			$submitted_consent_type = wp_unslash( $_POST['vip_agentforce_consent_type'] );
+
+			if ( is_string( $submitted_consent_type ) ) {
+				$selected_consent_type = $this->sanitize_consent_type( sanitize_text_field( $submitted_consent_type ) );
+			}
+		}
 
 		if ( empty( $purpose_id ) ) {
-			add_settings_error(
-				'vip_agentforce_messages',
-				'vip_agentforce_iubenda_category_error',
-				__( 'iubenda Purpose ID cannot be empty.', 'vip-agentforce' ),
-				'error'
-			);
+			if ( 'iubenda' === $selected_consent_type ) {
+				add_settings_error(
+					'vip_agentforce_messages',
+					'vip_agentforce_iubenda_category_error',
+					__( 'iubenda Purpose ID cannot be empty.', 'vip-agentforce' ),
+					'error'
+				);
 
-			return $old_value;
+				return $old_value;
+			}
+
+			return Constants::DEFAULT_IUBENDA_PURPOSE_ID;
 		}
 
 		$purpose_id = intval( $purpose_id );

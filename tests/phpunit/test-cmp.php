@@ -88,6 +88,7 @@ HTML;
 		$this->reset_frontend_style();
 		remove_all_filters( 'vip_agentforce_debug_preview_capabilities' );
 		$this->set_debug_query_value( null );
+		unset( $_POST['vip_agentforce_consent_type'] ); // phpcs:ignore WordPress.Security.NonceVerification.Missing
 		wp_set_current_user( 0 );
 
 		Configs::flush_cache();
@@ -637,8 +638,26 @@ HTML;
 
 	public function test_validation_returns_old_values_on_invalid_input(): void {
 		$settings = Settings_Page::get_instance();
+		global $wp_settings_errors;
 
 		update_option( 'vip_agentforce_iubenda_category', '3' );
+
+		$this->assertSame(
+			Constants::DEFAULT_IUBENDA_PURPOSE_ID,
+			$settings->validate_iubenda_category( '' )
+		);
+
+		$wp_settings_errors                   = [];
+		$_POST['vip_agentforce_consent_type'] = 'iubenda'; // phpcs:ignore WordPress.Security.NonceVerification.Missing
+
+		$this->assertSame(
+			'3',
+			$settings->validate_iubenda_category( '' )
+		);
+		$this->assertSame(
+			'vip_agentforce_iubenda_category_error',
+			get_settings_errors( 'vip_agentforce_messages' )[0]['code']
+		);
 
 		$this->assertSame(
 			'3',

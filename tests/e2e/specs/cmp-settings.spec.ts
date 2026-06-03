@@ -34,7 +34,7 @@ declare global {
 }
 
 test.describe('CMP Settings', () => {
-	test('saves consent settings and toggles provider fields', async ({
+	test('saves consent settings and ignores inactive provider drafts', async ({
 		page,
 	}) => {
 		const cmpSettings = new CmpSettingsPage(page);
@@ -44,7 +44,7 @@ test.describe('CMP Settings', () => {
 			await expect(cmpSettings.heading).toHaveText('Agentforce Settings');
 		});
 
-		await test.step('Show only the selected provider fields', async () => {
+		await test.step('Save a OneTrust value', async () => {
 			await cmpSettings.setConsentType('OneTrust');
 
 			await expect(cmpSettings.onetrustRow).toBeVisible();
@@ -52,7 +52,10 @@ test.describe('CMP Settings', () => {
 			await expect(cmpSettings.iubendaRow).toBeHidden();
 
 			await cmpSettings.onetrustGroupId.fill('C0099');
+			await cmpSettings.save();
+		});
 
+		await test.step('Save a CookieBot value', async () => {
 			await cmpSettings.setConsentType('CookieBot');
 
 			await expect(cmpSettings.onetrustRow).toBeHidden();
@@ -60,9 +63,6 @@ test.describe('CMP Settings', () => {
 			await expect(cmpSettings.iubendaRow).toBeHidden();
 
 			await cmpSettings.cookiebotCategory.fill('marketing');
-		});
-
-		await test.step('Save settings and verify persisted active and inactive values', async () => {
 			await cmpSettings.save();
 
 			await expect(cmpSettings.consentType).toHaveValue('CookieBot');
@@ -76,6 +76,21 @@ test.describe('CMP Settings', () => {
 			await cmpSettings.setConsentType('OneTrust');
 			await expect(cmpSettings.onetrustRow).toBeVisible();
 			await expect(cmpSettings.onetrustGroupId).toHaveValue('C0099');
+		});
+
+		await test.step('Ignore draft provider values when saving a different consent type', async () => {
+			await cmpSettings.setConsentType('CookieBot');
+			await cmpSettings.cookiebotCategory.fill('preferences');
+
+			await cmpSettings.setConsentType('Custom');
+			await cmpSettings.save();
+
+			await expect(cmpSettings.consentType).toHaveValue('Custom');
+
+			await cmpSettings.setConsentType('CookieBot');
+			await expect(cmpSettings.cookiebotCategory).not.toHaveValue(
+				'preferences'
+			);
 		});
 	});
 

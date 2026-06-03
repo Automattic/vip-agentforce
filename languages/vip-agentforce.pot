@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-05-25T15:57:44+00:00\n"
+"POT-Creation-Date: 2026-06-03T10:21:19+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: vip-agentforce\n"
@@ -50,24 +50,24 @@ msgstr ""
 msgid "Settings Saved"
 msgstr ""
 
-#: modules/cmp/class-settings-page.php:72
+#: modules/cmp/class-settings-page.php:83
 msgid "iubenda Purpose ID cannot be empty."
 msgstr ""
 
-#: modules/cmp/class-settings-page.php:84
+#: modules/cmp/class-settings-page.php:98
 msgid "iubenda Purpose ID must be between 1 and 5."
 msgstr ""
 
-#: modules/cmp/class-settings-page.php:138
-#: modules/cmp/class-settings-page.php:228
+#: modules/cmp/class-settings-page.php:152
+#: modules/cmp/class-settings-page.php:242
 msgid "Agentforce Settings"
 msgstr ""
 
-#: modules/cmp/class-settings-page.php:139
+#: modules/cmp/class-settings-page.php:153
 msgid "Agentforce"
 msgstr ""
 
-#: modules/cmp/class-settings-page.php:229
+#: modules/cmp/class-settings-page.php:243
 msgid "Saved changes will be applied on the next page load."
 msgstr ""
 
@@ -127,67 +127,67 @@ msgstr ""
 msgid "OneTrust Group ID"
 msgstr ""
 
-#: assets/build/js/admin.js:287
+#: assets/build/js/admin.js:290
 msgid "Enter the Cookiebot category (e.g., necessary, preferences, statistics, marketing)."
 msgstr ""
 
-#: assets/build/js/admin.js:287
+#: assets/build/js/admin.js:290
 msgid "To see all available categories for your site, open browser console and run:"
 msgstr ""
 
-#: assets/build/js/admin.js:291
+#: assets/build/js/admin.js:294
 msgid "Cookiebot Category"
 msgstr ""
 
-#: assets/build/js/admin.js:301
+#: assets/build/js/admin.js:307
 msgid "Enter the iubenda Purpose ID (1 to 5). See the <link>iubenda documentation</link>."
 msgstr ""
 
-#: assets/build/js/admin.js:303
+#: assets/build/js/admin.js:309
 msgid "iubenda documentation"
 msgstr ""
 
-#: assets/build/js/admin.js:308
+#: assets/build/js/admin.js:314
 msgid "To see all available purpose IDs for your site, open browser console and run:"
 msgstr ""
 
-#: assets/build/js/admin.js:312
+#: assets/build/js/admin.js:318
 msgid "iubenda Purpose ID"
 msgstr ""
 
-#: assets/build/js/admin.js:319
+#: assets/build/js/admin.js:328
 msgid "Agent UI"
 msgstr ""
 
-#: assets/build/js/admin.js:320
+#: assets/build/js/admin.js:329
 msgid "Alignment and custom styles for the launcher/widget."
 msgstr ""
 
-#: assets/build/js/admin.js:324
+#: assets/build/js/admin.js:333
 msgid "Alignment"
 msgstr ""
 
-#: assets/build/js/admin.js:326
+#: assets/build/js/admin.js:335
 msgid "Bottom right"
 msgstr ""
 
-#: assets/build/js/admin.js:329
+#: assets/build/js/admin.js:338
 msgid "Bottom left"
 msgstr ""
 
-#: assets/build/js/admin.js:339
+#: assets/build/js/admin.js:348
 msgid "Custom CSS (optional)"
 msgstr ""
 
-#: assets/build/js/admin.js:340
+#: assets/build/js/admin.js:349
 msgid "/* Paste CSS to override agentforce styles */"
 msgstr ""
 
-#: assets/build/js/admin.js:347
+#: assets/build/js/admin.js:356
 msgid "Debug"
 msgstr ""
 
-#: assets/build/js/admin.js:352
+#: assets/build/js/admin.js:361
 msgid "Enable log"
 msgstr ""
 

@@ -232,6 +232,10 @@ function AgentforceSettingsApp({ settings }: { settings: SettingsData }) {
 									value={oneTrustGroupId}
 									onChange={setOneTrustGroupId}
 								/>
+								<HiddenField
+									name="vip_agentforce_onetrust_group_id"
+									value={oneTrustGroupId}
+								/>
 							</div>
 						)}
 
@@ -263,6 +267,10 @@ function AgentforceSettingsApp({ settings }: { settings: SettingsData }) {
 									)}
 									value={cookiebotCategory}
 									onChange={setCookiebotCategory}
+								/>
+								<HiddenField
+									name="vip_agentforce_cookiebot_category"
+									value={cookiebotCategory}
 								/>
 							</div>
 						)}
@@ -312,6 +320,10 @@ function AgentforceSettingsApp({ settings }: { settings: SettingsData }) {
 									type="number"
 									value={iubendaPurposeId}
 									onChange={setIubendaPurposeId}
+								/>
+								<HiddenField
+									name="vip_agentforce_iubenda_category"
+									value={iubendaPurposeId}
 								/>
 							</div>
 						)}
@@ -382,18 +394,6 @@ function AgentforceSettingsApp({ settings }: { settings: SettingsData }) {
 			<HiddenField
 				name="vip_agentforce_consent_type"
 				value={consentType}
-			/>
-			<HiddenField
-				name="vip_agentforce_onetrust_group_id"
-				value={oneTrustGroupId}
-			/>
-			<HiddenField
-				name="vip_agentforce_cookiebot_category"
-				value={cookiebotCategory}
-			/>
-			<HiddenField
-				name="vip_agentforce_iubenda_category"
-				value={iubendaPurposeId}
 			/>
 			<HiddenField name="vip_agentforce_alignment" value={alignment} />
 			<HiddenField name="vip_agentforce_custom_css" value={customCss} />
