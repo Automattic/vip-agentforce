@@ -92,7 +92,8 @@ jobs:
         working-directory: tests/e2e
 
       - name: Install Playwright with Chromium
-        run: npx playwright install chromium
+        timeout-minutes: 10
+        run: npx playwright install chromium --only-shell
         working-directory: tests/e2e
 
       - name: Install VIP CLI
