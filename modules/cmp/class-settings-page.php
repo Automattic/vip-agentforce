@@ -106,17 +106,6 @@ class Settings_Page {
 	}
 
 	/**
-	 * Sanitize toggle checkbox value.
-	 *
-	 * @param mixed $val The value to sanitize.
-	 *
-	 * @return int Sanitized value (1 for checked, 0 for unchecked).
-	 */
-	public function sanitize_toggle( $val ) {
-		return ! empty( $val ) ? 1 : 0;
-	}
-
-	/**
 	 * Validate alignment value.
 	 *
 	 * @param string $val The alignment value to validate.
@@ -180,16 +169,6 @@ class Settings_Page {
 		);
 		register_setting(
 			'agentforce_settings_group',
-			'vip_agentforce_enable_oplog',
-			array(
-				'sanitize_callback' => array(
-					$this,
-					'sanitize_toggle',
-				),
-			)
-		);
-		register_setting(
-			'agentforce_settings_group',
 			'vip_agentforce_alignment',
 			array(
 				'sanitize_callback' => array(
@@ -234,7 +213,6 @@ class Settings_Page {
 				'iubendaPurposeId'  => get_option( 'vip_agentforce_iubenda_category', Constants::DEFAULT_IUBENDA_PURPOSE_ID ),
 				'alignment'         => get_option( 'vip_agentforce_alignment', 'bottom-right' ),
 				'customCss'         => self::sanitize_custom_css( get_option( 'vip_agentforce_custom_css', '' ) ),
-				'enableLog'         => (bool) get_option( 'vip_agentforce_enable_oplog', 1 ),
 			),
 		);
 		?>

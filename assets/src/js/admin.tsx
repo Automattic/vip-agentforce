@@ -9,7 +9,6 @@ import {
 	SelectControl,
 	TextControl,
 	TextareaControl,
-	ToggleControl,
 } from '@wordpress/components';
 import domReady from '@wordpress/dom-ready';
 import {
@@ -34,7 +33,6 @@ interface SettingsValues {
 	iubendaPurposeId: string;
 	alignment: Alignment;
 	customCss: string;
-	enableLog: boolean;
 }
 
 interface SettingsData {
@@ -85,8 +83,7 @@ function isSettingsValues(value: unknown): value is SettingsValues {
 		typeof value.iubendaPurposeId === 'string' &&
 		typeof value.alignment === 'string' &&
 		isAlignment(value.alignment) &&
-		typeof value.customCss === 'string' &&
-		typeof value.enableLog === 'boolean'
+		typeof value.customCss === 'string'
 	);
 }
 
@@ -145,7 +142,6 @@ function AgentforceSettingsApp({ settings }: { settings: SettingsData }) {
 	);
 	const [alignment, setAlignment] = useState(values.alignment);
 	const [customCss, setCustomCss] = useState(values.customCss);
-	const [enableLog, setEnableLog] = useState(Boolean(values.enableLog));
 	const shouldShowOneTrust = consentType === 'OneTrust';
 	const shouldShowCookiebot = consentType === 'CookieBot';
 	const shouldShowIubenda = consentType === 'iubenda';
@@ -377,17 +373,6 @@ function AgentforceSettingsApp({ settings }: { settings: SettingsData }) {
 							/>
 						</div>
 					</SettingsSection>
-
-					<SettingsSection title={__('Debug', 'vip-agentforce')}>
-						<div id="row_oplog">
-							<ToggleControl
-								__nextHasNoMarginBottom
-								label={__('Enable log', 'vip-agentforce')}
-								checked={enableLog}
-								onChange={setEnableLog}
-							/>
-						</div>
-					</SettingsSection>
 				</CardBody>
 			</Card>
 
@@ -397,10 +382,6 @@ function AgentforceSettingsApp({ settings }: { settings: SettingsData }) {
 			/>
 			<HiddenField name="vip_agentforce_alignment" value={alignment} />
 			<HiddenField name="vip_agentforce_custom_css" value={customCss} />
-			<HiddenField
-				name="vip_agentforce_enable_oplog"
-				value={enableLog ? '1' : '0'}
-			/>
 
 			<p className="submit">
 				<Button type="submit" variant="primary">
