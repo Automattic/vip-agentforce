@@ -8,6 +8,11 @@ use Automattic\VIP\Salesforce\Agentforce\Utils\Configs;
 
 class Cmp_Tests extends WP_UnitTestCase {
 
+	public function setUp(): void {
+		parent::setUp();
+		$this->reset_frontend_style();
+	}
+
 	/**
 	 * Dequeue and deregister consent scripts to keep tests isolated.
 	 *
@@ -16,6 +21,14 @@ class Cmp_Tests extends WP_UnitTestCase {
 	private function reset_consent_script( string $handle ): void {
 		wp_dequeue_script( $handle );
 		wp_deregister_script( $handle );
+	}
+
+	/**
+	 * Dequeue and deregister frontend styles to keep inline CSS tests isolated.
+	 */
+	private function reset_frontend_style(): void {
+		wp_dequeue_style( 'vip-agentforce-style' );
+		wp_deregister_style( 'vip-agentforce-style' );
 	}
 
 	/**
@@ -72,8 +85,10 @@ HTML;
 		$this->reset_consent_script( 'vip-af-onetrust-consent' );
 		$this->reset_consent_script( 'vip-af-iubenda-consent' );
 		$this->reset_consent_script( 'vip-af-custom-consent' );
+		$this->reset_frontend_style();
 		remove_all_filters( 'vip_agentforce_debug_preview_capabilities' );
 		$this->set_debug_query_value( null );
+		unset( $_POST['vip_agentforce_consent_type'] ); // phpcs:ignore WordPress.Security.NonceVerification.Missing
 		wp_set_current_user( 0 );
 
 		Configs::flush_cache();
@@ -549,91 +564,100 @@ HTML;
 		$this->assertSame( Constants::DEFAULT_CMP, $settings->sanitize_consent_type( 'onetrust' ) );
 	}
 
-	public function test_sdk_activation_status_is_readonly_and_reflects_config(): void {
-		$settings = Settings_Page::get_instance();
-
-		$this->prime_configs_cache(
-			[
-				'agentforce_js_sdk_activated' => false,
-			]
-		);
-
-		ob_start();
-		$settings->render_enable_sdk_field();
-		$output = ob_get_clean();
-
-		$this->assertStringContainsString( 'id="agentforce-sdk-activation-status"', $output );
-		$this->assertStringContainsString( 'data-status="inactive"', $output );
-		$this->assertStringNotContainsString( '<input', $output );
-	}
-
-	public function test_embedding_script_status_is_readonly_and_reflects_config(): void {
-		$settings = Settings_Page::get_instance();
-
-		$this->prime_configs_cache(
-			[
-				'agentforce_embedding_script' => $this->get_embedding_script_fixture(),
-			]
-		);
-
-		ob_start();
-		$settings->render_embedding_script_field();
-		$output = ob_get_clean();
-
-		$this->assertStringContainsString( 'id="agentforce-embedding-script-status"', $output );
-		$this->assertStringContainsString( 'data-status="configured"', $output );
-		$this->assertStringContainsString( 'Configured', $output );
-		$this->assertStringNotContainsString( '<input', $output );
-	}
-
-	public function test_embedding_script_status_is_not_configured_when_script_is_invalid(): void {
-		$settings = Settings_Page::get_instance();
-
-		$this->prime_configs_cache(
-			[
-				// phpcs:ignore WordPress.WP.EnqueuedResources.NonEnqueuedScript -- Test fixture intentionally contains script tags.
-				'agentforce_embedding_script' => '<script src="http://example.local/assets/js/bootstrap.min.js"></script>',
-			]
-		);
-
-		ob_start();
-		$settings->render_embedding_script_field();
-		$output = ob_get_clean();
-
-		$this->assertStringContainsString( 'id="agentforce-embedding-script-status"', $output );
-		$this->assertStringContainsString( 'data-status="not-configured"', $output );
-		$this->assertStringContainsString( 'Not configured', $output );
-		$this->assertStringNotContainsString( '<input', $output );
-	}
-
-	public function test_settings_page_uses_salesforce_js_embed_label(): void {
+	public function test_settings_page_renders_react_root_with_serialized_values(): void {
 		$settings = Settings_Page::get_instance();
 
 		ob_start();
 		$settings->render_settings_page();
 		$output = ob_get_clean();
 
-		$this->assertStringContainsString( 'Salesforce JS Embed', $output );
+		$this->assertStringContainsString( 'id="vip-agentforce-settings-app"', $output );
+		$this->assertStringContainsString( '&quot;values&quot;', $output );
+		$this->assertStringContainsString( '&quot;consentType&quot;:&quot;Custom&quot;', $output );
+		$this->assertStringNotContainsString( '&quot;strings&quot;', $output );
+		$this->assertStringNotContainsString( 'Salesforce JS Embed', $output );
 		$this->assertStringNotContainsString( 'Salesforce SDK URL', $output );
 	}
 
-	public function test_render_custom_css_includes_alignment_and_sanitizes_css(): void {
+	public function test_render_custom_css_adds_alignment_and_custom_css_inline(): void {
 		update_option( 'vip_agentforce_alignment', 'bottom-left' );
-		update_option( 'vip_agentforce_custom_css', 'body { color: red; }' );
+		update_option( 'vip_agentforce_custom_css', '.embedded-messaging > .launcher { color: red; }' );
 
-		ob_start();
+		Assets::get_instance()->enqueue_scripts();
 		Agentforce::get_instance()->render_custom_css();
-		$output = ob_get_clean();
+		$inline_styles = wp_styles()->get_data( 'vip-agentforce-style', 'after' );
+		$inline_css    = is_array( $inline_styles ) ? implode( "\n", $inline_styles ) : '';
 
-		$this->assertStringContainsString( '.embedded-messaging > .embeddedMessagingFrame { left: 10px }', $output );
-		$this->assertStringNotContainsString( '<script', $output );
-		$this->assertStringContainsString( 'style id="agentforce-custom-css">body { color: red; }</style>', $output );
+		$this->assertStringContainsString( '.embedded-messaging > .embeddedMessagingFrame { left: 10px }', $inline_css );
+		$this->assertStringContainsString( '.embedded-messaging > .launcher { color: red; }', $inline_css );
+	}
+
+	public function test_render_custom_css_decodes_legacy_entities(): void {
+		update_option( 'vip_agentforce_custom_css', '.embedded-messaging &gt; .launcher { color: red; }' );
+
+		Assets::get_instance()->enqueue_scripts();
+		Agentforce::get_instance()->render_custom_css();
+		$inline_styles = wp_styles()->get_data( 'vip-agentforce-style', 'after' );
+		$inline_css    = is_array( $inline_styles ) ? implode( "\n", $inline_styles ) : '';
+
+		$this->assertStringContainsString( '.embedded-messaging > .launcher { color: red; }', $inline_css );
+		$this->assertStringNotContainsString( '&gt;', $inline_css );
+	}
+
+	public function test_sanitize_custom_css_preserves_css_combinators(): void {
+		$settings = Settings_Page::get_instance();
+
+		$this->assertSame(
+			'.embedded-messaging > .launcher { color: red; }',
+			$settings->sanitize_custom_css( '.embedded-messaging > .launcher { color: red; }' )
+		);
+	}
+
+	public function test_sanitize_custom_css_strips_html_breakout_payloads(): void {
+		$settings = Settings_Page::get_instance();
+
+		$this->assertSame(
+			'.embedded-messaging > .launcher { color: red; }',
+			$settings->sanitize_custom_css( '&lt;/style&gt;<script>alert(1)</script>.embedded-messaging &gt; .launcher { color: red; }' )
+		);
+	}
+
+	public function test_render_custom_css_strips_breakout_payloads(): void {
+		update_option( 'vip_agentforce_custom_css', '&lt;/style&gt;<script>alert(1)</script>.embedded-messaging &gt; .launcher { color: red; }' );
+
+		Assets::get_instance()->enqueue_scripts();
+		Agentforce::get_instance()->render_custom_css();
+		$inline_styles = wp_styles()->get_data( 'vip-agentforce-style', 'after' );
+		$inline_css    = is_array( $inline_styles ) ? implode( "\n", $inline_styles ) : '';
+
+		$this->assertStringContainsString( '.embedded-messaging > .launcher { color: red; }', $inline_css );
+		$this->assertStringNotContainsString( '</style>', $inline_css );
+		$this->assertStringNotContainsString( '<script>', $inline_css );
+		$this->assertStringNotContainsString( 'alert(1)', $inline_css );
 	}
 
 	public function test_validation_returns_old_values_on_invalid_input(): void {
 		$settings = Settings_Page::get_instance();
+		global $wp_settings_errors;
 
 		update_option( 'vip_agentforce_iubenda_category', '3' );
+
+		$this->assertSame(
+			Constants::DEFAULT_IUBENDA_PURPOSE_ID,
+			$settings->validate_iubenda_category( '' )
+		);
+
+		$wp_settings_errors                   = [];
+		$_POST['vip_agentforce_consent_type'] = 'iubenda'; // phpcs:ignore WordPress.Security.NonceVerification.Missing
+
+		$this->assertSame(
+			'3',
+			$settings->validate_iubenda_category( '' )
+		);
+		$this->assertSame(
+			'vip_agentforce_iubenda_category_error',
+			get_settings_errors( 'vip_agentforce_messages' )[0]['code']
+		);
 
 		$this->assertSame(
 			'3',
