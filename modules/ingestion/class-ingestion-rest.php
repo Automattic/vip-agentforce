@@ -77,6 +77,6 @@ class Ingestion_REST {
 			);
 		}
 
-		return new \WP_REST_Response( $progress, 200 );
+		return new \WP_REST_Response( Ingestion_Sync_Progress::get_status_response( $progress ), 200 );
 	}
 }

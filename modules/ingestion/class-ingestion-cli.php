@@ -304,6 +304,8 @@ class Ingestion_CLI extends WP_CLI_Command {
 			return;
 		}
 
+		$progress = Ingestion_Sync_Progress::get_status_response( $progress );
+
 		WP_CLI::log( '=== Bulk Sync Status ===' );
 		WP_CLI::log( sprintf( 'Status: %s', strtoupper( $progress['status'] ) ) );
 		WP_CLI::log( sprintf( 'Progress: %d / %d posts', $progress['processed'], $progress['total'] ) );
@@ -354,10 +356,7 @@ class Ingestion_CLI extends WP_CLI_Command {
 				'message' => 'No sync has been initiated.',
 			];
 		} else {
-			$output               = $progress;
-			$output['percentage'] = $progress['total'] > 0
-				? (float) round( ( $progress['processed'] / $progress['total'] ) * 100, 1 )
-				: 0.0;
+			$output = Ingestion_Sync_Progress::get_status_response( $progress );
 		}
 
 		// phpcs:ignore WordPress.WP.AlternativeFunctions.json_encode_json_encode -- CLI output, not database storage.
