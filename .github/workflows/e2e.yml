@@ -60,6 +60,7 @@ jobs:
             ghcr.io:443
             github.com:443
             hosted-compute-watchdog-prod-eus-01.githubapp.com:443
+            hosted-compute-watchdog-prod-iad-02.githubapp.com:443
             nodejs.org:443
             objects.githubusercontent.com:443
             pkg-containers.githubusercontent.com:443
