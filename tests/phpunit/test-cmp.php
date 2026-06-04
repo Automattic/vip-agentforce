@@ -78,7 +78,6 @@ HTML;
 		delete_option( 'vip_agentforce_iubenda_category' );
 		delete_option( 'vip_agentforce_alignment' );
 		delete_option( 'vip_agentforce_custom_css' );
-		delete_option( 'vip_agentforce_enable_oplog' );
 
 		$this->reset_consent_script( 'vip-af-cookieyes-consent' );
 		$this->reset_consent_script( 'vip-af-cookiebot-consent' );
