@@ -55,7 +55,7 @@ test.describe('CMP Settings', () => {
 			await cmpSettings.save();
 		});
 
-		await test.step('Save a CookieBot value', async () => {
+		await test.step('Save a CookieBot value and clear inactive OneTrust value', async () => {
 			await cmpSettings.setConsentType('CookieBot');
 
 			await expect(cmpSettings.onetrustRow).toBeHidden();
@@ -75,7 +75,9 @@ test.describe('CMP Settings', () => {
 
 			await cmpSettings.setConsentType('OneTrust');
 			await expect(cmpSettings.onetrustRow).toBeVisible();
-			await expect(cmpSettings.onetrustGroupId).toHaveValue('C0099');
+			await expect(cmpSettings.onetrustGroupId).not.toHaveValue(
+				'C0099'
+			);
 		});
 
 		await test.step('Ignore draft provider values when saving a different consent type', async () => {
