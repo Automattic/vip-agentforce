@@ -56,7 +56,38 @@ jobs:
 
       - name: Install Playwright with Chromium
         timeout-minutes: 10
-        run: npx playwright install chromium --only-shell
+        run: |
+          set -euo pipefail
+
+          chromium_revision="$(node -p "require( './node_modules/playwright-core/browsers.json' ).browsers.find( ( browser ) => browser.name === 'chromium-headless-shell' ).revision")"
+          ffmpeg_revision="$(node -p "require( './node_modules/playwright-core/browsers.json' ).browsers.find( ( browser ) => browser.name === 'ffmpeg' ).revision")"
+          playwright_cache="${HOME}/.cache/ms-playwright"
+
+          install_playwright_archive() {
+            local url="$1"
+            local target_dir="$2"
+            local executable="$3"
+            local archive
+
+            archive="$(mktemp)"
+            curl --fail --location --retry 3 --connect-timeout 15 --max-time 300 --output "${archive}" "${url}"
+            rm -rf "${target_dir}"
+            mkdir -p "${target_dir}"
+            unzip -q "${archive}" -d "${target_dir}"
+            rm -f "${archive}"
+            chmod +x "${target_dir}/${executable}"
+            touch "${target_dir}/INSTALLATION_COMPLETE" "${target_dir}/DEPENDENCIES_VALIDATED"
+          }
+
+          install_playwright_archive \
+            "https://cdn.playwright.dev/dbazure/download/playwright/builds/chromium/${chromium_revision}/chromium-headless-shell-linux.zip" \
+            "${playwright_cache}/chromium_headless_shell-${chromium_revision}" \
+            "chrome-linux/headless_shell"
+
+          install_playwright_archive \
+            "https://cdn.playwright.dev/dbazure/download/playwright/builds/ffmpeg/${ffmpeg_revision}/ffmpeg-linux.zip" \
+            "${playwright_cache}/ffmpeg-${ffmpeg_revision}" \
+            "ffmpeg-linux"
         working-directory: tests/e2e
 
       - name: Install VIP CLI
