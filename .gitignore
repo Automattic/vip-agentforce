@@ -49,6 +49,15 @@ phpcs.xml
 
 .claude
 
+# Agent overrides — local only, not committed
+AGENTS.override.md
+CLAUDE.local.md
+agent_docs_local/
+
+# Claude skills symlink — recreate with:
+#   ln -sfn ../.agents/skills .claude/skills
+.claude/skills
+
 env.php
 
 /assets/build/
