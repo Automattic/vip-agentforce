@@ -83,7 +83,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v6.0.0
         with:
-          node-version: 24.15
+          node-version:  'lts/*'
           cache: npm
           cache-dependency-path: tests/e2e/package-lock.json
 
@@ -145,7 +145,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v6.0.0
         with:
-          node-version: 24.15 # Had to use this version because Playwright is currently failing to extract the downloaded Chromium binary with Node 24.16, see https://github.com/microsoft/playwright/issues/41133
+          node-version:  'lts/*'
           cache: npm
           cache-dependency-path: tests/e2e/package-lock.json
 
