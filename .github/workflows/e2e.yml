@@ -92,7 +92,7 @@ jobs:
         working-directory: tests/e2e
 
       - name: Install Playwright with Chromium
-        timeout-minutes: 2
+        timeout-minutes: 4
         run: npx playwright install chromium
         working-directory: tests/e2e
 
