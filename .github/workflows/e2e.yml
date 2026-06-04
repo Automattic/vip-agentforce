@@ -83,7 +83,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v6.0.0
         with:
-          node-version: 'lts/*'
+          node-version:  'lts/*'
           cache: npm
           cache-dependency-path: tests/e2e/package-lock.json
 
@@ -92,6 +92,7 @@ jobs:
         working-directory: tests/e2e
 
       - name: Install Playwright with Chromium
+        timeout-minutes: 4
         run: npx playwright install chromium
         working-directory: tests/e2e
 
@@ -144,7 +145,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v6.0.0
         with:
-          node-version: 'lts/*'
+          node-version:  'lts/*'
           cache: npm
           cache-dependency-path: tests/e2e/package-lock.json
 
