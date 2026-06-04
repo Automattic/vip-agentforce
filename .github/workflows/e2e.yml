@@ -92,7 +92,7 @@ jobs:
         working-directory: tests/e2e
 
       - name: Install Playwright with Chromium
-        timeout-minutes: 10
+        timeout-minutes: 2
         run: npx playwright install chromium
         working-directory: tests/e2e
 
@@ -145,7 +145,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v6.0.0
         with:
-          node-version: 24.15
+          node-version: 24.15 # Had to use this version because Playwright is currently failing to extract the downloaded Chromium binary with Node 24.16, see https://github.com/microsoft/playwright/issues/41133
           cache: npm
           cache-dependency-path: tests/e2e/package-lock.json
 
