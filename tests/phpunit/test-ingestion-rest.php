@@ -131,6 +131,6 @@ class Ingestion_REST_Test extends WP_UnitTestCase {
 		$this->assertSame( 70, $data['last_post_id'] );
 		$this->assertSame( 10.0, $data['percentage'] );
 		$this->assertSame( 'stored', $data['progress_sources']['effective']['source'] );
-		$this->assertSame( 'cache_not_ahead_of_stored', $data['progress_sources']['effective']['reason'] );
+		$this->assertSame( 'cache_behind_stored', $data['progress_sources']['effective']['reason'] );
 	}
 }

@@ -339,10 +339,11 @@ class Ingestion_Sync_Progress_Test extends WP_UnitTestCase {
 
 		$sources = Ingestion_Sync_Progress::get_progress_sources( Ingestion_Sync_Progress::get() );
 
-		$this->assertTrue( $sources['cache']['valid'] );
+		$this->assertFalse( $sources['cache']['valid'] );
 		$this->assertSame( 5, $sources['cache']['processed'] );
+		$this->assertSame( 'cache_behind_stored', $sources['cache']['reason'] );
 		$this->assertSame( 'stored', $sources['effective']['source'] );
-		$this->assertSame( 'cache_not_ahead_of_stored', $sources['effective']['reason'] );
+		$this->assertSame( 'cache_behind_stored', $sources['effective']['reason'] );
 		$this->assertSame( 10, $sources['effective']['processed'] );
 	}
 
@@ -441,7 +442,7 @@ class Ingestion_Sync_Progress_Test extends WP_UnitTestCase {
 			Ingestion_Sync_Progress::get_live_progress_cache_key(),
 			$cached_progress,
 			Ingestion_Sync_Progress::LIVE_PROGRESS_CACHE_GROUP,
-			Ingestion_Sync_Progress::LIVE_PROGRESS_CACHE_TTL
+			600
 		);
 
 		$sources = Ingestion_Sync_Progress::get_progress_sources( Ingestion_Sync_Progress::get() );

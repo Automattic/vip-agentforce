@@ -26,11 +26,6 @@ class Ingestion_Sync_Progress {
 	public const LIVE_PROGRESS_CACHE_GROUP = 'vip-agentforce';
 
 	/**
-	 * Cache TTL for live sync progress snapshots.
-	 */
-	public const LIVE_PROGRESS_CACHE_TTL = 600;
-
-	/**
 	 * Maximum age, in seconds, for a live snapshot to override stored progress.
 	 */
 	public const LIVE_PROGRESS_MAX_AGE = 30;
@@ -210,7 +205,7 @@ class Ingestion_Sync_Progress {
 			self::get_live_progress_cache_key(),
 			$live_progress,
 			self::LIVE_PROGRESS_CACHE_GROUP,
-			self::LIVE_PROGRESS_CACHE_TTL
+			600
 		);
 	}
 
