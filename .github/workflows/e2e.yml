@@ -36,7 +36,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@20cf305ff2072d973412fa9b1e3a4f227bda3c76 # v2.14.0
+        uses: step-security/harden-runner@f4a75cfd619ee5ce8d5b864b0d183aff3c69b55a # v2.13.1
         with:
           egress-policy: block
           allowed-endpoints:
@@ -44,7 +44,6 @@ jobs:
             1.gravatar.com:80
             2.gravatar.com:443
             2.gravatar.com:80
-            actions-results-receiver-production.githubapp.com:443
             api.github.com:443
             api.ipify.org:443
             api.wordpress.org:443
@@ -52,15 +51,12 @@ jobs:
             api.wpvip.com:443
             auth.docker.io:443
             cdn.playwright.dev:443
-            codeload.github.com:443
             dl-cdn.alpinelinux.org:443
             downloads.wordpress.org:443
             e2e-test-site.vipdev.lndo.site:443
             geoip.elastic.co:443
             ghcr.io:443
             github.com:443
-            hosted-compute-watchdog-prod-eus-01.githubapp.com:443
-            hosted-compute-watchdog-prod-iad-02.githubapp.com:443
             nodejs.org:443
             objects.githubusercontent.com:443
             pkg-containers.githubusercontent.com:443
@@ -68,12 +64,10 @@ jobs:
             playwright.azureedge.net:443
             playwright.download.prss.microsoft.com:443
             production.cloudflare.docker.com:443
-            production.cloudfront.docker.com:443
             public-api.wordpress.com:443
             raw.githubusercontent.com:443
             registry-1.docker.io:443
             registry.npmjs.org:443
-            results-receiver.actions.githubusercontent.com:443
             s.w.org:443
             s0.wp.com:443
             secure.gravatar.com:443
@@ -97,10 +91,6 @@ jobs:
         working-directory: tests/e2e
 
       - name: Install Playwright with Chromium
-        timeout-minutes: 2
-        env:
-          DEBUG: pw:install
-          DEBUG_COLORS: "0"
         run: npx playwright install chromium
         working-directory: tests/e2e
 
@@ -143,7 +133,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@20cf305ff2072d973412fa9b1e3a4f227bda3c76 # v2.14.0
+        uses: step-security/harden-runner@f4a75cfd619ee5ce8d5b864b0d183aff3c69b55a # v2.13.1
         with:
           egress-policy: audit
 
