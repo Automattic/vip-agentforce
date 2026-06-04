@@ -67,29 +67,70 @@ class Assets {
 	}
 
 	/**
-	 * To enqueue scripts and styles. in admin.
+	 * To enqueue scripts and styles in admin.
 	 *
+	 * @param string $hook_suffix The current admin page hook suffix.
 	 * @return void
 	 */
-	public function admin_enqueue_scripts() {
+	public function admin_enqueue_scripts( string $hook_suffix = '' ): void {
+		if ( 'toplevel_page_vip-agentforce-settings' !== $hook_suffix ) {
+			return;
+		}
+
+		$admin_script_asset_path = $this->get_integration_path() . '/assets/build/js/admin.asset.php';
+		$admin_script_path       = $this->get_integration_path() . '/assets/build/js/admin.js';
+		$admin_style_path        = $this->get_integration_path() . '/assets/build/css/admin.css';
+
+		if ( ! is_readable( $admin_script_asset_path ) ) {
+			wp_die( esc_html__( 'The admin asset file is missing. Run `npm run build` to generate it.', 'vip-agentforce' ) );
+		}
+
+		if ( ! is_readable( $admin_script_path ) ) {
+			wp_die( esc_html__( 'The admin script file is missing. Run `npm run build` to generate it.', 'vip-agentforce' ) );
+		}
+
+		// phpcs:ignore WordPressVIPMinimum.Files.IncludingFile.UsingVariable
+		$admin_script_asset = include $admin_script_asset_path;
+
+		if ( ! is_array( $admin_script_asset ) || ! isset( $admin_script_asset['dependencies'], $admin_script_asset['version'] ) ) {
+			wp_die( esc_html__( 'The admin asset metadata is invalid. Run `npm run build` to regenerate it.', 'vip-agentforce' ) );
+		}
 
 		wp_register_script(
 			'vip-agentforce-script',
 			$this->get_integration_url() . '/assets/build/js/admin.js',
-			array(),
-			filemtime( $this->get_integration_path() . '/assets/build/js/admin.js' ),
-			true
+			$admin_script_asset['dependencies'],
+			$admin_script_asset['version'],
+			array(
+				'in_footer' => true,
+			)
 		);
 
-		wp_register_style(
-			'vip-agentforce-style',
-			$this->get_integration_url() . '/assets/build/css/admin.css',
-			array(),
-			filemtime( $this->get_integration_path() . '/assets/build/css/admin.css' )
+		wp_set_script_translations(
+			'vip-agentforce-script',
+			'vip-agentforce',
+			$this->get_integration_path() . '/languages'
 		);
+
+		if ( is_readable( $admin_style_path ) ) {
+			wp_register_style(
+				'vip-agentforce-style',
+				$this->get_integration_url() . '/assets/build/css/admin.css',
+				array_values(
+					array_filter(
+						$admin_script_asset['dependencies'],
+						function ( $style ) {
+							return wp_style_is( $style, 'registered' );
+						}
+					)
+				),
+				filemtime( $admin_style_path )
+			);
+
+			wp_enqueue_style( 'vip-agentforce-style' );
+		}
 
 		wp_enqueue_script( 'vip-agentforce-script' );
-		wp_enqueue_style( 'vip-agentforce-style' );
 	}
 
 
