@@ -98,7 +98,7 @@ jobs:
 
       - name: Install Playwright with Chromium
         timeout-minutes: 10
-        run: npx playwright install chromium --only-shell
+        run: npx playwright install chromium-headless-shell ffmpeg
         working-directory: tests/e2e
 
       - name: Install VIP CLI
