@@ -33,7 +33,7 @@ When you're done, you can tear down the environment using:
 <br />
 To start e2e environment with a specific version of WordPress:
   
-`npm run setup-e2e-env -- -v 5.9-beta1`
+`npm run setup-e2e-env -- -v 7.0`
 <br />
 <br />
 To start e2e environment with custom client code:
