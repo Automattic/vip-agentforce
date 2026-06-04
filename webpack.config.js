@@ -87,7 +87,7 @@ const scripts = {
 	...sharedConfig,
 	entry: {
 		main: path.resolve( process.cwd(), 'assets', 'src', 'js', 'main.js' ),
-		admin: path.resolve( process.cwd(), 'assets', 'src', 'js', 'admin.js' ),
+		admin: path.resolve( process.cwd(), 'assets', 'src', 'js', 'admin.tsx' ),
 		cmpcookieyes: path.resolve( process.cwd(), 'assets', 'src', 'js', 'cmp-cookieyes.js' ),
 		cmpcookiebot: path.resolve( process.cwd(), 'assets', 'src', 'js', 'cmp-cookiebot.js' ),
 		cmponetrust: path.resolve( process.cwd(), 'assets', 'src', 'js', 'cmp-onetrust.js' ),
