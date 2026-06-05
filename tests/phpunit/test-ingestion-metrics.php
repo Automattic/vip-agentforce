@@ -197,8 +197,8 @@ class Ingestion_Metrics_Test extends WP_UnitTestCase {
 		$this->mock_http_response(
 			[
 				'response' => [
-					'code'    => 503,
-					'message' => 'Service Unavailable',
+					'code'    => 501,
+					'message' => 'Not Implemented',
 				],
 				'headers'  => [],
 				'body'     => '',
@@ -210,7 +210,7 @@ class Ingestion_Metrics_Test extends WP_UnitTestCase {
 
 		$this->assertFalse( $result->success );
 		$this->assertSame( 'server', $result->get_error_class() );
-		$this->assertSame( 1, $this->api_requests_counter->get_sample( [ 'POST', '503', 'server_error' ] ) );
+		$this->assertSame( 1, $this->api_requests_counter->get_sample( [ 'POST', '501', 'server_error' ] ) );
 		$this->assertSame( 1, $this->api_errors_counter->get_sample( [ 'server' ] ) );
 	}
 

@@ -184,7 +184,7 @@ class Ingestion_API_Client {
 		// Server-side / transient errors. 503 occasionally includes
 		// Retry-After; honor it the same way we honor 429 so the next
 		// cron tick observes the block.
-		if ( in_array( $status_code, [ 408, 500, 502, 503, 504 ], true ) ) {
+		if ( 408 === $status_code || $status_code >= 500 ) {
 			$retry_after = $this->parse_retry_after_header( $response );
 			if ( $retry_after > 0 ) {
 				$this->set_rate_limit_block( $retry_after );
@@ -216,7 +216,7 @@ class Ingestion_API_Client {
 		// is_retryable() === false and surface a failure event.
 		$error_class = in_array( $status_code, [ 401, 403 ], true ) ? 'auth' : 'client';
 		$outcome     = 'auth' === $error_class ? 'auth_error' : 'client_error';
-		if ( $status_code < 400 || $status_code >= 500 ) {
+		if ( $status_code < 400 ) {
 			$error_class = 'unexpected';
 			$outcome     = 'unexpected';
 		}

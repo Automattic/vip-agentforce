@@ -152,11 +152,11 @@ class Ingestion_API_Result {
 			return 'rate_limit';
 		}
 
-		if ( in_array( $status_code, [ 408, 500, 502, 503, 504 ], true ) ) {
+		if ( 408 === $status_code || $status_code >= 500 ) {
 			return 'server';
 		}
 
-		if ( $status_code >= 400 && $status_code < 500 ) {
+		if ( $status_code >= 400 ) {
 			return 'client';
 		}
 
@@ -218,7 +218,7 @@ class Ingestion_API_Result {
 
 		$status_code = (int) wp_remote_retrieve_response_code( $this->response );
 
-		return in_array( $status_code, [ 408, 429, 500, 502, 503, 504 ], true );
+		return 408 === $status_code || 429 === $status_code || $status_code >= 500;
 	}
 
 	/**

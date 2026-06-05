@@ -8,6 +8,7 @@
 namespace Automattic\VIP\Salesforce\Agentforce\Ingestion;
 
 use Automattic\VIP\Salesforce\Agentforce\Utils\Configs;
+use Automattic\VIP\Salesforce\Agentforce\Utils\Ingestion_Metrics;
 use Automattic\VIP\Salesforce\Agentforce\Utils\Logger;
 use WP_CLI;
 use WP_CLI_Command;
@@ -158,6 +159,7 @@ class Ingestion_CLI extends WP_CLI_Command {
 		$preflight_failure = Ingestion_API_Client::get_request_preflight_failure();
 		if ( null !== $preflight_failure ) {
 			$message = $preflight_failure['message'];
+			Ingestion_Metrics::record_api_error( $preflight_failure['error_class'] );
 			if ( 'json' === $format ) {
 				echo wp_json_encode( [
 					'success'     => false,

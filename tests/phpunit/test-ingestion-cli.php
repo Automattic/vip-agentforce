@@ -6,7 +6,10 @@ use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_Post_Record;
 use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_Sync_Progress;
 use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_Cron;
 use Automattic\VIP\Salesforce\Agentforce\Utils\Configs;
+use Automattic\VIP\Salesforce\Agentforce\Utils\Ingestion_Metrics;
 use Automattic\VIP\Salesforce\Agentforce\Utils\Logger;
+
+require_once __DIR__ . '/../class-fake-ingestion-metric.php';
 
 class Ingestion_CLI_Test extends WP_UnitTestCase {
 
@@ -16,6 +19,8 @@ class Ingestion_CLI_Test extends WP_UnitTestCase {
 	 * @var array<int, array{url: string, method: string, body: string}>
 	 */
 	private array $captured_requests = [];
+
+	private Fake_Ingestion_Metric $api_errors_counter;
 
 	/**
 	 * Prime Configs cache for deterministic tests without mutating VIP_AGENTFORCE_CONFIGS.
@@ -41,7 +46,9 @@ class Ingestion_CLI_Test extends WP_UnitTestCase {
 	public function setUp(): void {
 		parent::setUp();
 		Logger::disable();
-		$this->captured_requests = [];
+		$this->captured_requests  = [];
+		$this->api_errors_counter = new Fake_Ingestion_Metric();
+		$this->set_metric_property( 'api_errors_counter', $this->api_errors_counter );
 
 		// Initialize cron hooks (registers the custom schedule needed by schedule_processing).
 		Ingestion_Cron::init();
@@ -94,9 +101,17 @@ class Ingestion_CLI_Test extends WP_UnitTestCase {
 		remove_all_filters( 'cron_schedules' );
 		remove_all_actions( Ingestion_Cron::CRON_HOOK );
 		$this->captured_requests = [];
+		$this->set_metric_property( 'api_errors_counter', null );
 		Ingestion_Sync_Progress::reset();
 		Ingestion_Cron::unschedule_processing();
 		wp_cache_delete( 'vip_agentforce_rate_limit_blocked_until', 'vip_agentforce' );
+	}
+
+	private function set_metric_property( string $property, ?Fake_Ingestion_Metric $value ): void {
+		$ref  = new ReflectionClass( Ingestion_Metrics::class );
+		$prop = $ref->getProperty( $property );
+		$prop->setAccessible( true );
+		$prop->setValue( null, $value );
 	}
 
 	/**
@@ -728,6 +743,7 @@ class Ingestion_CLI_Test extends WP_UnitTestCase {
 		$this->assertSame( 'idle', $data['status'] );
 		$this->assertSame( 'config', $data['error_class'] );
 		$this->assertStringContainsString( 'Missing required API configuration', $data['message'] );
+		$this->assertSame( 1, $this->api_errors_counter->get_sample( [ 'config' ] ) );
 		$this->assertNull( Ingestion_Sync_Progress::get(), 'Sync progress should not start when request preflight fails.' );
 		$this->assertFalse( Ingestion_Cron::is_scheduled(), 'Cron should not be scheduled when request preflight fails.' );
 	}
@@ -754,6 +770,7 @@ class Ingestion_CLI_Test extends WP_UnitTestCase {
 		$this->assertSame( 'idle', $data['status'] );
 		$this->assertSame( 'auth', $data['error_class'] );
 		$this->assertSame( 'Ingestion API token has expired', $data['message'] );
+		$this->assertSame( 1, $this->api_errors_counter->get_sample( [ 'auth' ] ) );
 		$this->assertNull( Ingestion_Sync_Progress::get(), 'Sync progress should not start when request preflight fails.' );
 		$this->assertFalse( Ingestion_Cron::is_scheduled(), 'Cron should not be scheduled when request preflight fails.' );
 	}

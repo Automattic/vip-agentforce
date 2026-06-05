@@ -568,7 +568,7 @@ class Ingestion_API_Client_Test extends WP_UnitTestCase {
 	// =========================================================================
 
 	public function test_5xx_returns_retryable_failure(): void {
-		foreach ( [ 500, 502, 503, 504 ] as $status_code ) {
+		foreach ( [ 500, 501, 502, 503, 504, 505 ] as $status_code ) {
 			$this->captured_requests = [];
 			remove_all_filters( 'pre_http_request' );
 
