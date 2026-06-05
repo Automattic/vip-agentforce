@@ -415,6 +415,35 @@ class Ingestion_Cron_Test extends WP_UnitTestCase {
 		$this->assertFalse( Ingestion_Sync_Progress::is_running() );
 	}
 
+	public function test_bulk_sync_writes_live_cache_without_extra_option_writes(): void {
+		$this->mock_http_success();
+		$this->setup_ingestion_filters();
+
+		$this->factory()->post->create_many( 5, [ 'post_status' => 'publish' ] );
+
+		Ingestion_Sync_Progress::start( 5, [ 'post' ] );
+
+		$option_updates        = 0;
+		$count_progress_update = function ( $value ) use ( &$option_updates ) {
+			++$option_updates;
+			return $value;
+		};
+
+		add_filter( 'pre_update_option_' . Ingestion_Sync_Progress::OPTION_NAME, $count_progress_update );
+
+		Ingestion_Cron::process_queue( 3 );
+
+		remove_filter( 'pre_update_option_' . Ingestion_Sync_Progress::OPTION_NAME, $count_progress_update );
+
+		$progress = Ingestion_Sync_Progress::get();
+		$sources  = Ingestion_Sync_Progress::get_progress_sources( $progress );
+
+		$this->assertSame( 1, $option_updates );
+		$this->assertSame( 3, $progress['processed'] );
+		$this->assertTrue( $sources['cache']['available'] );
+		$this->assertSame( 3, $sources['cache']['processed'] );
+	}
+
 	public function test_bulk_sync_cursor_paginates_correctly(): void {
 		$this->mock_http_success();
 		$this->setup_ingestion_filters();

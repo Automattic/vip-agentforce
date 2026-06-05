@@ -469,6 +469,7 @@ class Ingestion_Cron {
 			}
 
 			$new_last_post_id = $post->ID;
+			Ingestion_Sync_Progress::update_live_progress( $progress, $batch_results, $new_last_post_id );
 		}
 
 		// Update the cursor and progress counters.

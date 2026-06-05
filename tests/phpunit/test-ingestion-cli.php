@@ -502,6 +502,7 @@ class Ingestion_CLI_Test extends WP_UnitTestCase {
 		$this->assertSame( 0.0, $data['percentage'] );
 		$this->assertContains( 'post', $data['post_types'] );
 		$this->assertContains( 'page', $data['post_types'] );
+		$this->assertArrayHasKey( 'progress_sources', $data );
 	}
 
 	public function test_cli_sync_status_json_with_progress(): void {
@@ -532,6 +533,79 @@ class Ingestion_CLI_Test extends WP_UnitTestCase {
 		$this->assertSame( 5, $data['deleted'] );
 		$this->assertSame( 999, $data['last_post_id'] );
 		$this->assertSame( 50.0, $data['percentage'] );
+	}
+
+	public function test_cli_sync_status_json_uses_effective_cache_progress_when_cache_is_ahead(): void {
+		Ingestion_Sync_Progress::start( 100, [ 'post' ] );
+
+		Ingestion_Sync_Progress::update_live_progress(
+			Ingestion_Sync_Progress::get(),
+			[
+				'synced'  => 7,
+				'skipped' => 1,
+				'failed'  => 0,
+				'deleted' => 0,
+			],
+			55
+		);
+
+		$output = $this->run_cli_sync( [
+			'status' => '',
+			'format' => 'json',
+		] );
+		$data   = json_decode( $output, true );
+
+		$this->assertNotNull( $data, 'Output should be valid JSON.' );
+		$this->assertSame( 'running', $data['status'] );
+		$this->assertSame( 8, $data['processed'] );
+		$this->assertSame( 7, $data['synced'] );
+		$this->assertSame( 1, $data['skipped'] );
+		$this->assertSame( 55, $data['last_post_id'] );
+		$this->assertSame( 8.0, $data['percentage'] );
+		$this->assertSame( 'cache', $data['progress_sources']['effective']['source'] );
+		$this->assertSame( 8, $data['progress_sources']['effective']['processed'] );
+		$this->assertSame( 8.0, $data['progress_sources']['effective']['percentage'] );
+	}
+
+	public function test_cli_sync_status_json_uses_stored_progress_when_cache_is_lower(): void {
+		Ingestion_Sync_Progress::start( 100, [ 'post' ] );
+		Ingestion_Sync_Progress::update(
+			[
+				'synced'  => 10,
+				'skipped' => 0,
+				'failed'  => 0,
+				'deleted' => 0,
+			],
+			70
+		);
+
+		$cached_progress                 = Ingestion_Sync_Progress::get();
+		$cached_progress['processed']    = 5;
+		$cached_progress['synced']       = 5;
+		$cached_progress['last_post_id'] = 35;
+		$cached_progress['blog_id']      = get_current_blog_id();
+
+		wp_cache_set(
+			Ingestion_Sync_Progress::get_live_progress_cache_key(),
+			$cached_progress,
+			Ingestion_Sync_Progress::LIVE_PROGRESS_CACHE_GROUP,
+			600
+		);
+
+		$output = $this->run_cli_sync( [
+			'status' => '',
+			'format' => 'json',
+		] );
+		$data   = json_decode( $output, true );
+
+		$this->assertNotNull( $data, 'Output should be valid JSON.' );
+		$this->assertSame( 'running', $data['status'] );
+		$this->assertSame( 10, $data['processed'] );
+		$this->assertSame( 10, $data['synced'] );
+		$this->assertSame( 70, $data['last_post_id'] );
+		$this->assertSame( 10.0, $data['percentage'] );
+		$this->assertSame( 'stored', $data['progress_sources']['effective']['source'] );
+		$this->assertSame( 'cache_behind_stored', $data['progress_sources']['effective']['reason'] );
 	}
 
 	public function test_cli_sync_status_json_completed(): void {

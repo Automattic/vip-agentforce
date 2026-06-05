@@ -21,6 +21,16 @@ class Ingestion_Sync_Progress {
 	public const OPTION_NAME = 'vip_agentforce_sync_progress';
 
 	/**
+	 * Cache group for live sync progress snapshots.
+	 */
+	public const LIVE_PROGRESS_CACHE_GROUP = 'vip-agentforce';
+
+	/**
+	 * Maximum age, in seconds, for a live snapshot to override stored progress.
+	 */
+	public const LIVE_PROGRESS_MAX_AGE = 30;
+
+	/**
 	 * Sync status constants.
 	 */
 	public const STATUS_IDLE      = 'idle';
@@ -40,6 +50,8 @@ class Ingestion_Sync_Progress {
 			return false;
 		}
 
+		self::clear_live_progress();
+
 		$progress = [
 			'status'       => self::STATUS_RUNNING,
 			'total'        => $total,
@@ -50,6 +62,7 @@ class Ingestion_Sync_Progress {
 			'deleted'      => 0,
 			'last_post_id' => 0,
 			'post_types'   => $post_types,
+			'sync_id'      => wp_generate_uuid4(),
 			'started_at'   => time(),
 			'updated_at'   => time(),
 			'completed_at' => null,
@@ -102,6 +115,7 @@ class Ingestion_Sync_Progress {
 		$progress['updated_at']   = time();
 
 		update_option( self::OPTION_NAME, $progress, false );
+		self::clear_live_progress();
 	}
 
 	/**
@@ -121,12 +135,13 @@ class Ingestion_Sync_Progress {
 		$progress['updated_at']   = time();
 
 		update_option( self::OPTION_NAME, $progress, false );
+		self::clear_live_progress();
 	}
 
 	/**
 	 * Get the current sync progress.
 	 *
-	 * @return array{status: string, total: int, processed: int, synced: int, skipped: int, failed: int, deleted: int, last_post_id: int, post_types: array<int, string>, started_at: int|null, updated_at: int|null, completed_at: int|null, error?: string}|null Progress data or null if no sync has been initiated.
+	 * @return array<string, mixed>|null Progress data or null if no sync has been initiated.
 	 */
 	public static function get(): ?array {
 		$progress = get_option( self::OPTION_NAME, null );
@@ -136,6 +151,300 @@ class Ingestion_Sync_Progress {
 		}
 
 		return $progress;
+	}
+
+	/**
+	 * Build the cache key for live progress in the current blog context.
+	 *
+	 * @return string Cache key.
+	 */
+	public static function get_live_progress_cache_key(): string {
+		return self::OPTION_NAME . '_live_' . get_current_blog_id();
+	}
+
+	/**
+	 * Store a live progress snapshot for the current in-flight batch.
+	 *
+	 * The stored option remains the durable source of truth. This cache only
+	 * exposes diagnostic progress between batch-level option writes.
+	 *
+	 * @param array<string, mixed>                                      $stored_progress Stored progress at the start of the current batch.
+	 * @param array{synced: int, skipped: int, failed: int, deleted: int} $batch_results   Results accumulated so far in the current batch.
+	 * @param int                                                       $last_post_id     The last post ID processed.
+	 */
+	public static function update_live_progress( array $stored_progress, array $batch_results, int $last_post_id ): void {
+		if ( self::STATUS_RUNNING !== ( $stored_progress['status'] ?? null ) ) {
+			return;
+		}
+
+		$current_progress    = self::get();
+		$current_is_running  = null !== $current_progress && self::STATUS_RUNNING === ( $current_progress['status'] ?? null );
+		$current_is_same_run = $current_is_running && self::is_same_sync( $stored_progress, $current_progress );
+
+		if ( ! $current_is_same_run ) {
+			return;
+		}
+
+		$processed = ( $batch_results['synced'] ?? 0 )
+			+ ( $batch_results['skipped'] ?? 0 )
+			+ ( $batch_results['failed'] ?? 0 )
+			+ ( $batch_results['deleted'] ?? 0 );
+
+		$live_progress = $stored_progress;
+
+		$live_progress['processed']    = (int) ( $stored_progress['processed'] ?? 0 ) + $processed;
+		$live_progress['synced']       = (int) ( $stored_progress['synced'] ?? 0 ) + ( $batch_results['synced'] ?? 0 );
+		$live_progress['skipped']      = (int) ( $stored_progress['skipped'] ?? 0 ) + ( $batch_results['skipped'] ?? 0 );
+		$live_progress['failed']       = (int) ( $stored_progress['failed'] ?? 0 ) + ( $batch_results['failed'] ?? 0 );
+		$live_progress['deleted']      = (int) ( $stored_progress['deleted'] ?? 0 ) + ( $batch_results['deleted'] ?? 0 );
+		$live_progress['last_post_id'] = $last_post_id;
+		$live_progress['updated_at']   = time();
+		$live_progress['blog_id']      = get_current_blog_id();
+
+		wp_cache_set(
+			self::get_live_progress_cache_key(),
+			$live_progress,
+			self::LIVE_PROGRESS_CACHE_GROUP,
+			600
+		);
+	}
+
+	/**
+	 * Clear live progress for the current blog context.
+	 */
+	public static function clear_live_progress(): void {
+		wp_cache_delete( self::get_live_progress_cache_key(), self::LIVE_PROGRESS_CACHE_GROUP );
+	}
+
+	/**
+	 * Build stored/cache/effective progress details for debugging.
+	 *
+	 * @param array<string, mixed> $stored_progress Stored progress.
+	 * @return array<string, array<string, mixed>> Debug progress source data.
+	 */
+	public static function get_progress_sources( array $stored_progress ): array {
+		$stored_source = self::format_progress_source( $stored_progress );
+		$cache_source  = self::get_live_progress_source( $stored_progress );
+
+		$effective_source = $stored_source;
+		$effective_reason = $cache_source['reason'];
+		$source           = 'stored';
+
+		if ( $cache_source['valid'] && self::STATUS_RUNNING === ( $stored_progress['status'] ?? null ) ) {
+			if ( $cache_source['processed'] > $stored_source['processed'] ) {
+				$effective_source = $cache_source;
+				$effective_reason = 'cache_ahead_of_stored';
+				$source           = 'cache';
+			} else {
+				$effective_reason = 'cache_not_ahead_of_stored';
+			}
+		}
+
+		return [
+			'stored'    => $stored_source,
+			'cache'     => $cache_source,
+			'effective' => [
+				'source'       => $source,
+				'reason'       => $effective_reason,
+				'processed'    => $effective_source['processed'],
+				'percentage'   => $effective_source['percentage'],
+				'synced'       => $effective_source['synced'],
+				'skipped'      => $effective_source['skipped'],
+				'failed'       => $effective_source['failed'],
+				'deleted'      => $effective_source['deleted'],
+				'last_post_id' => $effective_source['last_post_id'],
+				'updated_at'   => $effective_source['updated_at'],
+			],
+		];
+	}
+
+	/**
+	 * Build a status response using cache-backed effective progress when safe.
+	 *
+	 * @param array<string, mixed> $progress Stored progress.
+	 * @return array<string, mixed> Progress response data.
+	 */
+	public static function get_status_response( array $progress ): array {
+		$progress_sources = self::get_progress_sources( $progress );
+		$effective        = $progress_sources['effective'];
+		$response         = $progress;
+
+		if ( 'cache' === $effective['source'] ) {
+			$response['processed']    = $effective['processed'];
+			$response['synced']       = $effective['synced'];
+			$response['skipped']      = $effective['skipped'];
+			$response['failed']       = $effective['failed'];
+			$response['deleted']      = $effective['deleted'];
+			$response['last_post_id'] = $effective['last_post_id'];
+			$response['updated_at']   = $effective['updated_at'];
+		}
+
+		$response['percentage']       = $effective['percentage'];
+		$response['progress_sources'] = $progress_sources;
+
+		return $response;
+	}
+
+	/**
+	 * Read and validate the live progress cache.
+	 *
+	 * @param array<string, mixed> $stored_progress Stored progress.
+	 * @return array<string, mixed> Cache source data.
+	 */
+	private static function get_live_progress_source( array $stored_progress ): array {
+		$found           = false;
+		$cached_progress = wp_cache_get(
+			self::get_live_progress_cache_key(),
+			self::LIVE_PROGRESS_CACHE_GROUP,
+			false,
+			$found
+		);
+
+		if ( ! $found ) {
+			return [
+				'available' => false,
+				'valid'     => false,
+				'reason'    => 'cache_missing',
+			] + self::empty_progress_source();
+		}
+
+		if ( ! is_array( $cached_progress ) ) {
+			return [
+				'available' => true,
+				'valid'     => false,
+				'reason'    => 'cache_malformed',
+			] + self::empty_progress_source();
+		}
+
+		$cache_source = self::format_progress_source( $cached_progress );
+		$reason       = self::validate_live_progress( $stored_progress, $cached_progress );
+
+		return [
+			'available' => true,
+			'valid'     => null === $reason,
+			'reason'    => $reason ?? 'cache_valid',
+		] + $cache_source;
+	}
+
+	/**
+	 * Validate that cached progress describes the same running sync.
+	 *
+	 * @param array<string, mixed> $stored_progress Stored progress.
+	 * @param array<string, mixed> $cached_progress Cached progress.
+	 * @return string|null Invalid reason, or null when valid.
+	 */
+	private static function validate_live_progress( array $stored_progress, array $cached_progress ): ?string {
+		if ( self::STATUS_RUNNING !== ( $stored_progress['status'] ?? null ) ) {
+			return 'stored_not_running';
+		}
+
+		if ( self::STATUS_RUNNING !== ( $cached_progress['status'] ?? null ) ) {
+			return 'cache_not_running';
+		}
+
+		if ( (int) ( $cached_progress['blog_id'] ?? 0 ) !== get_current_blog_id() ) {
+			return 'cache_blog_mismatch';
+		}
+
+		if ( (int) ( $cached_progress['total'] ?? -1 ) !== (int) ( $stored_progress['total'] ?? -2 ) ) {
+			return 'cache_total_mismatch';
+		}
+
+		if ( ! self::is_same_sync( $stored_progress, $cached_progress ) ) {
+			return 'cache_sync_mismatch';
+		}
+
+		foreach ( [ 'processed', 'synced', 'skipped', 'failed', 'deleted', 'last_post_id', 'updated_at' ] as $key ) {
+			if ( ! isset( $cached_progress[ $key ] ) || ! is_numeric( $cached_progress[ $key ] ) ) {
+				return 'cache_malformed';
+			}
+		}
+
+		if ( (int) $cached_progress['updated_at'] < (int) ( $stored_progress['updated_at'] ?? 0 ) ) {
+			return 'cache_older_than_stored';
+		}
+
+		if ( time() - (int) $cached_progress['updated_at'] > self::LIVE_PROGRESS_MAX_AGE ) {
+			return 'cache_stale';
+		}
+
+		if ( (int) $cached_progress['processed'] > (int) $stored_progress['total'] ) {
+			return 'cache_processed_exceeds_total';
+		}
+
+		$cache_counter_total = (int) $cached_progress['synced']
+			+ (int) $cached_progress['skipped']
+			+ (int) $cached_progress['failed']
+			+ (int) $cached_progress['deleted'];
+
+		if ( (int) $cached_progress['processed'] !== $cache_counter_total ) {
+			return 'cache_counter_mismatch';
+		}
+
+		foreach ( [ 'processed', 'synced', 'skipped', 'failed', 'deleted', 'last_post_id' ] as $key ) {
+			if ( (int) $cached_progress[ $key ] < (int) ( $stored_progress[ $key ] ?? 0 ) ) {
+				return 'cache_behind_stored';
+			}
+		}
+
+		return null;
+	}
+
+	/**
+	 * Check whether two progress records describe the same sync run.
+	 *
+	 * @param array<string, mixed> $stored_progress Stored progress.
+	 * @param array<string, mixed> $candidate       Candidate progress.
+	 * @return bool True when records share the same sync identity.
+	 */
+	private static function is_same_sync( array $stored_progress, array $candidate ): bool {
+		$stored_sync_id    = $stored_progress['sync_id'] ?? null;
+		$candidate_sync_id = $candidate['sync_id'] ?? null;
+
+		return is_string( $stored_sync_id )
+			&& '' !== $stored_sync_id
+			&& $stored_sync_id === $candidate_sync_id;
+	}
+
+	/**
+	 * Format progress data for source debugging.
+	 *
+	 * @param array<string, mixed> $progress Progress data.
+	 * @return array<string, int|float>
+	 */
+	private static function format_progress_source( array $progress ): array {
+		$total = (int) ( $progress['total'] ?? 0 );
+
+		return [
+			'processed'    => (int) ( $progress['processed'] ?? 0 ),
+			'percentage'   => $total > 0
+				? (float) round( ( (int) ( $progress['processed'] ?? 0 ) / $total ) * 100, 1 )
+				: 0.0,
+			'synced'       => (int) ( $progress['synced'] ?? 0 ),
+			'skipped'      => (int) ( $progress['skipped'] ?? 0 ),
+			'failed'       => (int) ( $progress['failed'] ?? 0 ),
+			'deleted'      => (int) ( $progress['deleted'] ?? 0 ),
+			'last_post_id' => (int) ( $progress['last_post_id'] ?? 0 ),
+			'updated_at'   => (int) ( $progress['updated_at'] ?? 0 ),
+		];
+	}
+
+	/**
+	 * Empty progress source used when no usable cache data is present.
+	 *
+	 * @return array<string, int|float>
+	 */
+	private static function empty_progress_source(): array {
+		return [
+			'processed'    => 0,
+			'percentage'   => 0.0,
+			'synced'       => 0,
+			'skipped'      => 0,
+			'failed'       => 0,
+			'deleted'      => 0,
+			'last_post_id' => 0,
+			'updated_at'   => 0,
+		];
 	}
 
 	/**
@@ -154,6 +463,7 @@ class Ingestion_Sync_Progress {
 	 */
 	public static function reset(): void {
 		delete_option( self::OPTION_NAME );
+		self::clear_live_progress();
 	}
 
 	/**
