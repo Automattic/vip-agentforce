@@ -408,20 +408,13 @@ class Ingestion_API_Client {
 			return null !== $value ? (string) $value : null;
 		}
 
-		if ( is_array( $headers ) ) {
-			// Try exact match first.
-			if ( isset( $headers[ $name ] ) ) {
-				return (string) $headers[ $name ];
-			}
-
-			// Try case-insensitive match.
-			foreach ( $headers as $key => $value ) {
-				if ( strtolower( $key ) === $name ) {
-					return (string) $value;
-				}
-			}
+		if ( ! is_array( $headers ) ) {
+			return null;
 		}
 
-		return null;
+		$lower_name = strtolower( $name );
+		$value = $headers[ $name ] ?? $headers[ $lower_name ] ?? null;
+
+		return null !== $value ? (string) $value : null;
 	}
 }
