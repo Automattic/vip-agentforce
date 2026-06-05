@@ -32,9 +32,22 @@ class Sync_Result {
 	public const FAILED_TRANSFORM = 'failed_transform';
 
 	/**
-	 * API call failed.
+	 * API call failed permanently — caller should NOT retry.
+	 *
+	 * Used for non-retryable HTTP errors (4xx other than 408/429), config
+	 * problems, or after the cron retry cap is exhausted.
 	 */
 	public const FAILED_API = 'failed_api';
+
+	/**
+	 * API call failed but is retryable on the next cron tick.
+	 *
+	 * Used for transient server-side failures: 429 (rate limited), 408
+	 * (request timeout), and 5xx. The cron handler will keep the item in
+	 * the queue, increment its attempt counter, and only escalate to
+	 * FAILED_API once the cap is hit.
+	 */
+	public const FAILED_API_RETRYABLE = 'failed_api_retryable';
 
 	/**
 	 * The result status.
@@ -80,12 +93,25 @@ class Sync_Result {
 	}
 
 	/**
-	 * Check if the sync failed.
+	 * Check if the sync failed (any failure mode, retryable or not).
 	 *
 	 * @return bool
 	 */
 	public function is_failure(): bool {
-		return in_array( $this->status, [ self::FAILED_TRANSFORM, self::FAILED_API ], true );
+		return in_array(
+			$this->status,
+			[ self::FAILED_TRANSFORM, self::FAILED_API, self::FAILED_API_RETRYABLE ],
+			true
+		);
+	}
+
+	/**
+	 * Check if the failure is transient and the cron should retry it.
+	 *
+	 * @return bool
+	 */
+	public function is_retryable(): bool {
+		return self::FAILED_API_RETRYABLE === $this->status;
 	}
 
 	/**

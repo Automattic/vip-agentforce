@@ -270,22 +270,78 @@ class Ingestion_Cron {
 						'record_id' => $record_id,
 					]
 				);
-			} else {
-				++$results['failed'];
 
-				Logger::warning(
-					'ingestion-cron',
-					'Failed to delete record from Salesforce',
-					[
-						'post_id'       => $post_id,
-						'record_id'     => $record_id,
-						'error_message' => $api_result->error_message,
-					]
-				);
+				Ingestion_Queue::dequeue_delete( $post_id );
+				continue;
 			}
 
-			// Always dequeue to avoid infinite retry loops.
-			// Failed deletions can be retried via CLI if needed.
+			// Retryable delete failure: leave the item in the queue and
+			// bump its attempt counter. Same retry-or-cap semantics as
+			// the sync path.
+			if ( $api_result->is_retryable() ) {
+				$attempts = Ingestion_Queue::increment_delete_attempts( $post_id );
+
+				if ( $attempts >= Ingestion_Queue::MAX_RETRYABLE_ATTEMPTS ) {
+					++$results['failed'];
+
+					Logger::error(
+						'ingestion-cron',
+						'Delete exhausted retryable attempts, giving up',
+						[
+							'post_id'       => $post_id,
+							'record_id'     => $record_id,
+							'attempts'      => $attempts,
+							'error_message' => $api_result->error_message,
+						]
+					);
+
+					Ingestion::fire_deletion_failure(
+						$post_id,
+						$record_id,
+						Deletion_Failure::CODE_DELETE_API_ERROR,
+						[ 'result' => $api_result ]
+					);
+
+					Ingestion_Queue::dequeue_delete( $post_id );
+				} else {
+					++$results['skipped'];
+
+					Logger::info(
+						'ingestion-cron',
+						'Delete deferred to next cron tick (retryable failure)',
+						[
+							'post_id'       => $post_id,
+							'record_id'     => $record_id,
+							'attempts'      => $attempts,
+							'max_attempts'  => Ingestion_Queue::MAX_RETRYABLE_ATTEMPTS,
+							'error_message' => $api_result->error_message,
+						]
+					);
+				}
+				continue;
+			}
+
+			// Permanent delete failure (4xx other than 408/429, config issues).
+			// Fire the failure event and dequeue.
+			++$results['failed'];
+
+			Logger::warning(
+				'ingestion-cron',
+				'Failed to delete record from Salesforce (permanent)',
+				[
+					'post_id'       => $post_id,
+					'record_id'     => $record_id,
+					'error_message' => $api_result->error_message,
+				]
+			);
+
+			Ingestion::fire_deletion_failure(
+				$post_id,
+				$record_id,
+				Deletion_Failure::CODE_DELETE_API_ERROR,
+				[ 'result' => $api_result ]
+			);
+
 			Ingestion_Queue::dequeue_delete( $post_id );
 		}
 
@@ -312,8 +368,60 @@ class Ingestion_Cron {
 				continue;
 			}
 
-			// Use the core sync logic.
-			$sync_result = Ingestion::sync_post( $post );
+			// Use the core sync logic. Pass `defer_retryable_events = true`
+			// so we own the failure-event firing for retryable cases — we
+			// only want to fire when the retry cap is exhausted, not on
+			// every transient failure.
+			$sync_result = Ingestion::sync_post( $post, true );
+
+			// Retryable failure (rate limited, 5xx, timeout): leave the
+			// item in the queue so the next cron tick picks it up. The
+			// shared rate-limit cache block means we won't actually hit
+			// SF again until the block expires. We bump an attempt
+			// counter and only escalate to a permanent failure when the
+			// cap is exhausted.
+			if ( Sync_Result::FAILED_API_RETRYABLE === $sync_result->status ) {
+				$attempts = Ingestion_Queue::increment_sync_attempts( $post_id );
+
+				if ( $attempts >= Ingestion_Queue::MAX_RETRYABLE_ATTEMPTS ) {
+					++$results['failed'];
+
+					Logger::error(
+						'ingestion-cron',
+						'Sync exhausted retryable attempts, giving up',
+						[
+							'post_id'       => $post_id,
+							'attempts'      => $attempts,
+							'error_message' => $sync_result->error_message,
+						]
+					);
+
+					// Surface the permanent failure event now that we've
+					// stopped retrying. `sync_post` deferred firing it
+					// while the failure was retryable.
+					Ingestion::fire_ingestion_failure(
+						$post_id,
+						Ingestion_Failure::CODE_API_ERROR,
+						[ 'sync_result' => $sync_result ]
+					);
+
+					Ingestion_Queue::dequeue_sync( $post_id );
+				} else {
+					++$results['skipped'];
+
+					Logger::info(
+						'ingestion-cron',
+						'Sync deferred to next cron tick (retryable failure)',
+						[
+							'post_id'       => $post_id,
+							'attempts'      => $attempts,
+							'max_attempts'  => Ingestion_Queue::MAX_RETRYABLE_ATTEMPTS,
+							'error_message' => $sync_result->error_message,
+						]
+					);
+				}
+				continue;
+			}
 
 			switch ( $sync_result->status ) {
 				case Sync_Result::INGESTED:
@@ -356,7 +464,7 @@ class Ingestion_Cron {
 					break;
 			}
 
-			// Dequeue regardless of result to avoid infinite loops.
+			// Dequeue terminal results (success / skipped / permanent failure).
 			Ingestion_Queue::dequeue_sync( $post_id );
 		}
 
@@ -453,6 +561,12 @@ class Ingestion_Cron {
 
 				case Sync_Result::FAILED_TRANSFORM:
 				case Sync_Result::FAILED_API:
+				case Sync_Result::FAILED_API_RETRYABLE:
+					// Bulk sync iterates a cursor — there's no queue to
+					// re-attempt items from. Retryable failures get the
+					// same treatment as permanent ones here: log and move
+					// on. Re-running `wp vip-agentforce ingestion sync` is
+					// the recovery path for missed items.
 					++$results['failed'];
 					++$batch_results['failed'];
 

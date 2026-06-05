@@ -50,6 +50,18 @@ class Ingestion_API_Result {
 	public string $timestamp;
 
 	/**
+	 * Optional override for `is_retryable()`.
+	 *
+	 * Used when the failure didn't reach SF at all and we need to assert
+	 * retryability without an HTTP response to inspect. Example: a request
+	 * we deliberately deferred because the shared rate-limit cache block
+	 * was active. `null` means "infer from response code".
+	 *
+	 * @var bool|null
+	 */
+	public ?bool $retryable_override = null;
+
+	/**
 	 * Create a successful result.
 	 *
 	 * @param string                              $record_id The record ID.
@@ -84,6 +96,61 @@ class Ingestion_API_Result {
 		$result->timestamp     = gmdate( 'c' );
 
 		return $result;
+	}
+
+	/**
+	 * Create a failure result for a request that was deferred because a
+	 * shared rate-limit cache block was active — the call never reached
+	 * SF. Marked retryable explicitly so cron picks it up on the next
+	 * tick once the block expires.
+	 *
+	 * @param string      $error_message Why we deferred.
+	 * @param string|null $record_id     Optional record ID.
+	 * @return self
+	 */
+	public static function deferred( string $error_message, ?string $record_id = null ): self {
+		$result                     = self::failure( $error_message, null, $record_id );
+		$result->retryable_override = true;
+		return $result;
+	}
+
+	/**
+	 * Whether this failure is retryable on the next cron tick.
+	 *
+	 * Retryable failures are server-side / transient: rate limiting (429),
+	 * request timeout (408), and 5xx responses. Anything else is treated as
+	 * permanent — the caller (cron) shouldn't retry.
+	 *
+	 * Successful results return false: there's nothing to retry.
+	 *
+	 * @return bool
+	 */
+	public function is_retryable(): bool {
+		if ( $this->success ) {
+			return false;
+		}
+
+		// Explicit override (e.g. deferred() factory) takes precedence —
+		// used when there's no HTTP response to inspect.
+		if ( null !== $this->retryable_override ) {
+			return $this->retryable_override;
+		}
+
+		// WP_Error from wp_remote_request — typically a network-level
+		// connection failure (DNS, timeout before HTTP). Retry next tick.
+		if ( is_wp_error( $this->response ) ) {
+			return true;
+		}
+
+		// No response and no explicit override → treat as permanent.
+		// Covers config validation failures (`failure( ..., null, ... )`).
+		if ( ! is_array( $this->response ) ) {
+			return false;
+		}
+
+		$status_code = (int) wp_remote_retrieve_response_code( $this->response );
+
+		return in_array( $status_code, [ 408, 429, 500, 502, 503, 504 ], true );
 	}
 
 	/**

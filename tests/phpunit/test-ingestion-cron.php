@@ -576,4 +576,227 @@ class Ingestion_Cron_Test extends WP_UnitTestCase {
 		// all posts by cursor, even those already handled by the queue.
 		$this->assertSame( 4, $results['synced'] );
 	}
+
+	// =========================================================================
+	// Retry-or-cap behavior
+	//
+	// When SF returns a transient failure (429, 408, 5xx) the queue item must
+	// stay in place so the next cron tick picks it up. After
+	// `Ingestion_Queue::MAX_RETRYABLE_ATTEMPTS` consecutive failures the item
+	// is dequeued, the failure event fires, and the post stops retrying until
+	// it's saved again.
+	// =========================================================================
+
+	/**
+	 * Mock SF returning 429 once and capture the request.
+	 */
+	private function mock_http_429(): void {
+		add_filter(
+			'pre_http_request',
+			function ( $preempt, $args, $url ) {
+				if ( strpos( $url, 'test.salesforce.com' ) === false ) {
+					return $preempt;
+				}
+				$this->captured_requests[] = [
+					'url'    => $url,
+					'method' => $args['method'] ?? 'GET',
+					'body'   => $args['body'] ?? '',
+				];
+				return [
+					'response' => [
+						'code'    => 429,
+						'message' => 'Too Many Requests',
+					],
+					// Intentionally no Retry-After: client falls back to a
+					// short default block. Tests that need a longer block
+					// install their own filter.
+					'headers'  => [],
+					'body'     => '',
+				];
+			},
+			10,
+			3
+		);
+	}
+
+	public function test_retryable_sync_failure_keeps_post_in_queue_and_increments_attempts(): void {
+		$this->mock_http_429();
+		$this->setup_ingestion_filters();
+
+		$post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
+		Ingestion_Queue::queue_for_sync( $post->ID );
+
+		// Clear any cache block left over from an earlier test or run.
+		wp_cache_delete( 'vip_agentforce_rate_limit_blocked_until', 'vip_agentforce' );
+
+		$results = Ingestion_Cron::process_queue( 10 );
+
+		// Cron sees a retryable failure; counted as skipped (not failed) so
+		// we don't pollute "permanently failed" metrics.
+		$this->assertSame( 1, $results['skipped'] );
+		$this->assertSame( 0, $results['failed'] );
+
+		// Post stays queued for the next tick.
+		$this->assertNotEmpty( get_post_meta( $post->ID, Ingestion_Queue::META_KEY_QUEUED_FOR_SYNC, true ) );
+		$this->assertSame( 1, Ingestion_Queue::get_sync_attempts( $post->ID ) );
+	}
+
+	public function test_retryable_sync_failure_does_not_fire_ingestion_failed_event(): void {
+		$this->mock_http_429();
+		$this->setup_ingestion_filters();
+
+		$fired = false;
+		add_action(
+			'vip_agentforce_post_ingestion_failed',
+			function () use ( &$fired ) {
+				$fired = true;
+			}
+		);
+
+		$post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
+		Ingestion_Queue::queue_for_sync( $post->ID );
+		wp_cache_delete( 'vip_agentforce_rate_limit_blocked_until', 'vip_agentforce' );
+
+		Ingestion_Cron::process_queue( 10 );
+
+		$this->assertFalse(
+			$fired,
+			'Failure event must not fire on a retryable failure — cron will retry it next tick.'
+		);
+	}
+
+	public function test_sync_retry_cap_exhausted_dequeues_and_fires_failure_event(): void {
+		$this->mock_http_429();
+		$this->setup_ingestion_filters();
+
+		$post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
+		Ingestion_Queue::queue_for_sync( $post->ID );
+
+		// Pre-seed the attempt counter to one short of the cap so this
+		// tick is the final one and we don't spend N minutes in the test.
+		update_post_meta(
+			$post->ID,
+			Ingestion_Queue::META_KEY_SYNC_ATTEMPTS,
+			Ingestion_Queue::MAX_RETRYABLE_ATTEMPTS - 1
+		);
+		wp_cache_delete( 'vip_agentforce_rate_limit_blocked_until', 'vip_agentforce' );
+
+		$fired = false;
+		add_action(
+			'vip_agentforce_post_ingestion_failed',
+			function () use ( &$fired ) {
+				$fired = true;
+			}
+		);
+
+		$results = Ingestion_Cron::process_queue( 10 );
+
+		$this->assertSame( 1, $results['failed'], 'Cap-hit attempt should count as a permanent failure.' );
+		$this->assertTrue( $fired, 'Failure event must fire when the retry cap is exhausted.' );
+
+		// Post is dequeued; both queue meta keys are gone.
+		$this->assertEmpty( get_post_meta( $post->ID, Ingestion_Queue::META_KEY_QUEUED_FOR_SYNC, true ) );
+		$this->assertSame( 0, Ingestion_Queue::get_sync_attempts( $post->ID ) );
+	}
+
+	public function test_permanent_sync_failure_dequeues_immediately_and_fires_event(): void {
+		// 4xx (other than 408/429) is permanent — no retry, fire event now.
+		add_filter(
+			'pre_http_request',
+			function ( $preempt, $args, $url ) {
+				if ( strpos( $url, 'test.salesforce.com' ) === false ) {
+					return $preempt;
+				}
+				return [
+					'response' => [
+						'code'    => 401,
+						'message' => 'Unauthorized',
+					],
+					'headers'  => [],
+					'body'     => '',
+				];
+			},
+			10,
+			3
+		);
+		$this->setup_ingestion_filters();
+
+		$fired = false;
+		add_action(
+			'vip_agentforce_post_ingestion_failed',
+			function () use ( &$fired ) {
+				$fired = true;
+			}
+		);
+
+		$post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
+		Ingestion_Queue::queue_for_sync( $post->ID );
+
+		$results = Ingestion_Cron::process_queue( 10 );
+
+		$this->assertSame( 1, $results['failed'] );
+		$this->assertTrue( $fired, 'Permanent failures fire the event on the first cron pass.' );
+
+		// Dequeued immediately — no point parking permanent failures.
+		$this->assertEmpty( get_post_meta( $post->ID, Ingestion_Queue::META_KEY_QUEUED_FOR_SYNC, true ) );
+	}
+
+	public function test_retryable_delete_failure_keeps_item_in_queue(): void {
+		$this->mock_http_429();
+
+		$post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
+		Ingestion_Queue::queue_for_delete( $post->ID );
+		wp_cache_delete( 'vip_agentforce_rate_limit_blocked_until', 'vip_agentforce' );
+
+		$fired = false;
+		add_action(
+			'vip_agentforce_post_deletion_failed',
+			function () use ( &$fired ) {
+				$fired = true;
+			}
+		);
+
+		$results = Ingestion_Cron::process_queue( 10 );
+
+		$this->assertSame( 0, $results['failed'] );
+		$this->assertSame( 1, $results['skipped'] );
+		$this->assertFalse( $fired, 'Deletion failure event must not fire on retryable failures.' );
+
+		// Item still in delete queue for next tick.
+		$queued = Ingestion_Queue::get_queued_for_delete();
+		$this->assertCount( 1, $queued );
+		$this->assertSame( 1, Ingestion_Queue::get_delete_attempts( $post->ID ) );
+	}
+
+	public function test_delete_retry_cap_exhausted_dequeues_and_fires_failure_event(): void {
+		$this->mock_http_429();
+
+		$post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
+		Ingestion_Queue::queue_for_delete( $post->ID );
+
+		// Pre-seed attempts on the delete queue entry so this tick is the
+		// last one before cap.
+		$queue                           = get_option( Ingestion_Queue::OPTION_DELETE_QUEUE, [] );
+		$record_id                       = '101_1_' . $post->ID; // VIP_GO_APP_ID is 101 in the test bootstrap.
+		$queue[ $record_id ]['attempts'] = Ingestion_Queue::MAX_RETRYABLE_ATTEMPTS - 1;
+		update_option( Ingestion_Queue::OPTION_DELETE_QUEUE, $queue, false );
+		wp_cache_delete( 'vip_agentforce_rate_limit_blocked_until', 'vip_agentforce' );
+
+		$fired = false;
+		add_action(
+			'vip_agentforce_post_deletion_failed',
+			function () use ( &$fired ) {
+				$fired = true;
+			}
+		);
+
+		$results = Ingestion_Cron::process_queue( 10 );
+
+		$this->assertSame( 1, $results['failed'] );
+		$this->assertTrue( $fired, 'Cap-hit on delete fires the deletion failure event.' );
+
+		// Delete queue entry gone.
+		$queued = Ingestion_Queue::get_queued_for_delete();
+		$this->assertCount( 0, $queued );
+	}
 }
