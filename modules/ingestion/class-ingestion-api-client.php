@@ -413,7 +413,7 @@ class Ingestion_API_Client {
 		}
 
 		$lower_name = strtolower( $name );
-		$value = $headers[ $name ] ?? $headers[ $lower_name ] ?? null;
+		$value      = $headers[ $name ] ?? $headers[ $lower_name ] ?? null;
 
 		return null !== $value ? (string) $value : null;
 	}
