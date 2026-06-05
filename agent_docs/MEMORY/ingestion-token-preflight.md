@@ -1,0 +1,1 @@
+- `Configs::get_ingestion_token_failure()` returning an auth failure for a valid future-expiry token is wrong. Correct: return `null` when the ingestion token is usable, so callers can safely use the method without first calling `has_valid_ingestion_token()`.

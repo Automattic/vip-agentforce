@@ -7,6 +7,7 @@
 
 namespace Automattic\VIP\Salesforce\Agentforce\Ingestion;
 
+use Automattic\VIP\Salesforce\Agentforce\Utils\Ingestion_Metrics;
 use Automattic\VIP\Salesforce\Agentforce\Utils\Logger;
 
 /**
@@ -261,15 +262,18 @@ class Ingestion_Cron {
 
 			if ( $api_result->success ) {
 				++$results['deleted'];
+				Ingestion_Metrics::record_post_result( 'deleted', 'queue' );
 
-				Logger::info(
-					'ingestion-cron',
-					'Successfully deleted record from Salesforce',
-					[
-						'post_id'   => $post_id,
-						'record_id' => $record_id,
-					]
-				);
+				if ( Logger::is_verbose_ingestion_logging() ) {
+					Logger::info(
+						'ingestion-cron',
+						'Successfully deleted record from Salesforce',
+						[
+							'post_id'   => $post_id,
+							'record_id' => $record_id,
+						]
+					);
+				}
 
 				Ingestion_Queue::dequeue_delete( $post_id );
 				continue;
@@ -283,6 +287,7 @@ class Ingestion_Cron {
 
 				if ( $attempts >= Ingestion_Queue::MAX_RETRYABLE_ATTEMPTS ) {
 					++$results['failed'];
+					Ingestion_Metrics::record_post_result( 'failed', 'queue' );
 
 					Logger::error(
 						'ingestion-cron',
@@ -306,17 +311,19 @@ class Ingestion_Cron {
 				} else {
 					++$results['skipped'];
 
-					Logger::info(
-						'ingestion-cron',
-						'Delete deferred to next cron tick (retryable failure)',
-						[
-							'post_id'       => $post_id,
-							'record_id'     => $record_id,
-							'attempts'      => $attempts,
-							'max_attempts'  => Ingestion_Queue::MAX_RETRYABLE_ATTEMPTS,
-							'error_message' => $api_result->error_message,
-						]
-					);
+					if ( Logger::is_verbose_ingestion_logging() ) {
+						Logger::info(
+							'ingestion-cron',
+							'Delete deferred to next cron tick (retryable failure)',
+							[
+								'post_id'       => $post_id,
+								'record_id'     => $record_id,
+								'attempts'      => $attempts,
+								'max_attempts'  => Ingestion_Queue::MAX_RETRYABLE_ATTEMPTS,
+								'error_message' => $api_result->error_message,
+							]
+						);
+					}
 				}
 				continue;
 			}
@@ -324,6 +331,7 @@ class Ingestion_Cron {
 			// Permanent delete failure (4xx other than 408/429, config issues).
 			// Fire the failure event and dequeue.
 			++$results['failed'];
+			Ingestion_Metrics::record_post_result( 'failed', 'queue' );
 
 			Logger::warning(
 				'ingestion-cron',
@@ -365,6 +373,7 @@ class Ingestion_Cron {
 			if ( ! $post ) {
 				Ingestion_Queue::dequeue_sync( $post_id );
 				++$results['skipped'];
+				Ingestion_Metrics::record_post_result( 'skipped', 'queue' );
 				continue;
 			}
 
@@ -385,6 +394,7 @@ class Ingestion_Cron {
 
 				if ( $attempts >= Ingestion_Queue::MAX_RETRYABLE_ATTEMPTS ) {
 					++$results['failed'];
+					Ingestion_Metrics::record_post_result( 'failed', 'queue' );
 
 					Logger::error(
 						'ingestion-cron',
@@ -409,16 +419,18 @@ class Ingestion_Cron {
 				} else {
 					++$results['skipped'];
 
-					Logger::info(
-						'ingestion-cron',
-						'Sync deferred to next cron tick (retryable failure)',
-						[
-							'post_id'       => $post_id,
-							'attempts'      => $attempts,
-							'max_attempts'  => Ingestion_Queue::MAX_RETRYABLE_ATTEMPTS,
-							'error_message' => $sync_result->error_message,
-						]
-					);
+					if ( Logger::is_verbose_ingestion_logging() ) {
+						Logger::info(
+							'ingestion-cron',
+							'Sync deferred to next cron tick (retryable failure)',
+							[
+								'post_id'       => $post_id,
+								'attempts'      => $attempts,
+								'max_attempts'  => Ingestion_Queue::MAX_RETRYABLE_ATTEMPTS,
+								'error_message' => $sync_result->error_message,
+							]
+						);
+					}
 				}
 				continue;
 			}
@@ -426,31 +438,39 @@ class Ingestion_Cron {
 			switch ( $sync_result->status ) {
 				case Sync_Result::INGESTED:
 					++$results['synced'];
+					Ingestion_Metrics::record_post_result( 'ingested', 'queue' );
 
-					Logger::info(
-						'ingestion-cron',
-						'Successfully synced post to Salesforce',
-						[ 'post_id' => $post_id ]
-					);
+					if ( Logger::is_verbose_ingestion_logging() ) {
+						Logger::info(
+							'ingestion-cron',
+							'Successfully synced post to Salesforce',
+							[ 'post_id' => $post_id ]
+						);
+					}
 					break;
 
 				case Sync_Result::DELETED:
 					++$results['deleted'];
+					Ingestion_Metrics::record_post_result( 'deleted', 'queue' );
 
-					Logger::info(
-						'ingestion-cron',
-						'Deleted post from Salesforce (no longer matches filter)',
-						[ 'post_id' => $post_id ]
-					);
+					if ( Logger::is_verbose_ingestion_logging() ) {
+						Logger::info(
+							'ingestion-cron',
+							'Deleted post from Salesforce (no longer matches filter)',
+							[ 'post_id' => $post_id ]
+						);
+					}
 					break;
 
 				case Sync_Result::SKIPPED:
 					++$results['skipped'];
+					Ingestion_Metrics::record_post_result( 'skipped', 'queue' );
 					break;
 
 				case Sync_Result::FAILED_TRANSFORM:
 				case Sync_Result::FAILED_API:
 					++$results['failed'];
+					Ingestion_Metrics::record_post_result( 'failed', 'queue' );
 
 					Logger::warning(
 						'ingestion-cron',
@@ -539,51 +559,89 @@ class Ingestion_Cron {
 		];
 
 		$new_last_post_id = $last_post_id;
+		$failure_summary  = self::create_bulk_failure_summary();
+		$fast_fail_reason = null;
 
-		foreach ( $posts as $post ) {
-			$sync_result = Ingestion::sync_post( $post );
+		$preflight_failure = Ingestion_API_Client::get_request_preflight_failure();
+		if ( null !== $preflight_failure ) {
+			$first_post       = reset( $posts );
+			$first_post       = $first_post instanceof \WP_Post ? $first_post : null;
+			$preflight_result = null !== $first_post
+				? new Sync_Result(
+					Sync_Result::FAILED_API,
+					$first_post,
+					$preflight_failure['message'],
+					$preflight_failure['error_class']
+				)
+				: null;
+			$fast_fail_reason = 'config' === $preflight_failure['error_class'] || null === $preflight_result
+				? $preflight_failure['message']
+				: self::get_bulk_fast_fail_reason( $preflight_result );
 
-			switch ( $sync_result->status ) {
-				case Sync_Result::INGESTED:
-					++$results['synced'];
-					++$batch_results['synced'];
-					break;
+			Ingestion_Metrics::record_api_error( $preflight_failure['error_class'] );
+			++$results['failed'];
+			++$batch_results['failed'];
+			Ingestion_Metrics::record_post_result( 'failed', 'bulk' );
 
-				case Sync_Result::DELETED:
-					++$results['deleted'];
-					++$batch_results['deleted'];
-					break;
-
-				case Sync_Result::SKIPPED:
-					++$results['skipped'];
-					++$batch_results['skipped'];
-					break;
-
-				case Sync_Result::FAILED_TRANSFORM:
-				case Sync_Result::FAILED_API:
-				case Sync_Result::FAILED_API_RETRYABLE:
-					// Bulk sync iterates a cursor — there's no queue to
-					// re-attempt items from. Retryable failures get the
-					// same treatment as permanent ones here: log and move
-					// on. Re-running `wp vip-agentforce ingestion sync` is
-					// the recovery path for missed items.
-					++$results['failed'];
-					++$batch_results['failed'];
-
-					Logger::warning(
-						'ingestion-cron',
-						'Bulk sync: failed to sync post',
-						[
-							'post_id'       => $post->ID,
-							'status'        => $sync_result->status,
-							'error_message' => $sync_result->error_message,
-						]
-					);
-					break;
+			if ( null !== $first_post && null !== $preflight_result ) {
+				$failure_summary = self::record_bulk_failure(
+					$failure_summary,
+					$first_post,
+					$preflight_result,
+					$last_post_id,
+					$limit
+				);
 			}
+		}
 
-			$new_last_post_id = $post->ID;
-			Ingestion_Sync_Progress::update_live_progress( $progress, $batch_results, $new_last_post_id );
+		if ( null === $fast_fail_reason ) {
+			foreach ( $posts as $post ) {
+				$sync_result = Ingestion::sync_post( $post );
+
+				switch ( $sync_result->status ) {
+					case Sync_Result::INGESTED:
+						++$results['synced'];
+						++$batch_results['synced'];
+						Ingestion_Metrics::record_post_result( 'ingested', 'bulk' );
+						break;
+
+					case Sync_Result::DELETED:
+						++$results['deleted'];
+						++$batch_results['deleted'];
+						Ingestion_Metrics::record_post_result( 'deleted', 'bulk' );
+						break;
+
+					case Sync_Result::SKIPPED:
+						++$results['skipped'];
+						++$batch_results['skipped'];
+						Ingestion_Metrics::record_post_result( 'skipped', 'bulk' );
+						break;
+
+					case Sync_Result::FAILED_TRANSFORM:
+					case Sync_Result::FAILED_API:
+					case Sync_Result::FAILED_API_RETRYABLE:
+						// Bulk sync iterates a cursor — there's no queue to
+						// re-attempt items from. Retryable failures get the
+						// same treatment as permanent ones here: log and move
+						// on. Re-running `wp vip-agentforce ingestion sync` is
+						// the recovery path for missed items.
+						++$results['failed'];
+						++$batch_results['failed'];
+						Ingestion_Metrics::record_post_result( 'failed', 'bulk' );
+
+						$failure_summary = self::record_bulk_failure( $failure_summary, $post, $sync_result, $last_post_id, $limit );
+						if ( self::is_global_bulk_failure( $sync_result ) ) {
+							$new_last_post_id = $post->ID;
+							Ingestion_Sync_Progress::update_live_progress( $progress, $batch_results, $new_last_post_id );
+							$fast_fail_reason = self::get_bulk_fast_fail_reason( $sync_result );
+							break 2;
+						}
+						break;
+				}
+
+				$new_last_post_id = $post->ID;
+				Ingestion_Sync_Progress::update_live_progress( $progress, $batch_results, $new_last_post_id );
+			}
 		}
 
 		// Update the cursor and progress counters.
@@ -601,6 +659,29 @@ class Ingestion_Cron {
 			]
 		);
 
+		if ( $failure_summary['failed'] > 0 ) {
+			Logger::warning(
+				'ingestion-cron',
+				'Bulk sync batch completed with failures',
+				[
+					'batch_synced'      => $batch_results['synced'],
+					'batch_skipped'     => $batch_results['skipped'],
+					'batch_failed'      => $failure_summary['failed'],
+					'batch_deleted'     => $batch_results['deleted'],
+					'by_status'         => $failure_summary['by_status'],
+					'by_error_class'    => $failure_summary['by_error_class'],
+					'sample_post_ids'   => $failure_summary['sample_post_ids'],
+					'last_post_id'      => $new_last_post_id,
+					'sample_size_limit' => 5,
+				]
+			);
+		}
+
+		if ( null !== $fast_fail_reason ) {
+			Ingestion_Sync_Progress::fail( $fast_fail_reason );
+			return $results;
+		}
+
 		// If fewer posts returned than requested, we've processed everything.
 		if ( count( $posts ) < $limit ) {
 			Ingestion_Sync_Progress::complete();
@@ -616,6 +697,78 @@ class Ingestion_Cron {
 		}
 
 		return $results;
+	}
+
+	/**
+	 * Whether a bulk failure means the rest of the current run is doomed.
+	 */
+	private static function is_global_bulk_failure( Sync_Result $result ): bool {
+		return in_array( $result->error_class, [ 'config', 'auth', 'rate_limit', 'server', 'network' ], true );
+	}
+
+	/**
+	 * Build the stored sync failure reason for a global bulk failure.
+	 */
+	private static function get_bulk_fast_fail_reason( Sync_Result $result ): string {
+		$error_class = $result->error_class ?? 'unexpected';
+		$message     = $result->error_message ?? 'Unknown bulk sync failure';
+
+		return sprintf( 'Bulk sync fast-failed after global %s error: %s', $error_class, $message );
+	}
+
+	/**
+	 * Create a fresh bulk failure summary.
+	 *
+	 * @return array{failed: int, by_status: array<string, int>, by_error_class: array<string, int>, sample_post_ids: array<int, int>, first_failure_logged: bool}
+	 */
+	private static function create_bulk_failure_summary(): array {
+		return [
+			'failed'               => 0,
+			'by_status'            => [],
+			'by_error_class'       => [],
+			'sample_post_ids'      => [],
+			'first_failure_logged' => false,
+		];
+	}
+
+	/**
+	 * Record one bulk sync failure and log the first failure immediately.
+	 *
+	 * @param array{failed: int, by_status: array<string, int>, by_error_class: array<string, int>, sample_post_ids: array<int, int>, first_failure_logged: bool} $summary Current summary.
+	 * @param \WP_Post                                                                                                                             $post    Failed post.
+	 * @param Sync_Result                                                                                                                          $result  Sync result.
+	 * @param int                                                                                                                                  $last_post_id Cursor before this batch.
+	 * @param int                                                                                                                                  $batch_limit  Maximum batch size.
+	 * @return array{failed: int, by_status: array<string, int>, by_error_class: array<string, int>, sample_post_ids: array<int, int>, first_failure_logged: bool}
+	 */
+	private static function record_bulk_failure( array $summary, \WP_Post $post, Sync_Result $result, int $last_post_id, int $batch_limit ): array {
+		$error_class = $result->error_class ?? 'unexpected';
+
+		++$summary['failed'];
+		$summary['by_status'][ $result->status ]   = ( $summary['by_status'][ $result->status ] ?? 0 ) + 1;
+		$summary['by_error_class'][ $error_class ] = ( $summary['by_error_class'][ $error_class ] ?? 0 ) + 1;
+		if ( count( $summary['sample_post_ids'] ) < 5 ) {
+			$summary['sample_post_ids'][] = $post->ID;
+		}
+
+		if ( ! $summary['first_failure_logged'] ) {
+			Logger::warning(
+				'ingestion-cron',
+				'Bulk sync encountered first failure',
+				[
+					'post_id'       => $post->ID,
+					'status'        => $result->status,
+					'error_class'   => $error_class,
+					'error_message' => $result->error_message,
+					'last_post_id'  => $last_post_id,
+					'batch_limit'   => $batch_limit,
+				]
+			);
+
+			$summary['first_failure_logged'] = true;
+		}
+
+		return $summary;
 	}
 
 	/**

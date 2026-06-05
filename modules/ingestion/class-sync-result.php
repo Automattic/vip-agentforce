@@ -71,16 +71,25 @@ class Sync_Result {
 	public ?string $error_message;
 
 	/**
+	 * Low-cardinality error class when the failure came from the API.
+	 *
+	 * @var string|null
+	 */
+	public ?string $error_class;
+
+	/**
 	 * Constructor.
 	 *
 	 * @param string      $status        One of the class constants.
 	 * @param \WP_Post    $post          The post that was synced.
 	 * @param string|null $error_message Error message if applicable.
+	 * @param string|null $error_class   Low-cardinality error class if applicable.
 	 */
-	public function __construct( string $status, \WP_Post $post, ?string $error_message = null ) {
+	public function __construct( string $status, \WP_Post $post, ?string $error_message = null, ?string $error_class = null ) {
 		$this->status        = $status;
 		$this->post          = $post;
 		$this->error_message = $error_message;
+		$this->error_class   = $error_class;
 	}
 
 	/**

@@ -13,11 +13,11 @@ use Prometheus\RegistryInterface;
 class Collector implements \Automattic\VIP\Prometheus\CollectorInterface {
 
 	public function initialize( RegistryInterface $registry ): void {
-		/* Do nothing */
+		Ingestion_Metrics::initialize( $registry );
 	}
 
 	public function collect_metrics(): void {
-		/* Do nothing */
+		Ingestion_Metrics::collect_gauges();
 	}
 
 	public function process_metrics(): void {

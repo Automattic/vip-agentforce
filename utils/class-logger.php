@@ -9,6 +9,8 @@ use Automattic\VIP\Salesforce\Agentforce\Constants;
 use Automattic\VIP\Salesforce\Agentforce\Utils\Configs;
 
 class Logger {
+	private const INGESTION_LOG_VERBOSITY_OPTION = 'vip_agentforce_ingestion_log_verbosity';
+
 	/**
 	 * @var array<int, array<string, mixed>>
 	 */
@@ -139,6 +141,30 @@ class Logger {
 				);
 			}
 		});
+	}
+
+	/**
+	 * Get ingestion log verbosity.
+	 */
+	public static function get_ingestion_log_verbosity(): string {
+		$default = Configs::is_local_env() ? 'verbose' : 'normal';
+		$value   = get_option( self::INGESTION_LOG_VERBOSITY_OPTION, $default );
+
+		$verbosity = apply_filters(
+			'vip_agentforce_ingestion_log_verbosity',
+			is_string( $value ) ? $value : $default
+		);
+
+		return in_array( $verbosity, [ 'normal', 'verbose' ], true )
+			? $verbosity
+			: $default;
+	}
+
+	/**
+	 * Whether verbose ingestion logging is enabled.
+	 */
+	public static function is_verbose_ingestion_logging(): bool {
+		return 'verbose' === self::get_ingestion_log_verbosity();
 	}
 
 	/**

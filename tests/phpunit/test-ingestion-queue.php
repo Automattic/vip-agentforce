@@ -9,6 +9,7 @@ use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion;
 use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_Cron;
 use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_Queue;
 use Automattic\VIP\Salesforce\Agentforce\Utils\Logger;
+use Automattic\VIP\Salesforce\Agentforce\Utils\Testable_Logger;
 
 class Ingestion_Queue_Test extends WP_UnitTestCase {
 
@@ -20,6 +21,9 @@ class Ingestion_Queue_Test extends WP_UnitTestCase {
 	public function tearDown(): void {
 		parent::tearDown();
 		Logger::enable();
+		remove_all_filters( 'vip_agentforce_ingestion_log_verbosity' );
+		delete_option( 'vip_agentforce_ingestion_log_verbosity' );
+		Testable_Logger::clear_entries();
 
 		// Clean up sync queue (post meta).
 		global $wpdb;
@@ -46,6 +50,32 @@ class Ingestion_Queue_Test extends WP_UnitTestCase {
 		$meta = get_post_meta( $post->ID, Ingestion_Queue::META_KEY_QUEUED_FOR_SYNC, true );
 		$this->assertNotEmpty( $meta, 'Sync queue meta should be set.' );
 		$this->assertIsNumeric( $meta, 'Sync queue meta should be a timestamp.' );
+	}
+
+	public function test_queue_for_sync_suppresses_routine_log_in_normal_mode(): void {
+		Logger::enable();
+		Testable_Logger::clear_entries();
+		update_option( 'vip_agentforce_ingestion_log_verbosity', 'normal', false );
+
+		$post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
+
+		Ingestion_Queue::queue_for_sync( $post->ID );
+
+		$messages = array_column( Testable_Logger::get_entries(), 'message' );
+		$this->assertNotContains( 'Post queued for sync', $messages );
+	}
+
+	public function test_queue_for_sync_logs_routine_message_in_verbose_mode(): void {
+		Logger::enable();
+		Testable_Logger::clear_entries();
+		update_option( 'vip_agentforce_ingestion_log_verbosity', 'verbose', false );
+
+		$post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
+
+		Ingestion_Queue::queue_for_sync( $post->ID );
+
+		$messages = array_column( Testable_Logger::get_entries(), 'message' );
+		$this->assertContains( 'Post queued for sync', $messages );
 	}
 
 	public function test_queue_for_delete_stores_in_option(): void {

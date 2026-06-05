@@ -14,6 +14,8 @@ class TestLogger extends WP_UnitTestCase {
 	}
 
 	public function tearDown(): void {
+		delete_option( 'vip_agentforce_ingestion_log_verbosity' );
+		remove_all_filters( 'vip_agentforce_ingestion_log_verbosity' );
 		Testable_Logger::clear_entries();
 		parent::tearDown();
 	}
@@ -60,5 +62,36 @@ class TestLogger extends WP_UnitTestCase {
 		$entries = Testable_Logger::get_entries();
 
 		$this->assertEmpty( $entries, 'No log entries should be present when user is not logged in.' );
+	}
+
+	public function test_ingestion_log_verbosity_defaults_to_normal_outside_local_dev(): void {
+		$this->assertSame( 'normal', Logger::get_ingestion_log_verbosity() );
+		$this->assertFalse( Logger::is_verbose_ingestion_logging() );
+	}
+
+	public function test_ingestion_log_verbosity_accepts_verbose_option(): void {
+		update_option( 'vip_agentforce_ingestion_log_verbosity', 'verbose', false );
+
+		$this->assertSame( 'verbose', Logger::get_ingestion_log_verbosity() );
+		$this->assertTrue( Logger::is_verbose_ingestion_logging() );
+	}
+
+	public function test_ingestion_log_verbosity_filter_can_override_option(): void {
+		update_option( 'vip_agentforce_ingestion_log_verbosity', 'normal', false );
+
+		add_filter(
+			'vip_agentforce_ingestion_log_verbosity',
+			function () {
+				return 'verbose';
+			}
+		);
+
+		$this->assertSame( 'verbose', Logger::get_ingestion_log_verbosity() );
+	}
+
+	public function test_ingestion_log_verbosity_rejects_invalid_values(): void {
+		update_option( 'vip_agentforce_ingestion_log_verbosity', 'debug', false );
+
+		$this->assertSame( 'normal', Logger::get_ingestion_log_verbosity() );
 	}
 }

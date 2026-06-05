@@ -19,6 +19,7 @@ const VIP_AGENTFORCE_FILE = __FILE__;
 require_once __DIR__ . '/utils/class-configs.php';
 require_once __DIR__ . '/utils/class-constants.php';
 require_once __DIR__ . '/utils/class-logger.php';
+require_once __DIR__ . '/utils/class-ingestion-metrics.php';
 require_once __DIR__ . '/utils/class-tracking.php';
 require_once __DIR__ . '/utils/traits/trait-singleton.php';
 require_once __DIR__ . '/utils/traits/trait-with-plugin-paths.php';

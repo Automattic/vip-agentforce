@@ -321,6 +321,73 @@ class Ingestion_API_Client_Test extends WP_UnitTestCase {
 		$this->assertCount( 0, $this->captured_requests );
 	}
 
+	public function test_returns_failure_when_token_has_expired(): void {
+		$this->prime_configs_cache(
+			[
+				'ingestion_api_instance_url'     => 'https://test.salesforce.com',
+				'ingestion_api_token'            => 'test-token',
+				'ingestion_api_token_expires_at' => gmdate( 'c', time() - HOUR_IN_SECONDS ),
+				'ingestion_api_source_name'      => 'test-source',
+				'ingestion_api_object_name'      => 'test-object',
+			]
+		);
+		$this->mock_http_responses( [ $this->success_response() ] );
+
+		$client = new Ingestion_API_Client();
+		$record = $this->create_test_record();
+
+		$result = $client->send( $record );
+
+		$this->assertFalse( $result->success );
+		$this->assertSame( 'auth', $result->get_error_class() );
+		$this->assertStringContainsString( 'expired', $result->error_message );
+		$this->assertCount( 0, $this->captured_requests );
+	}
+
+	public function test_returns_failure_when_token_expiry_is_invalid(): void {
+		$this->prime_configs_cache(
+			[
+				'ingestion_api_instance_url'     => 'https://test.salesforce.com',
+				'ingestion_api_token'            => 'test-token',
+				'ingestion_api_token_expires_at' => 'not-a-date',
+				'ingestion_api_source_name'      => 'test-source',
+				'ingestion_api_object_name'      => 'test-object',
+			]
+		);
+		$this->mock_http_responses( [ $this->success_response() ] );
+
+		$client = new Ingestion_API_Client();
+		$record = $this->create_test_record();
+
+		$result = $client->send( $record );
+
+		$this->assertFalse( $result->success );
+		$this->assertSame( 'auth', $result->get_error_class() );
+		$this->assertStringContainsString( 'expiry is invalid', $result->error_message );
+		$this->assertCount( 0, $this->captured_requests );
+	}
+
+	public function test_sends_request_when_token_expiry_is_in_future(): void {
+		$this->prime_configs_cache(
+			[
+				'ingestion_api_instance_url'     => 'https://test.salesforce.com',
+				'ingestion_api_token'            => 'test-token',
+				'ingestion_api_token_expires_at' => gmdate( 'c', time() + HOUR_IN_SECONDS ),
+				'ingestion_api_source_name'      => 'test-source',
+				'ingestion_api_object_name'      => 'test-object',
+			]
+		);
+		$this->mock_http_responses( [ $this->success_response() ] );
+
+		$client = new Ingestion_API_Client();
+		$record = $this->create_test_record();
+
+		$result = $client->send( $record );
+
+		$this->assertTrue( $result->success );
+		$this->assertCount( 1, $this->captured_requests );
+	}
+
 	// =========================================================================
 	// Error handling tests
 	// =========================================================================
