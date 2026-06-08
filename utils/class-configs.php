@@ -15,7 +15,7 @@ class Configs {
 	/**
 	 * Cached ingestion token preflight failure.
 	 *
-	 * @var array{message: string, error_class: string}|null
+	 * @var array{message: string, error_class: string, error_code: string}|null
 	 */
 	private static $cached_ingestion_token_failure = null;
 
