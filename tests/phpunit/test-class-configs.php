@@ -109,6 +109,7 @@ class ClassConfigsTest extends WP_UnitTestCase {
 			[
 				'message'     => 'Missing required API configuration: ingestion_api_token',
 				'error_class' => 'config',
+				'error_code'  => 'missing_api_config',
 			],
 			Configs::get_ingestion_token_failure()
 		);
@@ -127,6 +128,7 @@ class ClassConfigsTest extends WP_UnitTestCase {
 			[
 				'message'     => 'Ingestion API token expiry is invalid',
 				'error_class' => 'auth',
+				'error_code'  => 'token_invalid',
 			],
 			Configs::get_ingestion_token_failure()
 		);
@@ -145,6 +147,7 @@ class ClassConfigsTest extends WP_UnitTestCase {
 			[
 				'message'     => 'Ingestion API token has expired',
 				'error_class' => 'auth',
+				'error_code'  => 'token_expired',
 			],
 			Configs::get_ingestion_token_failure()
 		);
