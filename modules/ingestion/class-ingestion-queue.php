@@ -483,6 +483,16 @@ class Ingestion_Queue {
 			case Sync_Result::FAILED_API:
 			case Sync_Result::FAILED_API_RETRYABLE:
 				Ingestion_Metrics::record_post_result( 'failed', 'sync' );
+				Logger::warning(
+					'ingestion-queue',
+					'Sync mode ingestion failed',
+					[
+						'post_id'       => $sync_result->post->ID,
+						'status'        => $sync_result->status,
+						'error_class'   => $sync_result->error_class,
+						'error_message' => $sync_result->error_message,
+					]
+				);
 				break;
 		}
 	}

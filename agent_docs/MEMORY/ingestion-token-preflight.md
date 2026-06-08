@@ -1,1 +1,0 @@
-- `Configs::get_ingestion_token_failure()` returns `null` when the ingestion token is usable, including when `ingestion_api_token_expires_at` is a valid future timestamp. Callers can use the method directly without first calling `has_valid_ingestion_token()`.

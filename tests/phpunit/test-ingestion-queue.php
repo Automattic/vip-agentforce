@@ -8,6 +8,7 @@
 use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion;
 use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_Cron;
 use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_Queue;
+use Automattic\VIP\Salesforce\Agentforce\Ingestion\Sync_Result;
 use Automattic\VIP\Salesforce\Agentforce\Utils\Logger;
 use Automattic\VIP\Salesforce\Agentforce\Utils\Testable_Logger;
 
@@ -76,6 +77,40 @@ class Ingestion_Queue_Test extends WP_UnitTestCase {
 
 		$messages = array_column( Testable_Logger::get_entries(), 'message' );
 		$this->assertContains( 'Post queued for sync', $messages );
+	}
+
+	public function test_sync_mode_failure_logs_warning_in_normal_mode(): void {
+		Logger::enable();
+		Testable_Logger::clear_entries();
+		update_option( 'vip_agentforce_ingestion_log_verbosity', 'normal', false );
+
+		$post   = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
+		$result = new Sync_Result(
+			Sync_Result::FAILED_API,
+			$post,
+			'Manual failure',
+			'auth'
+		);
+
+		$reflection = new ReflectionClass( Ingestion_Queue::class );
+		$method     = $reflection->getMethod( 'record_sync_mode_result' );
+		$method->setAccessible( true );
+		$method->invoke( null, $result );
+
+		$failure_entry = null;
+		foreach ( Testable_Logger::get_entries() as $entry ) {
+			if ( 'Sync mode ingestion failed' === $entry['message'] ) {
+				$failure_entry = $entry;
+				break;
+			}
+		}
+
+		$this->assertNotNull( $failure_entry );
+		$this->assertSame( 'warning', $failure_entry['severity'] );
+		$this->assertSame( $post->ID, $failure_entry['extra']['post_id'] );
+		$this->assertSame( Sync_Result::FAILED_API, $failure_entry['extra']['status'] );
+		$this->assertSame( 'auth', $failure_entry['extra']['error_class'] );
+		$this->assertSame( 'Manual failure', $failure_entry['extra']['error_message'] );
 	}
 
 	public function test_queue_for_delete_stores_in_option(): void {
