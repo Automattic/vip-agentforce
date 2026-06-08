@@ -14,6 +14,7 @@
 namespace Automattic\VIP\Salesforce\Agentforce\Ingestion;
 
 use Automattic\VIP\Salesforce\Agentforce\Utils\Configs;
+use Automattic\VIP\Salesforce\Agentforce\Utils\Ingestion_Metrics;
 use Automattic\VIP\Salesforce\Agentforce\Utils\Logger;
 
 /**
@@ -100,10 +101,16 @@ class Ingestion_API_Client {
 	 * @return Ingestion_API_Result The API result.
 	 */
 	private function make_request( string $method, string $body, string $record_id ): Ingestion_API_Result {
-		$config_error = $this->validate_config();
-		if ( null !== $config_error ) {
+		$preflight_failure = self::get_request_preflight_failure();
+		if ( null !== $preflight_failure ) {
 			// Permanent — don't mark retryable; cron will fire the failure event.
-			return Ingestion_API_Result::failure( $config_error, null, $record_id );
+			Ingestion_Metrics::record_api_error( $preflight_failure['error_class'] );
+			return Ingestion_API_Result::failure(
+				$preflight_failure['message'],
+				null,
+				$record_id,
+				$preflight_failure['error_class']
+			);
 		}
 
 		// If a previous 429 (or our own preemptive block) said "back off",
@@ -111,6 +118,7 @@ class Ingestion_API_Client {
 		// the block expires. Saves us a guaranteed-rejected request to SF.
 		$block_remaining = $this->get_rate_limit_block_remaining();
 		if ( $block_remaining > 0 ) {
+			Ingestion_Metrics::record_api_error( 'rate_limit' );
 			return Ingestion_API_Result::deferred(
 				sprintf( 'Rate-limit block active for %.1fs; deferring request', $block_remaining ),
 				$record_id
@@ -120,21 +128,27 @@ class Ingestion_API_Client {
 		$response = $this->execute_request( $method, $body );
 
 		if ( is_wp_error( $response ) ) {
-			Logger::warning(
-				'ingestion-api',
-				'HTTP error contacting Salesforce',
-				[
-					'record_id' => $record_id,
-					'error'     => $response->get_error_message(),
-				]
-			);
-			return Ingestion_API_Result::failure( $response->get_error_message(), $response, $record_id );
+			Ingestion_Metrics::record_api_request( $method, 'none', 'network_error' );
+			Ingestion_Metrics::record_api_error( 'network' );
+
+			if ( Logger::is_verbose_ingestion_logging() ) {
+				Logger::warning(
+					'ingestion-api',
+					'HTTP error contacting Salesforce',
+					[
+						'record_id' => $record_id,
+						'error'     => $response->get_error_message(),
+					]
+				);
+			}
+			return Ingestion_API_Result::failure( $response->get_error_message(), $response, $record_id, 'network' );
 		}
 
 		$status_code = (int) wp_remote_retrieve_response_code( $response );
 
 		// Success.
 		if ( 202 === $status_code ) {
+			Ingestion_Metrics::record_api_request( $method, (string) $status_code, 'success' );
 			$this->process_rate_limit_headers( $response );
 			return Ingestion_API_Result::success( $record_id, $response );
 		}
@@ -144,66 +158,89 @@ class Ingestion_API_Client {
 		// queue item in place for the next tick.
 		if ( 429 === $status_code ) {
 			$this->handle_rate_limit_response( $response );
+			Ingestion_Metrics::record_api_request( $method, (string) $status_code, 'rate_limit' );
+			Ingestion_Metrics::record_api_error( 'rate_limit' );
 
-			Logger::warning(
-				'ingestion-api',
-				'Rate limited by Salesforce',
-				[
-					'record_id'     => $record_id,
-					'status_code'   => $status_code,
-					'response_body' => wp_remote_retrieve_body( $response ),
-				]
-			);
+			if ( Logger::is_verbose_ingestion_logging() ) {
+				Logger::warning(
+					'ingestion-api',
+					'Rate limited by Salesforce',
+					[
+						'record_id'     => $record_id,
+						'status_code'   => $status_code,
+						'response_body' => wp_remote_retrieve_body( $response ),
+					]
+				);
+			}
 
 			return Ingestion_API_Result::failure(
 				'Rate limited by Salesforce',
 				$response,
-				$record_id
+				$record_id,
+				'rate_limit'
 			);
 		}
 
 		// Server-side / transient errors. 503 occasionally includes
 		// Retry-After; honor it the same way we honor 429 so the next
 		// cron tick observes the block.
-		if ( in_array( $status_code, [ 408, 500, 502, 503, 504 ], true ) ) {
+		if ( 408 === $status_code || $status_code >= 500 ) {
 			$retry_after = $this->parse_retry_after_header( $response );
 			if ( $retry_after > 0 ) {
 				$this->set_rate_limit_block( $retry_after );
 			}
+			Ingestion_Metrics::record_api_request( $method, (string) $status_code, 'server_error' );
+			Ingestion_Metrics::record_api_error( 'server' );
 
-			Logger::warning(
+			if ( Logger::is_verbose_ingestion_logging() ) {
+				Logger::warning(
+					'ingestion-api',
+					'Transient server error from Salesforce',
+					[
+						'record_id'     => $record_id,
+						'status_code'   => $status_code,
+						'response_body' => wp_remote_retrieve_body( $response ),
+					]
+				);
+			}
+
+			return Ingestion_API_Result::failure(
+				'Server error (' . $status_code . ')',
+				$response,
+				$record_id,
+				'server'
+			);
+		}
+
+		// Permanent error (4xx other than 408/429). Cron will see
+		// is_retryable() === false and surface a failure event.
+		$error_class = in_array( $status_code, [ 401, 403 ], true ) ? 'auth' : 'client';
+		$outcome     = 'auth' === $error_class ? 'auth_error' : 'client_error';
+		if ( $status_code < 400 ) {
+			$error_class = 'unexpected';
+			$outcome     = 'unexpected';
+		}
+
+		Ingestion_Metrics::record_api_request( $method, (string) $status_code, $outcome );
+		Ingestion_Metrics::record_api_error( $error_class );
+
+		if ( Logger::is_verbose_ingestion_logging() ) {
+			Logger::error(
 				'ingestion-api',
-				'Transient server error from Salesforce',
+				'Permanent error from Salesforce',
 				[
 					'record_id'     => $record_id,
 					'status_code'   => $status_code,
 					'response_body' => wp_remote_retrieve_body( $response ),
 				]
 			);
-
-			return Ingestion_API_Result::failure(
-				'Server error (' . $status_code . ')',
-				$response,
-				$record_id
-			);
 		}
-
-		// Permanent error (4xx other than 408/429). Cron will see
-		// is_retryable() === false and surface a failure event.
-		Logger::error(
-			'ingestion-api',
-			'Permanent error from Salesforce',
-			[
-				'record_id'     => $record_id,
-				'status_code'   => $status_code,
-				'response_body' => wp_remote_retrieve_body( $response ),
-			]
-		);
 
 		return Ingestion_API_Result::failure(
 			'Unexpected response code: ' . $status_code,
 			$response,
-			$record_id
+			$record_id,
+			$error_class
 		);
 	}
 
@@ -251,16 +288,20 @@ class Ingestion_API_Client {
 	}
 
 	/**
-	 * Validate that required API configuration fields are present.
+	 * Get a preflight failure before attempting an API request.
 	 *
-	 * @return string|null Error message if validation fails, null if valid.
+	 * @return array{message: string, error_class: string}|null Failure details, or null if the request can proceed.
 	 */
-	private function validate_config(): ?string {
-		$config = Configs::get_config();
+	public static function get_request_preflight_failure(): ?array {
+		$config        = Configs::get_config();
+		$token_failure = Configs::get_ingestion_token_failure();
+
+		if ( null !== $token_failure ) {
+			return $token_failure;
+		}
 
 		$fields_to_check = [
 			'ingestion_api_instance_url',
-			'ingestion_api_token',
 			'ingestion_api_source_name',
 			'ingestion_api_object_name',
 		];
@@ -273,7 +314,10 @@ class Ingestion_API_Client {
 		}
 
 		if ( ! empty( $empty_fields ) ) {
-			return 'Missing required API configuration: ' . implode( ', ', $empty_fields );
+			return [
+				'message'     => 'Missing required API configuration: ' . implode( ', ', $empty_fields ),
+				'error_class' => 'config',
+			];
 		}
 
 		return null;

@@ -10,8 +10,10 @@ use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_Cron;
 use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_Post_Record;
 use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_Queue;
 use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_Sync_Progress;
+use Automattic\VIP\Salesforce\Agentforce\Ingestion\Sync_Result;
 use Automattic\VIP\Salesforce\Agentforce\Utils\Configs;
 use Automattic\VIP\Salesforce\Agentforce\Utils\Logger;
+use Automattic\VIP\Salesforce\Agentforce\Utils\Testable_Logger;
 
 class Ingestion_Cron_Test extends WP_UnitTestCase {
 
@@ -47,10 +49,13 @@ class Ingestion_Cron_Test extends WP_UnitTestCase {
 		// Clean up.
 		remove_all_filters( 'vip_agentforce_should_ingest_post' );
 		remove_all_filters( 'vip_agentforce_transform_post' );
+		remove_all_filters( 'vip_agentforce_ingestion_log_verbosity' );
 		remove_all_filters( 'pre_http_request' );
 		remove_all_filters( 'cron_schedules' );
 		remove_all_actions( Ingestion_Cron::CRON_HOOK );
 		Configs::flush_cache();
+		delete_option( 'vip_agentforce_ingestion_log_verbosity' );
+		Testable_Logger::clear_entries();
 		$this->captured_requests = [];
 
 		// Clean up sync queue (post meta).
@@ -575,6 +580,213 @@ class Ingestion_Cron_Test extends WP_UnitTestCase {
 		// Queue processing and bulk sync are independent — bulk sync processes
 		// all posts by cursor, even those already handled by the queue.
 		$this->assertSame( 4, $results['synced'] );
+	}
+
+	public function test_bulk_sync_logs_first_failure_summary_and_fast_fails_auth_errors(): void {
+		Logger::enable();
+		Testable_Logger::clear_entries();
+		update_option( 'vip_agentforce_ingestion_log_verbosity', 'normal', false );
+		$this->setup_ingestion_filters();
+
+		add_filter(
+			'pre_http_request',
+			function ( $preempt, $args, $url ) {
+				if ( strpos( $url, 'test.salesforce.com' ) === false ) {
+					return $preempt;
+				}
+
+				$this->captured_requests[] = [
+					'url'    => $url,
+					'method' => $args['method'] ?? 'GET',
+					'body'   => $args['body'] ?? '',
+				];
+
+				return [
+					'response' => [
+						'code'    => 401,
+						'message' => 'Unauthorized',
+					],
+					'headers'  => [],
+					'body'     => '',
+				];
+			},
+			10,
+			3
+		);
+
+		$this->factory()->post->create_many( 3, [ 'post_status' => 'publish' ] );
+		Ingestion_Sync_Progress::start( 3, [ 'post' ] );
+
+		$results  = Ingestion_Cron::process_queue( 10 );
+		$entries  = Testable_Logger::get_entries();
+		$messages = array_column( $entries, 'message' );
+
+		$this->assertSame( 1, $results['failed'] );
+		$this->assertCount( 1, $this->captured_requests, 'Bulk sync should stop after the first global auth failure.' );
+		$this->assertSame( 0, count( array_keys( $messages, 'Bulk sync: failed to sync post', true ) ) );
+		$this->assertSame( 1, count( array_keys( $messages, 'Bulk sync encountered first failure', true ) ) );
+		$this->assertSame( 1, count( array_keys( $messages, 'Bulk sync batch completed with failures', true ) ) );
+		$this->assertSame( 0, count( array_keys( $messages, 'Permanent error from Salesforce', true ) ) );
+
+		$first_failure_entry = null;
+		$summary_entry       = null;
+		foreach ( $entries as $entry ) {
+			if ( 'Bulk sync encountered first failure' === $entry['message'] ) {
+				$first_failure_entry = $entry;
+			}
+
+			if ( 'Bulk sync batch completed with failures' === $entry['message'] ) {
+				$summary_entry = $entry;
+			}
+		}
+
+		$this->assertNotNull( $first_failure_entry );
+		$this->assertArrayHasKey( 'last_post_id', $first_failure_entry['extra'] );
+		$this->assertSame( 0, $first_failure_entry['extra']['last_post_id'] );
+		$this->assertSame( 10, $first_failure_entry['extra']['batch_limit'] );
+
+		$this->assertNotNull( $summary_entry );
+		$this->assertSame( 0, $summary_entry['extra']['batch_synced'] );
+		$this->assertSame( 0, $summary_entry['extra']['batch_skipped'] );
+		$this->assertSame( 1, $summary_entry['extra']['batch_failed'] );
+		$this->assertSame( 0, $summary_entry['extra']['batch_deleted'] );
+		$this->assertSame( [ Sync_Result::FAILED_API => 1 ], $summary_entry['extra']['by_status'] );
+		$this->assertSame( [ 'auth' => 1 ], $summary_entry['extra']['by_error_class'] );
+		$this->assertCount( 1, $summary_entry['extra']['sample_post_ids'] );
+
+		$progress = Ingestion_Sync_Progress::get();
+		$this->assertSame( Ingestion_Sync_Progress::STATUS_FAILED, $progress['status'] );
+		$this->assertStringContainsString( 'global auth error', $progress['error'] );
+		$this->assertSame( 1, $progress['processed'] );
+	}
+
+	public function test_bulk_sync_fast_fails_missing_config_without_api_requests(): void {
+		Logger::enable();
+		Testable_Logger::clear_entries();
+		$this->setup_ingestion_filters();
+		$this->prime_configs_cache( [] );
+
+		$this->factory()->post->create_many( 3, [ 'post_status' => 'publish' ] );
+		Ingestion_Sync_Progress::start( 3, [ 'post' ] );
+
+		$results  = Ingestion_Cron::process_queue( 10 );
+		$entries  = Testable_Logger::get_entries();
+		$messages = array_column( $entries, 'message' );
+		$progress = Ingestion_Sync_Progress::get();
+
+		$this->assertSame( 1, $results['failed'] );
+		$this->assertCount( 0, $this->captured_requests, 'Missing config must not attempt a Salesforce request.' );
+		$this->assertSame( 1, count( array_keys( $messages, 'Bulk sync encountered first failure', true ) ) );
+		$this->assertSame( 1, count( array_keys( $messages, 'Bulk sync batch completed with failures', true ) ) );
+		$this->assertSame( Ingestion_Sync_Progress::STATUS_FAILED, $progress['status'] );
+		$this->assertStringContainsString( 'Missing required API configuration', $progress['error'] );
+		$this->assertSame( 1, $progress['processed'] );
+	}
+
+	public function test_bulk_sync_fast_fails_expired_token_without_api_requests(): void {
+		Logger::enable();
+		Testable_Logger::clear_entries();
+		$this->setup_ingestion_filters();
+		$this->prime_configs_cache(
+			[
+				'ingestion_api_instance_url'     => 'https://test.salesforce.com',
+				'ingestion_api_token'            => 'test-token',
+				'ingestion_api_token_expires_at' => gmdate( 'c', time() - HOUR_IN_SECONDS ),
+				'ingestion_api_source_name'      => 'test-source',
+				'ingestion_api_object_name'      => 'test-object',
+			]
+		);
+
+		$this->factory()->post->create_many( 3, [ 'post_status' => 'publish' ] );
+		Ingestion_Sync_Progress::start( 3, [ 'post' ] );
+
+		$results  = Ingestion_Cron::process_queue( 10 );
+		$entries  = Testable_Logger::get_entries();
+		$messages = array_column( $entries, 'message' );
+		$progress = Ingestion_Sync_Progress::get();
+
+		$this->assertSame( 1, $results['failed'] );
+		$this->assertCount( 0, $this->captured_requests, 'Expired token must not attempt a Salesforce request.' );
+		$this->assertSame( 1, count( array_keys( $messages, 'Bulk sync encountered first failure', true ) ) );
+		$this->assertSame( 1, count( array_keys( $messages, 'Bulk sync batch completed with failures', true ) ) );
+		$this->assertSame( Ingestion_Sync_Progress::STATUS_FAILED, $progress['status'] );
+		$this->assertStringContainsString( 'global auth error', $progress['error'] );
+		$this->assertSame( 1, $progress['processed'] );
+	}
+
+	/**
+	 * @dataProvider global_bulk_failure_provider
+	 *
+	 * @param array<string, mixed>|\WP_Error $mock_response Mocked HTTP response.
+	 */
+	public function test_bulk_sync_fast_fails_global_salesforce_failures( $mock_response, string $expected_error_class ): void {
+		$this->setup_ingestion_filters();
+
+		add_filter(
+			'pre_http_request',
+			function ( $preempt, $args, $url ) use ( $mock_response ) {
+				if ( strpos( $url, 'test.salesforce.com' ) === false ) {
+					return $preempt;
+				}
+
+				$this->captured_requests[] = [
+					'url'    => $url,
+					'method' => $args['method'] ?? 'GET',
+					'body'   => $args['body'] ?? '',
+				];
+
+				return $mock_response;
+			},
+			10,
+			3
+		);
+
+		$this->factory()->post->create_many( 3, [ 'post_status' => 'publish' ] );
+		Ingestion_Sync_Progress::start( 3, [ 'post' ] );
+		wp_cache_delete( 'vip_agentforce_rate_limit_blocked_until', 'vip_agentforce' );
+
+		$results  = Ingestion_Cron::process_queue( 10 );
+		$progress = Ingestion_Sync_Progress::get();
+
+		$this->assertSame( 1, $results['failed'] );
+		$this->assertCount( 1, $this->captured_requests );
+		$this->assertSame( Ingestion_Sync_Progress::STATUS_FAILED, $progress['status'] );
+		$this->assertStringContainsString( 'global ' . $expected_error_class . ' error', $progress['error'] );
+		$this->assertSame( 1, $progress['processed'] );
+	}
+
+	/**
+	 * @return array<string, array{0: array<string, mixed>|\WP_Error, 1: string}>
+	 */
+	public function global_bulk_failure_provider(): array {
+		return [
+			'rate limit'         => [
+				[
+					'response' => [
+						'code'    => 429,
+						'message' => 'Too Many Requests',
+					],
+					'headers'  => [],
+					'body'     => '',
+				],
+				'rate_limit',
+			],
+			'server unavailable' => [
+				[
+					'response' => [
+						'code'    => 503,
+						'message' => 'Service Unavailable',
+					],
+					'headers'  => [],
+					'body'     => '',
+				],
+				'server',
+			],
+			'network failure'    => [
+				new WP_Error( 'vip_agentforce_network_failure', 'Network unavailable' ),
+				'network',
+			],
+		];
 	}
 
 	// =========================================================================

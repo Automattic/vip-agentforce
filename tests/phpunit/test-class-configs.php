@@ -12,10 +12,22 @@ class ClassConfigsTest extends WP_UnitTestCase {
 	 * @param array<string, mixed> $config
 	 */
 	private function prime_configs_cache( array $config ): void {
-		$ref  = new ReflectionClass( Configs::class );
-		$prop = $ref->getProperty( 'cached_config' );
-		$prop->setAccessible( true );
-		$prop->setValue( null, $config );
+		$ref = new ReflectionClass( Configs::class );
+
+		$config_prop = $ref->getProperty( 'cached_config' );
+		$config_prop->setAccessible( true );
+		$config_prop->setValue( null, $config );
+
+		$detect_token_failure = $ref->getMethod( 'detect_ingestion_token_failure' );
+		$detect_token_failure->setAccessible( true );
+
+		$token_failure_prop = $ref->getProperty( 'cached_ingestion_token_failure' );
+		$token_failure_prop->setAccessible( true );
+		$token_failure_prop->setValue( null, $detect_token_failure->invoke( null, $config ) );
+
+		$token_status_loaded_prop = $ref->getProperty( 'cached_ingestion_token_status_loaded' );
+		$token_status_loaded_prop->setAccessible( true );
+		$token_status_loaded_prop->setValue( null, true );
 	}
 
 	public function test_is_js_sdk_activated_defaults_to_false_when_missing(): void {
@@ -83,6 +95,82 @@ class ClassConfigsTest extends WP_UnitTestCase {
 
 		$this->prime_configs_cache( [ 'agentforce_embedding_script' => null ] );
 		$this->assertSame( '', Configs::get_embedding_script() );
+	}
+
+	public function test_has_valid_ingestion_token_returns_false_when_token_is_missing(): void {
+		$config = [
+			'ingestion_api_token' => '',
+		];
+
+		$this->prime_configs_cache( $config );
+
+		$this->assertFalse( Configs::has_valid_ingestion_token() );
+		$this->assertSame(
+			[
+				'message'     => 'Missing required API configuration: ingestion_api_token',
+				'error_class' => 'config',
+			],
+			Configs::get_ingestion_token_failure()
+		);
+	}
+
+	public function test_has_valid_ingestion_token_returns_false_when_token_expiry_is_invalid(): void {
+		$config = [
+			'ingestion_api_token'            => 'token',
+			'ingestion_api_token_expires_at' => 'not-a-date',
+		];
+
+		$this->prime_configs_cache( $config );
+
+		$this->assertFalse( Configs::has_valid_ingestion_token() );
+		$this->assertSame(
+			[
+				'message'     => 'Ingestion API token expiry is invalid',
+				'error_class' => 'auth',
+			],
+			Configs::get_ingestion_token_failure()
+		);
+	}
+
+	public function test_has_valid_ingestion_token_returns_false_when_token_expired(): void {
+		$config = [
+			'ingestion_api_token'            => 'token',
+			'ingestion_api_token_expires_at' => time() - HOUR_IN_SECONDS,
+		];
+
+		$this->prime_configs_cache( $config );
+
+		$this->assertFalse( Configs::has_valid_ingestion_token() );
+		$this->assertSame(
+			[
+				'message'     => 'Ingestion API token has expired',
+				'error_class' => 'auth',
+			],
+			Configs::get_ingestion_token_failure()
+		);
+	}
+
+	public function test_has_valid_ingestion_token_returns_true_when_token_expiry_is_future(): void {
+		$config = [
+			'ingestion_api_token'            => 'token',
+			'ingestion_api_token_expires_at' => time() + HOUR_IN_SECONDS,
+		];
+
+		$this->prime_configs_cache( $config );
+
+		$this->assertTrue( Configs::has_valid_ingestion_token() );
+		$this->assertNull( Configs::get_ingestion_token_failure() );
+	}
+
+	public function test_has_valid_ingestion_token_returns_true_when_token_expiry_is_absent(): void {
+		$config = [
+			'ingestion_api_token' => 'token',
+		];
+
+		$this->prime_configs_cache( $config );
+
+		$this->assertTrue( Configs::has_valid_ingestion_token() );
+		$this->assertNull( Configs::get_ingestion_token_failure() );
 	}
 
 	public function test_get_site_key_returns_empty_when_missing(): void {

@@ -6,7 +6,10 @@ use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_Post_Record;
 use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_Sync_Progress;
 use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_Cron;
 use Automattic\VIP\Salesforce\Agentforce\Utils\Configs;
+use Automattic\VIP\Salesforce\Agentforce\Utils\Ingestion_Metrics;
 use Automattic\VIP\Salesforce\Agentforce\Utils\Logger;
+
+require_once __DIR__ . '/../class-fake-ingestion-metric.php';
 
 class Ingestion_CLI_Test extends WP_UnitTestCase {
 
@@ -17,22 +20,35 @@ class Ingestion_CLI_Test extends WP_UnitTestCase {
 	 */
 	private array $captured_requests = [];
 
+	private Fake_Ingestion_Metric $api_errors_counter;
+
 	/**
 	 * Prime Configs cache for deterministic tests without mutating VIP_AGENTFORCE_CONFIGS.
 	 *
 	 * @param array<string, mixed> $config
 	 */
 	private function prime_configs_cache( array $config ): void {
-		$ref  = new ReflectionClass( Configs::class );
-		$prop = $ref->getProperty( 'cached_config' );
-		$prop->setAccessible( true );
-		$prop->setValue( null, $config );
+		$ref = new ReflectionClass( Configs::class );
+
+		$config_prop = $ref->getProperty( 'cached_config' );
+		$config_prop->setAccessible( true );
+		$config_prop->setValue( null, $config );
+
+		$token_failure_prop = $ref->getProperty( 'cached_ingestion_token_failure' );
+		$token_failure_prop->setAccessible( true );
+		$token_failure_prop->setValue( null, null );
+
+		$token_status_loaded_prop = $ref->getProperty( 'cached_ingestion_token_status_loaded' );
+		$token_status_loaded_prop->setAccessible( true );
+		$token_status_loaded_prop->setValue( null, false );
 	}
 
 	public function setUp(): void {
 		parent::setUp();
 		Logger::disable();
-		$this->captured_requests = [];
+		$this->captured_requests  = [];
+		$this->api_errors_counter = new Fake_Ingestion_Metric();
+		$this->set_metric_property( 'api_errors_counter', $this->api_errors_counter );
 
 		// Initialize cron hooks (registers the custom schedule needed by schedule_processing).
 		Ingestion_Cron::init();
@@ -46,6 +62,8 @@ class Ingestion_CLI_Test extends WP_UnitTestCase {
 				'ingestion_api_object_name'  => 'test-object',
 			]
 		);
+
+		wp_cache_delete( 'vip_agentforce_rate_limit_blocked_until', 'vip_agentforce' );
 
 		// Mock HTTP requests to return success and capture them.
 		add_filter(
@@ -83,8 +101,17 @@ class Ingestion_CLI_Test extends WP_UnitTestCase {
 		remove_all_filters( 'cron_schedules' );
 		remove_all_actions( Ingestion_Cron::CRON_HOOK );
 		$this->captured_requests = [];
+		$this->set_metric_property( 'api_errors_counter', null );
 		Ingestion_Sync_Progress::reset();
 		Ingestion_Cron::unschedule_processing();
+		wp_cache_delete( 'vip_agentforce_rate_limit_blocked_until', 'vip_agentforce' );
+	}
+
+	private function set_metric_property( string $property, ?Fake_Ingestion_Metric $value ): void {
+		$ref  = new ReflectionClass( Ingestion_Metrics::class );
+		$prop = $ref->getProperty( $property );
+		$prop->setAccessible( true );
+		$prop->setValue( null, $value );
 	}
 
 	/**
@@ -145,7 +172,7 @@ class Ingestion_CLI_Test extends WP_UnitTestCase {
 
 		$result = Ingestion::delete_record_id_from_api( $record_id );
 
-		$this->assertTrue( $result->success );
+		$this->assertTrue( $result->success, $result->error_message ?? 'Expected deletion API result to succeed.' );
 		$this->assertSame( $record_id, $result->record_id );
 		$this->assertNotEmpty( $result->timestamp );
 	}
@@ -702,6 +729,52 @@ class Ingestion_CLI_Test extends WP_UnitTestCase {
 		$this->assertSame( 'No published posts found to sync.', $data['message'] );
 	}
 
+	public function test_cli_sync_start_json_fails_before_scheduling_when_api_config_is_missing(): void {
+		$this->setup_ingestion_filters();
+		$this->prime_configs_cache( [] );
+		$this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
+		Ingestion_Cron::unschedule_processing();
+
+		$output = $this->run_cli_sync( [ 'format' => 'json' ] );
+		$data   = json_decode( $output, true );
+
+		$this->assertNotNull( $data, 'Output should be valid JSON.' );
+		$this->assertFalse( $data['success'] );
+		$this->assertSame( 'idle', $data['status'] );
+		$this->assertSame( 'config', $data['error_class'] );
+		$this->assertStringContainsString( 'Missing required API configuration', $data['message'] );
+		$this->assertSame( 1, $this->api_errors_counter->get_sample( [ 'config' ] ) );
+		$this->assertNull( Ingestion_Sync_Progress::get(), 'Sync progress should not start when request preflight fails.' );
+		$this->assertFalse( Ingestion_Cron::is_scheduled(), 'Cron should not be scheduled when request preflight fails.' );
+	}
+
+	public function test_cli_sync_start_json_fails_before_scheduling_when_token_is_expired(): void {
+		$this->setup_ingestion_filters();
+		$this->prime_configs_cache(
+			[
+				'ingestion_api_instance_url'     => 'https://test.salesforce.com',
+				'ingestion_api_token'            => 'test-token',
+				'ingestion_api_token_expires_at' => time() - HOUR_IN_SECONDS,
+				'ingestion_api_source_name'      => 'test-source',
+				'ingestion_api_object_name'      => 'test-object',
+			]
+		);
+		$this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
+		Ingestion_Cron::unschedule_processing();
+
+		$output = $this->run_cli_sync( [ 'format' => 'json' ] );
+		$data   = json_decode( $output, true );
+
+		$this->assertNotNull( $data, 'Output should be valid JSON.' );
+		$this->assertFalse( $data['success'] );
+		$this->assertSame( 'idle', $data['status'] );
+		$this->assertSame( 'auth', $data['error_class'] );
+		$this->assertSame( 'Ingestion API token has expired', $data['message'] );
+		$this->assertSame( 1, $this->api_errors_counter->get_sample( [ 'auth' ] ) );
+		$this->assertNull( Ingestion_Sync_Progress::get(), 'Sync progress should not start when request preflight fails.' );
+		$this->assertFalse( Ingestion_Cron::is_scheduled(), 'Cron should not be scheduled when request preflight fails.' );
+	}
+
 	public function test_cli_sync_reset_flag(): void {
 		$this->setup_ingestion_filters();
 		$this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
@@ -735,6 +808,7 @@ class Ingestion_CLI_Test extends WP_UnitTestCase {
 		$this->assertTrue( $data['filter_registered'] );
 		$this->assertTrue( $data['has_api_url'] );
 		$this->assertTrue( $data['has_api_token'] );
+		$this->assertTrue( $data['has_valid_ingestion_token'] );
 		$this->assertTrue( $data['has_api_source'] );
 		$this->assertTrue( $data['has_api_object'] );
 	}
@@ -778,6 +852,61 @@ class Ingestion_CLI_Test extends WP_UnitTestCase {
 		$this->assertTrue( $data['filter_registered'] );
 		$this->assertFalse( $data['has_api_url'] );
 		$this->assertFalse( $data['has_api_token'] );
+		$this->assertFalse( $data['has_valid_ingestion_token'] );
+	}
+
+	public function test_cli_preflight_check_returns_not_ready_when_token_expiry_is_invalid(): void {
+		$this->setup_ingestion_filters();
+		$this->prime_configs_cache(
+			[
+				'ingestion_api_instance_url'     => 'https://test.salesforce.com',
+				'ingestion_api_token'            => 'test-token',
+				'ingestion_api_token_expires_at' => 'not-a-date',
+				'ingestion_api_source_name'      => 'test-source',
+				'ingestion_api_object_name'      => 'test-object',
+			]
+		);
+
+		$output = $this->run_cli_sync( [
+			'preflight-check' => '',
+			'format'          => 'json',
+		] );
+		$data   = json_decode( $output, true );
+
+		$this->assertNotNull( $data, 'Output should be valid JSON.' );
+		$this->assertFalse( $data['ready'] );
+		$this->assertTrue( $data['filter_registered'] );
+		$this->assertTrue( $data['has_api_token'] );
+		$this->assertFalse( $data['has_valid_ingestion_token'] );
+		$this->assertSame( 'auth', $data['token_error_class'] );
+		$this->assertSame( 'Ingestion API token expiry is invalid', $data['token_error'] );
+	}
+
+	public function test_cli_preflight_check_returns_not_ready_when_token_is_expired(): void {
+		$this->setup_ingestion_filters();
+		$this->prime_configs_cache(
+			[
+				'ingestion_api_instance_url'     => 'https://test.salesforce.com',
+				'ingestion_api_token'            => 'test-token',
+				'ingestion_api_token_expires_at' => time() - HOUR_IN_SECONDS,
+				'ingestion_api_source_name'      => 'test-source',
+				'ingestion_api_object_name'      => 'test-object',
+			]
+		);
+
+		$output = $this->run_cli_sync( [
+			'preflight-check' => '',
+			'format'          => 'json',
+		] );
+		$data   = json_decode( $output, true );
+
+		$this->assertNotNull( $data, 'Output should be valid JSON.' );
+		$this->assertFalse( $data['ready'] );
+		$this->assertTrue( $data['filter_registered'] );
+		$this->assertTrue( $data['has_api_token'] );
+		$this->assertFalse( $data['has_valid_ingestion_token'] );
+		$this->assertSame( 'auth', $data['token_error_class'] );
+		$this->assertSame( 'Ingestion API token has expired', $data['token_error'] );
 	}
 
 	public function test_cli_preflight_check_reports_sync_all_posts(): void {
@@ -924,6 +1053,7 @@ class Ingestion_CLI_Test extends WP_UnitTestCase {
 		$this->assertFalse( $data['ready'] );
 		$this->assertTrue( $data['has_api_url'] );
 		$this->assertFalse( $data['has_api_token'] );
+		$this->assertFalse( $data['has_valid_ingestion_token'] );
 		$this->assertTrue( $data['has_api_source'] );
 		$this->assertFalse( $data['has_api_object'] );
 	}
