@@ -126,51 +126,43 @@ class Ingestion_CLI extends WP_CLI_Command {
 
 		// Check that filters are registered.
 		if ( ! has_filter( 'vip_agentforce_should_ingest_post' ) ) {
-			$message = 'No vip_agentforce_should_ingest_post filter registered. Cannot determine which posts to sync.';
+			$detail = 'No vip_agentforce_should_ingest_post filter registered. Cannot determine which posts to sync.';
 			if ( 'json' === $format ) {
-				echo wp_json_encode( [
-					'success' => false,
-					'message' => $message,
-					'status'  => Ingestion_Sync_Progress::STATUS_IDLE,
-				] );
+				$this->output_json_error( Ingestion_Error::FILTER_NOT_REGISTERED, $detail, Ingestion_Sync_Progress::STATUS_IDLE );
 				return;
 			}
 
-			WP_CLI::error( $message, false );
+			WP_CLI::error( $detail, false );
 			return;
 		}
 
 		// Block if already running.
 		if ( Ingestion_Sync_Progress::is_running() ) {
-			$message = 'A sync is already in progress. Use --status to check progress or --reset to clear a stuck sync.';
+			$detail = 'A sync is already in progress. Use --status to check progress or --reset to clear a stuck sync.';
 			if ( 'json' === $format ) {
-				echo wp_json_encode( [
-					'success' => false,
-					'message' => $message,
-					'status'  => Ingestion_Sync_Progress::STATUS_RUNNING,
-				] );
+				$this->output_json_error( Ingestion_Error::SYNC_IN_PROGRESS, $detail, Ingestion_Sync_Progress::STATUS_RUNNING );
 				return;
 			}
 
-			WP_CLI::error( $message, false );
+			WP_CLI::error( $detail, false );
 			return;
 		}
 
 		$preflight_failure = Ingestion_API_Client::get_request_preflight_failure();
 		if ( null !== $preflight_failure ) {
-			$message = $preflight_failure['message'];
+			$detail = $preflight_failure['message'];
 			Ingestion_Metrics::record_api_error( $preflight_failure['error_class'] );
 			if ( 'json' === $format ) {
-				echo wp_json_encode( [
-					'success'     => false,
-					'message'     => $message,
-					'status'      => Ingestion_Sync_Progress::STATUS_IDLE,
-					'error_class' => $preflight_failure['error_class'],
-				] );
+				$this->output_json_error(
+					$preflight_failure['error_code'],
+					$detail,
+					Ingestion_Sync_Progress::STATUS_IDLE,
+					[ 'error_class' => $preflight_failure['error_class'] ]
+				);
 				return;
 			}
 
-			WP_CLI::error( $message, false );
+			WP_CLI::error( $detail, false );
 			return;
 		}
 
@@ -190,17 +182,13 @@ class Ingestion_CLI extends WP_CLI_Command {
 		$total = $query->found_posts;
 
 		if ( 0 === $total ) {
-			$message = 'No published posts found to sync.';
+			$detail = 'No published posts found to sync.';
 			if ( 'json' === $format ) {
-				echo wp_json_encode( [
-					'success' => false,
-					'message' => $message,
-					'status'  => Ingestion_Sync_Progress::STATUS_IDLE,
-				] );
+				$this->output_json_error( Ingestion_Error::NO_PUBLISHED_POSTS, $detail, Ingestion_Sync_Progress::STATUS_IDLE );
 				return;
 			}
 
-			WP_CLI::warning( $message );
+			WP_CLI::warning( $detail );
 			return;
 		}
 
@@ -208,17 +196,13 @@ class Ingestion_CLI extends WP_CLI_Command {
 		$started = Ingestion_Sync_Progress::start( $total, array_values( $post_types ) );
 
 		if ( ! $started ) {
-			$message = 'Failed to start sync. A sync may already be in progress.';
+			$detail = 'Failed to start sync. A sync may already be in progress.';
 			if ( 'json' === $format ) {
-				echo wp_json_encode( [
-					'success' => false,
-					'message' => $message,
-					'status'  => Ingestion_Sync_Progress::STATUS_FAILED,
-				] );
+				$this->output_json_error( Ingestion_Error::SYNC_START_FAILED, $detail, Ingestion_Sync_Progress::STATUS_FAILED );
 				return;
 			}
 
-			WP_CLI::error( $message, false );
+			WP_CLI::error( $detail, false );
 			return;
 		}
 
@@ -249,6 +233,32 @@ class Ingestion_CLI extends WP_CLI_Command {
 				'total'      => $total,
 				'post_types' => array_values( $post_types ),
 			]
+		);
+	}
+
+	/**
+	 * Emit a structured JSON failure the wizard can render as an on-design notice.
+	 *
+	 * `message` is the customer-friendly copy; `detail` preserves the raw,
+	 * developer-facing text for CLI/dev users.
+	 *
+	 * @param string               $error_code Stable error code (see Ingestion_Error).
+	 * @param string               $detail     Raw developer-facing message.
+	 * @param string               $status     Sync status to report.
+	 * @param array<string, mixed> $extra      Additional fields to merge into the payload.
+	 */
+	private function output_json_error( string $error_code, string $detail, string $status, array $extra = [] ): void {
+		echo wp_json_encode(
+			array_merge(
+				[
+					'success'    => false,
+					'error_code' => $error_code,
+					'message'    => Ingestion_Error::message( $error_code ),
+					'detail'     => $detail,
+					'status'     => $status,
+				],
+				$extra
+			)
 		);
 	}
 
@@ -289,7 +299,9 @@ class Ingestion_CLI extends WP_CLI_Command {
 			'has_api_token'             => $has_api_token,
 			'has_valid_ingestion_token' => $has_valid_token,
 			'token_error_class'         => $token_failure['error_class'] ?? null,
+			'token_error_code'          => $token_failure['error_code'] ?? null,
 			'token_error'               => $token_failure['message'] ?? null,
+			'token_error_message'       => isset( $token_failure['error_code'] ) ? Ingestion_Error::message( $token_failure['error_code'] ) : null,
 			'has_api_source'            => $has_api_source,
 			'has_api_object'            => $has_api_object,
 		];

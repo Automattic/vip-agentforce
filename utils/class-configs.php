@@ -2,6 +2,8 @@
 
 namespace Automattic\VIP\Salesforce\Agentforce\Utils;
 
+use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_Error;
+
 class Configs {
 	/**
 	 * Cached config
@@ -114,7 +116,7 @@ class Configs {
 	/**
 	 * Get the token preflight failure details.
 	 *
-	 * @return array{message: string, error_class: string}|null Failure details, or null when the token can be used.
+	 * @return array{message: string, error_class: string, error_code: string}|null Failure details, or null when the token can be used.
 	 */
 	public static function get_ingestion_token_failure(): ?array {
 		if ( null === self::$cached_config ) {
@@ -133,13 +135,14 @@ class Configs {
 	 * Detect the token preflight failure details.
 	 *
 	 * @param array<string, mixed> $config Ingestion API config.
-	 * @return array{message: string, error_class: string}|null Failure details, or null when the token can be used.
+	 * @return array{message: string, error_class: string, error_code: string}|null Failure details, or null when the token can be used.
 	 */
 	private static function detect_ingestion_token_failure( array $config ): ?array {
 		if ( self::is_missing_ingestion_token( $config ) ) {
 			return [
 				'message'     => 'Missing required API configuration: ingestion_api_token',
 				'error_class' => 'config',
+				'error_code'  => Ingestion_Error::MISSING_API_CONFIG,
 			];
 		}
 
@@ -152,6 +155,7 @@ class Configs {
 			return [
 				'message'     => 'Ingestion API token expiry is invalid',
 				'error_class' => 'auth',
+				'error_code'  => Ingestion_Error::TOKEN_INVALID,
 			];
 		}
 
@@ -159,6 +163,7 @@ class Configs {
 			return [
 				'message'     => 'Ingestion API token has expired',
 				'error_class' => 'auth',
+				'error_code'  => Ingestion_Error::TOKEN_EXPIRED,
 			];
 		}
 

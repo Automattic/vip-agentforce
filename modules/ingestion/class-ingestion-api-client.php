@@ -290,7 +290,7 @@ class Ingestion_API_Client {
 	/**
 	 * Get a preflight failure before attempting an API request.
 	 *
-	 * @return array{message: string, error_class: string}|null Failure details, or null if the request can proceed.
+	 * @return array{message: string, error_class: string, error_code: string}|null Failure details, or null if the request can proceed.
 	 */
 	public static function get_request_preflight_failure(): ?array {
 		$config        = Configs::get_config();
@@ -317,6 +317,7 @@ class Ingestion_API_Client {
 			return [
 				'message'     => 'Missing required API configuration: ' . implode( ', ', $empty_fields ),
 				'error_class' => 'config',
+				'error_code'  => Ingestion_Error::MISSING_API_CONFIG,
 			];
 		}
 

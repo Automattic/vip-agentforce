@@ -561,6 +561,7 @@ class Ingestion_Cron {
 		$new_last_post_id = $last_post_id;
 		$failure_summary  = self::create_bulk_failure_summary();
 		$fast_fail_reason = null;
+		$fast_fail_code   = null;
 
 		$preflight_failure = Ingestion_API_Client::get_request_preflight_failure();
 		if ( null !== $preflight_failure ) {
@@ -577,6 +578,7 @@ class Ingestion_Cron {
 			$fast_fail_reason = 'config' === $preflight_failure['error_class'] || null === $preflight_result
 				? $preflight_failure['message']
 				: self::get_bulk_fast_fail_reason( $preflight_result );
+			$fast_fail_code   = $preflight_failure['error_code'];
 
 			Ingestion_Metrics::record_api_error( $preflight_failure['error_class'] );
 			++$results['failed'];
@@ -634,6 +636,7 @@ class Ingestion_Cron {
 							$new_last_post_id = $post->ID;
 							Ingestion_Sync_Progress::update_live_progress( $progress, $batch_results, $new_last_post_id );
 							$fast_fail_reason = self::get_bulk_fast_fail_reason( $sync_result );
+							$fast_fail_code   = Ingestion_Error::code_for_error_class( $sync_result->error_class );
 							break 2;
 						}
 						break;
@@ -678,7 +681,7 @@ class Ingestion_Cron {
 		}
 
 		if ( null !== $fast_fail_reason ) {
-			Ingestion_Sync_Progress::fail( $fast_fail_reason );
+			Ingestion_Sync_Progress::fail( $fast_fail_reason, $fast_fail_code );
 			return $results;
 		}
 
