@@ -1,0 +1,35 @@
+/**
+ * Default polish for the Salesforce Embedded Messaging widget.
+ *
+ * Only the outer chrome (the launcher button and the frame container) lives
+ * in the host page DOM and is reachable from here. The conversation itself
+ * renders inside a cross-origin Salesforce iframe, so message bubbles, the
+ * header, and typography cannot be styled from this stylesheet — those come
+ * from the Embedded Service deployment branding in Salesforce.
+ *
+ * This file is enqueued before the inline alignment and customer custom CSS
+ * (see Agentforce::get_custom_css()), so site owners can override it.
+ *
+ * IDs below are Salesforce-owned and camelCase, so the id-pattern rule is
+ * disabled for them.
+ */
+
+/* stylelint-disable selector-id-pattern */
+
+// Launcher bubble — closed state.
+#embeddedMessagingConversationButton {
+	box-shadow: 0 6px 16px rgba(0, 0, 0, 0.18);
+	transition: box-shadow 0.15s ease;
+}
+
+#embeddedMessagingConversationButton:hover {
+	box-shadow: 0 10px 22px rgba(0, 0, 0, 0.24);
+}
+
+/* stylelint-enable selector-id-pattern */
+
+// Conversation frame — open and minimized states.
+.embedded-messaging > .embeddedMessagingFrame {
+	border-radius: 16px;
+	box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
+}
