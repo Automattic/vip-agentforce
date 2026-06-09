@@ -14,6 +14,8 @@ use Prometheus\RegistryInterface;
 class Ingestion_Metrics {
 	private const NAMESPACE = 'vip_agentforce';
 
+	private const STATS_GROUP_PREFIX = 'vip-agentforce-ingestion';
+
 	/** @var \Prometheus\Gauge|null */
 	private static $queue_pending_gauge;
 
@@ -135,16 +137,29 @@ class Ingestion_Metrics {
 	}
 
 	public static function record_post_result( string $result, string $mode ): void {
-		if ( null === self::$posts_counter ) {
+		$result = self::normalize_post_result( $result );
+		$mode   = self::normalize_post_mode( $mode );
+
+		if ( null !== self::$posts_counter ) {
+			self::$posts_counter->inc( [ $result, $mode ] );
+		}
+
+		self::bump_post_result_stat( $result, $mode );
+	}
+
+	/**
+	 * Record a terminal post outcome to a8c Stats, keyed per site.
+	 *
+	 * Prometheus gives fleet-wide totals; this gives per-site insight by
+	 * bumping a `result`×`mode` stat group with the current blog ID as the
+	 * breakdown bin, so reporting can answer "ingested vs failed per site".
+	 */
+	private static function bump_post_result_stat( string $result, string $mode ): void {
+		if ( ! function_exists( 'bump_stats_extras' ) ) {
 			return;
 		}
 
-		self::$posts_counter->inc(
-			[
-				self::normalize_post_result( $result ),
-				self::normalize_post_mode( $mode ),
-			]
-		);
+		bump_stats_extras( self::STATS_GROUP_PREFIX . '-' . $result . '-' . $mode, (string) get_current_blog_id() );
 	}
 
 	public static function record_api_request( string $method, string $status_code, string $outcome ): void {
