@@ -261,6 +261,27 @@ class Ingestion_Metrics_Test extends WP_UnitTestCase {
 		$this->assertSame( 1, $this->posts_counter->get_sample( [ 'deleted', 'sync' ] ) );
 	}
 
+	public function test_post_result_bumps_per_site_a8c_stat(): void {
+		if ( ! function_exists( 'bump_stats_extras' ) ) {
+			$this->markTestSkipped( 'bump_stats_extras is not available in this test environment.' );
+		}
+
+		$GLOBALS['vip_agentforce_test_stat_bumps'] = [];
+
+		Ingestion_Metrics::record_post_result( 'failed', 'queue' );
+		Ingestion_Metrics::record_post_result( 'ingested', 'sync' );
+
+		$blog_id = (string) get_current_blog_id();
+
+		$this->assertSame(
+			[
+				[ 'vip-agentforce-ingestion-failed-queue', $blog_id ],
+				[ 'vip-agentforce-ingestion-ingested-sync', $blog_id ],
+			],
+			$GLOBALS['vip_agentforce_test_stat_bumps']
+		);
+	}
+
 	public function test_collect_gauges_tracks_queue_and_bulk_sync_progress(): void {
 		$sync_post   = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
 		$delete_post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );

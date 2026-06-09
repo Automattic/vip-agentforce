@@ -8,6 +8,16 @@ require_once __DIR__ . '/class-speedup-isolated-wp-tests.php';
 require_once __DIR__ . '/class-testable-logger.php';
 require_once __DIR__ . '/class-wp-cli-mock.php';
 
+// Capturing stub for the a8c Stats helper, which only exists on wpcom infra.
+// Tests opt in by setting $GLOBALS['vip_agentforce_test_stat_bumps'] = [].
+if ( ! function_exists( 'bump_stats_extras' ) ) {
+	function bump_stats_extras( $name, $value ) {
+		if ( isset( $GLOBALS['vip_agentforce_test_stat_bumps'] ) ) {
+			$GLOBALS['vip_agentforce_test_stat_bumps'][] = [ $name, $value ];
+		}
+	}
+}
+
 if ( ! defined( 'VIP_GO_APP_ENVIRONMENT' ) ) {
 	define( 'VIP_GO_APP_ENVIRONMENT', 'test' );
 }
