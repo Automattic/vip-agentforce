@@ -980,6 +980,24 @@ class Ingestion_Cron_Test extends WP_UnitTestCase {
 		$this->assertSame( 1, Ingestion_Queue::get_delete_attempts( $post->ID ) );
 	}
 
+	public function test_retryable_delete_failure_consumes_batch_capacity(): void {
+		$this->mock_http_429();
+		$this->setup_ingestion_filters();
+
+		$delete_post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
+		$sync_post   = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
+
+		Ingestion_Queue::queue_for_delete( $delete_post->ID );
+		Ingestion_Queue::queue_for_sync( $sync_post->ID );
+		wp_cache_delete( 'vip_agentforce_rate_limit_blocked_until', 'vip_agentforce' );
+
+		$results = Ingestion_Cron::process_queue( 1 );
+
+		$this->assertSame( 1, $results['skipped'], 'Retryable delete work still consumes the one-item batch.' );
+		$this->assertSame( 0, Ingestion_Queue::get_sync_attempts( $sync_post->ID ), 'The sync item must wait for the next cron tick.' );
+		$this->assertNotEmpty( get_post_meta( $sync_post->ID, Ingestion_Queue::META_KEY_QUEUED_FOR_SYNC, true ) );
+	}
+
 	public function test_delete_retry_cap_exhausted_dequeues_and_fires_failure_event(): void {
 		$this->mock_http_429();
 

@@ -29,6 +29,18 @@ vip dev-env start --slug=vip-agentforce-pr48 --skip-wp-versions-check
 vip dev-env info --slug=vip-agentforce-pr48
 ```
 
+Custom slugs sometimes need one extra restart cycle after the first creation.
+If the login URL printed by `vip dev-env start` or `vip dev-env info` opens but
+does not automatically log you in, treat the environment as not fully ready.
+Use this flow before debugging app code:
+
+```bash
+vip dev-env create --slug=vip-agentforce-pr48 --app-code=<absolute-path-to-this-worktree> --multisite=y --php=8.2
+vip dev-env start --slug=vip-agentforce-pr48 --skip-wp-versions-check
+vip dev-env stop --slug=vip-agentforce-pr48
+vip dev-env start --slug=vip-agentforce-pr48 --skip-wp-versions-check
+```
+
 Do not use `composer start-dev` for alternate slugs; that script runs
 `vip dev-env start` without a slug. Build assets explicitly, then start the
 named environment:
@@ -49,6 +61,12 @@ source of truth because login URLs and ports can change.
 Use it to inject `VIP_AGENTFORCE_CONFIGS` and feature flags so the WP Admin
 settings page and frontend behave as if the integration is wired up — without
 hitting a real Salesforce org. See `docs/setup.md` for the full reference.
+
+Use `env.php` for local-only test fixtures too, including temporary filters such
+as `pre_http_request` API shims. Do not edit `.wpvip/plugin-loader.php` to inject
+local config or mocks unless you are testing the loader itself. Remove temporary
+`env.php` fixtures after the manual test so future dev-env runs do not inherit
+fake config or mocked API responses.
 
 Minimum useful template for agent-driven testing:
 
