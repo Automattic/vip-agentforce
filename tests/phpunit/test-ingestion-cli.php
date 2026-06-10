@@ -1,8 +1,10 @@
 <?php
 
 use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion;
+use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_API_Client;
 use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_CLI;
 use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_Post_Record;
+use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_Queue;
 use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_Sync_Progress;
 use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_Cron;
 use Automattic\VIP\Salesforce\Agentforce\Utils\Configs;
@@ -36,6 +38,7 @@ class Ingestion_CLI_Test extends WP_UnitTestCase {
 
 		// Initialize cron hooks (registers the custom schedule needed by schedule_processing).
 		Ingestion_Cron::init();
+		Ingestion_API_Client::clear_retry_status();
 
 		// Set up config for API calls via cache priming.
 		$this->prime_configs_cache(
@@ -80,11 +83,13 @@ class Ingestion_CLI_Test extends WP_UnitTestCase {
 		remove_all_filters( 'pre_http_request' );
 		remove_all_filters( 'vip_agentforce_should_ingest_post' );
 		remove_all_filters( 'vip_agentforce_transform_post' );
+		remove_all_filters( 'vip_agentforce_cron_batch_size' );
 		remove_all_filters( 'cron_schedules' );
 		remove_all_actions( Ingestion_Cron::CRON_HOOK );
 		$this->captured_requests = [];
 		Ingestion_Sync_Progress::reset();
 		Ingestion_Cron::unschedule_processing();
+		Ingestion_API_Client::clear_retry_status();
 	}
 
 	/**
@@ -312,6 +317,14 @@ class Ingestion_CLI_Test extends WP_UnitTestCase {
 		return ob_get_clean();
 	}
 
+	/**
+	 * Run CLI clear-retry-backoff command.
+	 */
+	private function run_cli_clear_retry_backoff(): void {
+		$cli = new Ingestion_CLI();
+		$cli->clear_retry_backoff();
+	}
+
 	public function test_cli_sync_errors_when_no_filter_registered(): void {
 		// Ensure no filter is registered.
 		remove_all_filters( 'vip_agentforce_should_ingest_post' );
@@ -320,6 +333,110 @@ class Ingestion_CLI_Test extends WP_UnitTestCase {
 
 		// Should not start progress when filter is missing.
 		$this->assertNull( Ingestion_Sync_Progress::get() );
+	}
+
+	public function test_cli_queue_status_preserves_active_retry_backoff(): void {
+		wp_cache_set( 'vip_agentforce_rate_limit_blocked_until', microtime( true ) + 60, 'vip_agentforce', 300 );
+		wp_cache_set(
+			'vip_agentforce_ingestion_api_retry_state',
+			[
+				'blocked_until'        => microtime( true ) + 60,
+				'consecutive_failures' => 2,
+				'reason'               => 'transient_server_error',
+				'status_code'          => 500,
+				'last_error_at'        => gmdate( 'c' ),
+				'last_error_message'   => 'Server error (500)',
+			],
+			'vip_agentforce',
+			DAY_IN_SECONDS
+		);
+
+		$cli = new Ingestion_CLI();
+		$cli->queue_status();
+
+		$status = Ingestion_API_Client::get_retry_status();
+		$this->assertTrue( $status['active'] );
+		$this->assertSame( 2, $status['consecutive_failures'] );
+		$this->assertSame( 'transient_server_error', $status['reason'] );
+		$this->assertSame( 500, $status['status_code'] );
+	}
+
+	public function test_cli_clear_retry_backoff_resets_retry_status(): void {
+		wp_cache_set( 'vip_agentforce_rate_limit_blocked_until', microtime( true ) + 60, 'vip_agentforce', 300 );
+		wp_cache_set(
+			'vip_agentforce_ingestion_api_retry_state',
+			[
+				'blocked_until'        => microtime( true ) + 60,
+				'consecutive_failures' => 1,
+				'reason'               => 'http_error',
+				'last_error_at'        => gmdate( 'c' ),
+				'last_error_message'   => 'Connection failed',
+			],
+			'vip_agentforce',
+			DAY_IN_SECONDS
+		);
+
+		$this->run_cli_clear_retry_backoff();
+		$status = Ingestion_API_Client::get_retry_status();
+
+		$this->assertFalse( $status['active'] );
+		$this->assertSame( 0, $status['consecutive_failures'] );
+	}
+
+	public function test_cli_process_queue_all_stops_after_retry_backoff_starts(): void {
+		remove_all_filters( 'pre_http_request' );
+		add_filter(
+			'pre_http_request',
+			function ( $preempt, $args, $url ) {
+				if ( strpos( $url, 'test.salesforce.com' ) === false ) {
+					return $preempt;
+				}
+
+				$this->captured_requests[] = [
+					'url'    => $url,
+					'method' => $args['method'] ?? 'GET',
+					'body'   => $args['body'] ?? '',
+				];
+
+				return [
+					'response' => [
+						'code'    => 500,
+						'message' => 'Server Error',
+					],
+					'headers'  => [],
+					'body'     => '',
+				];
+			},
+			10,
+			3
+		);
+		$this->setup_ingestion_filters();
+
+		$first_post  = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
+		$second_post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
+		Ingestion_Queue::queue_for_sync( $first_post->ID );
+		Ingestion_Queue::queue_for_sync( $second_post->ID );
+		update_post_meta( $first_post->ID, Ingestion_Queue::META_KEY_QUEUED_FOR_SYNC, 1 );
+		update_post_meta( $second_post->ID, Ingestion_Queue::META_KEY_QUEUED_FOR_SYNC, 2 );
+
+		$batch_size_resolutions = 0;
+		add_filter(
+			'vip_agentforce_cron_batch_size',
+			function () use ( &$batch_size_resolutions ) {
+				++$batch_size_resolutions;
+				return 1;
+			}
+		);
+
+		$cli = new Ingestion_CLI();
+		ob_start();
+		$cli->process_queue( [], [ 'all' => '' ] );
+		ob_end_clean();
+
+		$this->assertSame( 1, $batch_size_resolutions, 'The --all loop must stop before resolving a second batch while retry backoff is active.' );
+		$this->assertCount( 1, $this->captured_requests );
+		$this->assertSame( 1, Ingestion_Queue::get_sync_attempts( $first_post->ID ) );
+		$this->assertSame( 0, Ingestion_Queue::get_sync_attempts( $second_post->ID ) );
 	}
 
 	public function test_cli_sync_starts_bulk_sync_progress(): void {
@@ -484,6 +601,40 @@ class Ingestion_CLI_Test extends WP_UnitTestCase {
 		$this->assertNotNull( $data, 'Output should be valid JSON.' );
 		$this->assertSame( 'idle', $data['status'] );
 		$this->assertSame( 'No sync has been initiated.', $data['message'] );
+		$this->assertArrayHasKey( 'retry_backoff', $data );
+		$this->assertFalse( $data['retry_backoff']['active'] );
+	}
+
+	public function test_cli_sync_status_json_no_sync_includes_active_retry_backoff(): void {
+		$blocked_until = microtime( true ) + 60;
+		wp_cache_set( 'vip_agentforce_rate_limit_blocked_until', $blocked_until, 'vip_agentforce', 300 );
+		wp_cache_set(
+			'vip_agentforce_ingestion_api_retry_state',
+			[
+				'blocked_until'        => $blocked_until,
+				'consecutive_failures' => 1,
+				'reason'               => 'rate_limited',
+				'status_code'          => 429,
+				'last_error_at'        => '2026-06-10T12:00:00+00:00',
+				'last_error_message'   => 'Rate limited by Salesforce',
+			],
+			'vip_agentforce',
+			DAY_IN_SECONDS
+		);
+
+		$output = $this->run_cli_sync( [
+			'status' => '',
+			'format' => 'json',
+		] );
+		$data   = json_decode( $output, true );
+
+		$this->assertNotNull( $data, 'Output should be valid JSON.' );
+		$this->assertSame( 'idle', $data['status'] );
+		$this->assertTrue( $data['retry_backoff']['active'] );
+		$this->assertGreaterThan( 0, $data['retry_backoff']['seconds_remaining'] );
+		$this->assertSame( 1, $data['retry_backoff']['consecutive_failures'] );
+		$this->assertSame( 'rate_limited', $data['retry_backoff']['reason'] );
+		$this->assertSame( 429, $data['retry_backoff']['status_code'] );
 	}
 
 	public function test_cli_sync_status_json_running(): void {
@@ -503,6 +654,8 @@ class Ingestion_CLI_Test extends WP_UnitTestCase {
 		$this->assertContains( 'post', $data['post_types'] );
 		$this->assertContains( 'page', $data['post_types'] );
 		$this->assertArrayHasKey( 'progress_sources', $data );
+		$this->assertArrayHasKey( 'retry_backoff', $data );
+		$this->assertFalse( $data['retry_backoff']['active'] );
 	}
 
 	public function test_cli_sync_status_json_with_progress(): void {
@@ -737,6 +890,7 @@ class Ingestion_CLI_Test extends WP_UnitTestCase {
 		$this->assertTrue( $data['has_api_token'] );
 		$this->assertTrue( $data['has_api_source'] );
 		$this->assertTrue( $data['has_api_object'] );
+		$this->assertArrayNotHasKey( 'retry_backoff', $data, 'Preflight reports static readiness; runtime retry backoff belongs in sync status.' );
 	}
 
 	public function test_cli_preflight_check_returns_not_ready_when_no_filter(): void {

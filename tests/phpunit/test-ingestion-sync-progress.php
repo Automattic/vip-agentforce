@@ -5,6 +5,7 @@
  * @package vip-agentforce
  */
 
+use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_API_Client;
 use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_Sync_Progress;
 use Automattic\VIP\Salesforce\Agentforce\Utils\Logger;
 
@@ -12,12 +13,14 @@ class Ingestion_Sync_Progress_Test extends WP_UnitTestCase {
 	public function setUp(): void {
 		parent::setUp();
 		Logger::disable();
+		Ingestion_API_Client::clear_retry_status();
 	}
 
 	public function tearDown(): void {
 		parent::tearDown();
 		Logger::enable();
 		Ingestion_Sync_Progress::reset();
+		Ingestion_API_Client::clear_retry_status();
 	}
 
 	public function test_get_returns_null_when_no_sync_initiated(): void {
@@ -356,6 +359,37 @@ class Ingestion_Sync_Progress_Test extends WP_UnitTestCase {
 		$this->assertFalse( $sources['cache']['valid'] );
 		$this->assertSame( 'cache_missing', $sources['effective']['reason'] );
 		$this->assertSame( 'stored', $sources['effective']['source'] );
+	}
+
+	public function test_status_response_includes_retry_backoff_diagnostics(): void {
+		Ingestion_Sync_Progress::start( 100 );
+
+		$blocked_until = microtime( true ) + 60;
+		wp_cache_set( 'vip_agentforce_rate_limit_blocked_until', $blocked_until, 'vip_agentforce', 300 );
+		wp_cache_set(
+			'vip_agentforce_ingestion_api_retry_state',
+			[
+				'blocked_until'        => $blocked_until,
+				'consecutive_failures' => 2,
+				'reason'               => 'transient_server_error',
+				'status_code'          => 500,
+				'last_error_at'        => '2026-06-10T12:00:00+00:00',
+				'last_error_message'   => 'Server error (500)',
+			],
+			'vip_agentforce',
+			DAY_IN_SECONDS
+		);
+
+		$response = Ingestion_Sync_Progress::get_status_response( Ingestion_Sync_Progress::get() );
+
+		$this->assertArrayHasKey( 'retry_backoff', $response );
+		$this->assertTrue( $response['retry_backoff']['active'] );
+		$this->assertGreaterThan( 0, $response['retry_backoff']['seconds_remaining'] );
+		$this->assertSame( $blocked_until, $response['retry_backoff']['blocked_until'] );
+		$this->assertSame( 2, $response['retry_backoff']['consecutive_failures'] );
+		$this->assertSame( 'transient_server_error', $response['retry_backoff']['reason'] );
+		$this->assertSame( 500, $response['retry_backoff']['status_code'] );
+		$this->assertSame( 'Server error (500)', $response['retry_backoff']['last_error_message'] );
 	}
 
 	public function test_progress_sources_prefers_stored_when_cache_is_malformed(): void {

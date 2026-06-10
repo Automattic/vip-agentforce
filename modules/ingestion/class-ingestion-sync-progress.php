@@ -259,6 +259,19 @@ class Ingestion_Sync_Progress {
 	}
 
 	/**
+	 * Build a status response when no bulk sync has been initiated.
+	 *
+	 * @return array<string, mixed> Idle status response data.
+	 */
+	public static function get_idle_status_response(): array {
+		return [
+			'status'        => self::STATUS_IDLE,
+			'message'       => 'No sync has been initiated.',
+			'retry_backoff' => Ingestion_API_Client::get_retry_status(),
+		];
+	}
+
+	/**
 	 * Build a status response using cache-backed effective progress when safe.
 	 *
 	 * @param array<string, mixed> $progress Stored progress.
@@ -281,6 +294,7 @@ class Ingestion_Sync_Progress {
 
 		$response['percentage']       = $effective['percentage'];
 		$response['progress_sources'] = $progress_sources;
+		$response['retry_backoff']    = Ingestion_API_Client::get_retry_status();
 
 		return $response;
 	}

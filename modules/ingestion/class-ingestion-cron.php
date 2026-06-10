@@ -214,13 +214,36 @@ class Ingestion_Cron {
 			[ 'batch_size' => $batch_size ]
 		);
 
+		$retry_status = Ingestion_API_Client::get_retry_status();
+		if ( $retry_status['active'] ) {
+			Logger::info(
+				'ingestion-cron',
+				'Ingestion API retry backoff active, skipping queue processing',
+				[
+					'seconds_remaining' => $retry_status['seconds_remaining'],
+					'next_retry_at'     => $retry_status['next_retry_at'],
+					'reason'            => $retry_status['reason'],
+				]
+			);
+
+			return $results;
+		}
+
 		// Process deletions first (they may free up space in Salesforce).
-		$results = self::process_deletions( $results, $batch_size );
+		$retry_backoff_started = false;
+		$results               = self::process_deletions( $results, $batch_size, $retry_backoff_started );
+		if ( $retry_backoff_started ) {
+			return $results;
+		}
 
 		// Process syncs with remaining batch capacity.
 		$remaining_batch = $batch_size - $results['deleted'] - $results['failed'];
 		if ( $remaining_batch > 0 ) {
-			$results = self::process_syncs( $results, $remaining_batch );
+			$retry_backoff_started = false;
+			$results               = self::process_syncs( $results, $remaining_batch, $retry_backoff_started );
+			if ( $retry_backoff_started ) {
+				return $results;
+			}
 		}
 
 		// Process bulk sync with remaining batch capacity.
@@ -246,11 +269,12 @@ class Ingestion_Cron {
 	/**
 	 * Process queued deletions.
 	 *
-	 * @param array{synced: int, deleted: int, failed: int, skipped: int} $results Current results.
-	 * @param int                                                          $limit   Max items to process.
+	 * @param array{synced: int, deleted: int, failed: int, skipped: int} $results                 Current results.
+	 * @param int                                                          $limit                   Max items to process.
+	 * @param bool                                                         $retry_backoff_started   Whether a retry block started.
 	 * @return array{synced: int, deleted: int, failed: int, skipped: int} Updated results.
 	 */
-	private static function process_deletions( array $results, int $limit ): array {
+	private static function process_deletions( array $results, int $limit, bool &$retry_backoff_started = false ): array {
 		$queued_deletions = Ingestion_Queue::get_queued_for_delete( $limit );
 
 		foreach ( $queued_deletions as $item ) {
@@ -303,6 +327,8 @@ class Ingestion_Cron {
 					);
 
 					Ingestion_Queue::dequeue_delete( $post_id );
+					$retry_backoff_started = true;
+					break;
 				} else {
 					++$results['skipped'];
 
@@ -317,6 +343,9 @@ class Ingestion_Cron {
 							'error_message' => $api_result->error_message,
 						]
 					);
+
+					$retry_backoff_started = true;
+					break;
 				}
 				continue;
 			}
@@ -351,11 +380,12 @@ class Ingestion_Cron {
 	/**
 	 * Process queued syncs.
 	 *
-	 * @param array{synced: int, deleted: int, failed: int, skipped: int} $results Current results.
-	 * @param int                                                          $limit   Max items to process.
+	 * @param array{synced: int, deleted: int, failed: int, skipped: int} $results                 Current results.
+	 * @param int                                                          $limit                   Max items to process.
+	 * @param bool                                                         $retry_backoff_started   Whether a retry block started.
 	 * @return array{synced: int, deleted: int, failed: int, skipped: int} Updated results.
 	 */
-	private static function process_syncs( array $results, int $limit ): array {
+	private static function process_syncs( array $results, int $limit, bool &$retry_backoff_started = false ): array {
 		$queued_post_ids = Ingestion_Queue::get_queued_for_sync( $limit );
 
 		foreach ( $queued_post_ids as $post_id ) {
@@ -406,6 +436,8 @@ class Ingestion_Cron {
 					);
 
 					Ingestion_Queue::dequeue_sync( $post_id );
+					$retry_backoff_started = true;
+					break;
 				} else {
 					++$results['skipped'];
 
@@ -419,6 +451,9 @@ class Ingestion_Cron {
 							'error_message' => $sync_result->error_message,
 						]
 					);
+
+					$retry_backoff_started = true;
+					break;
 				}
 				continue;
 			}
@@ -538,7 +573,8 @@ class Ingestion_Cron {
 			'deleted' => 0,
 		];
 
-		$new_last_post_id = $last_post_id;
+		$new_last_post_id      = $last_post_id;
+		$retry_backoff_started = false;
 
 		foreach ( $posts as $post ) {
 			$sync_result = Ingestion::sync_post( $post );
@@ -562,11 +598,10 @@ class Ingestion_Cron {
 				case Sync_Result::FAILED_TRANSFORM:
 				case Sync_Result::FAILED_API:
 				case Sync_Result::FAILED_API_RETRYABLE:
-					// Bulk sync iterates a cursor — there's no queue to
-					// re-attempt items from. Retryable failures get the
-					// same treatment as permanent ones here: log and move
-					// on. Re-running `wp vip-agentforce ingestion sync` is
-					// the recovery path for missed items.
+					// Bulk sync iterates a cursor — there's no per-item queue
+					// to retry from. A retryable failure still records the
+					// current post as failed, then pauses the rest of the batch
+					// while the shared retry block is active.
 					++$results['failed'];
 					++$batch_results['failed'];
 
@@ -579,11 +614,19 @@ class Ingestion_Cron {
 							'error_message' => $sync_result->error_message,
 						]
 					);
+
+					if ( Sync_Result::FAILED_API_RETRYABLE === $sync_result->status ) {
+						$retry_backoff_started = true;
+					}
 					break;
 			}
 
 			$new_last_post_id = $post->ID;
 			Ingestion_Sync_Progress::update_live_progress( $progress, $batch_results, $new_last_post_id );
+
+			if ( $retry_backoff_started ) {
+				break;
+			}
 		}
 
 		// Update the cursor and progress counters.
@@ -602,7 +645,7 @@ class Ingestion_Cron {
 		);
 
 		// If fewer posts returned than requested, we've processed everything.
-		if ( count( $posts ) < $limit ) {
+		if ( ! $retry_backoff_started && count( $posts ) < $limit ) {
 			Ingestion_Sync_Progress::complete();
 
 			Logger::info(

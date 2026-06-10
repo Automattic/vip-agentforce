@@ -3,8 +3,8 @@
  * Ingestion API Client.
  *
  * Handles single-attempt API calls to the Salesforce Data Cloud Ingestion API
- * and maintains a shared rate-limit cache block that coordinates back-off
- * across workers. Retry of transient failures is owned by `Ingestion_Cron`,
+ * and maintains a shared retry cache block that coordinates back-off across
+ * workers. Retry of transient failures is owned by `Ingestion_Cron`,
  * which keeps queued items in place across cron ticks until they succeed
  * or the retry cap is exhausted.
  *
@@ -23,7 +23,7 @@ use Automattic\VIP\Salesforce\Agentforce\Utils\Logger;
  *
  * - Make exactly one HTTP request per call. The caller (cron) decides whether
  *   to retry based on `Ingestion_API_Result::is_retryable()`.
- * - Maintain a shared rate-limit cache block:
+ * - Maintain a shared retry cache block:
  *   - Reactive: a 429 response stores the Retry-After window so other workers
  *     and other queue items defer the same way until it expires.
  *   - Preemptive: a successful 202 with `X-RateLimit-Remaining: 1` parks the
@@ -39,16 +39,24 @@ class Ingestion_API_Client {
 	private const CACHE_KEY_RATE_LIMIT_BLOCK = 'vip_agentforce_rate_limit_blocked_until';
 
 	/**
+	 * Cache key for retry diagnostics.
+	 */
+	private const CACHE_KEY_RETRY_STATE = 'vip_agentforce_ingestion_api_retry_state';
+
+	/**
 	 * Cache group for rate limiting.
 	 */
 	private const CACHE_GROUP = 'vip_agentforce';
 
 	/**
-	 * Default rate-limit block duration when SF returns 429 without a
-	 * Retry-After header. Short — the block exists primarily to coordinate
-	 * other workers; if we guess wrong, the next 429 will reset it.
+	 * Default exponential retry backoff floor, in seconds.
 	 */
-	private const DEFAULT_BLOCK_SECONDS = 1;
+	private const DEFAULT_RETRY_BACKOFF_SECONDS = 5;
+
+	/**
+	 * Maximum exponential retry backoff, in seconds.
+	 */
+	private const MAX_RETRY_BACKOFF_SECONDS = 300;
 
 	/**
 	 * Default request timeout in seconds.
@@ -59,6 +67,53 @@ class Ingestion_API_Client {
 	 */
 	private const DEFAULT_TIMEOUT_CLI    = 15;
 	private const DEFAULT_TIMEOUT_NORMAL = 3;
+
+	/**
+	 * Get current shared retry status for diagnostics and CLI output.
+	 *
+	 * @return array{
+	 *     active: bool,
+	 *     blocked_until: float|null,
+	 *     seconds_remaining: float,
+	 *     next_retry_at: string|null,
+	 *     consecutive_failures: int,
+	 *     reason: string|null,
+	 *     status_code: int|null,
+	 *     last_error_at: string|null,
+	 *     last_error_message: string|null
+	 * }
+	 */
+	public static function get_retry_status(): array {
+		$state         = self::get_retry_state();
+		$blocked_until = wp_cache_get( self::CACHE_KEY_RATE_LIMIT_BLOCK, self::CACHE_GROUP );
+
+		if ( false === $blocked_until ) {
+			$blocked_until = $state['blocked_until'] ?? null;
+		}
+
+		$blocked_until_float = null !== $blocked_until ? (float) $blocked_until : null;
+		$seconds_remaining   = null !== $blocked_until_float ? max( 0, $blocked_until_float - microtime( true ) ) : 0;
+
+		return [
+			'active'               => $seconds_remaining > 0,
+			'blocked_until'        => $blocked_until_float,
+			'seconds_remaining'    => $seconds_remaining,
+			'next_retry_at'        => null !== $blocked_until_float ? gmdate( 'c', (int) ceil( $blocked_until_float ) ) : null,
+			'consecutive_failures' => (int) ( $state['consecutive_failures'] ?? 0 ),
+			'reason'               => isset( $state['reason'] ) ? (string) $state['reason'] : null,
+			'status_code'          => isset( $state['status_code'] ) ? (int) $state['status_code'] : null,
+			'last_error_at'        => isset( $state['last_error_at'] ) ? (string) $state['last_error_at'] : null,
+			'last_error_message'   => isset( $state['last_error_message'] ) ? (string) $state['last_error_message'] : null,
+		];
+	}
+
+	/**
+	 * Clear the shared retry block and diagnostics.
+	 */
+	public static function clear_retry_status(): void {
+		wp_cache_delete( self::CACHE_KEY_RATE_LIMIT_BLOCK, self::CACHE_GROUP );
+		wp_cache_delete( self::CACHE_KEY_RETRY_STATE, self::CACHE_GROUP );
+	}
 
 	/**
 	 * Send a record to the Salesforce Data Cloud Ingestion API.
@@ -91,7 +146,7 @@ class Ingestion_API_Client {
 	}
 
 	/**
-	 * Make a single API request, honoring the shared rate-limit block and
+	 * Make a single API request, honoring the shared retry block and
 	 * returning a result that the cron can act on (retry or give up).
 	 *
 	 * @param string $method    HTTP method ('POST' or 'DELETE').
@@ -120,6 +175,8 @@ class Ingestion_API_Client {
 		$response = $this->execute_request( $method, $body );
 
 		if ( is_wp_error( $response ) ) {
+			$this->set_exponential_backoff( 'http_error', null, $response->get_error_message() );
+
 			Logger::warning(
 				'ingestion-api',
 				'HTTP error contacting Salesforce',
@@ -135,6 +192,7 @@ class Ingestion_API_Client {
 
 		// Success.
 		if ( 202 === $status_code ) {
+			self::clear_retry_status();
 			$this->process_rate_limit_headers( $response );
 			return Ingestion_API_Result::success( $record_id, $response );
 		}
@@ -166,10 +224,7 @@ class Ingestion_API_Client {
 		// Retry-After; honor it the same way we honor 429 so the next
 		// cron tick observes the block.
 		if ( in_array( $status_code, [ 408, 500, 502, 503, 504 ], true ) ) {
-			$retry_after = $this->parse_retry_after_header( $response );
-			if ( $retry_after > 0 ) {
-				$this->set_rate_limit_block( $retry_after );
-			}
+			$this->handle_retryable_error_response( $response, 'transient_server_error', 'Server error (' . $status_code . ')' );
 
 			Logger::warning(
 				'ingestion-api',
@@ -190,6 +245,8 @@ class Ingestion_API_Client {
 
 		// Permanent error (4xx other than 408/429). Cron will see
 		// is_retryable() === false and surface a failure event.
+		self::clear_retry_status();
+
 		Logger::error(
 			'ingestion-api',
 			'Permanent error from Salesforce',
@@ -300,28 +357,74 @@ class Ingestion_API_Client {
 	 * @return float Seconds remaining, or 0 if not blocked.
 	 */
 	private function get_rate_limit_block_remaining(): float {
-		$blocked_until = wp_cache_get( self::CACHE_KEY_RATE_LIMIT_BLOCK, self::CACHE_GROUP );
-
-		if ( false === $blocked_until ) {
-			return 0;
-		}
-
-		$remaining = (float) $blocked_until - microtime( true );
-
-		return max( 0, $remaining );
+		return self::get_retry_status()['seconds_remaining'];
 	}
 
 	/**
-	 * Set the rate limit block in cache.
+	 * Set a retry block in cache.
 	 *
-	 * @param float $duration_seconds How long to block in seconds.
+	 * @param float    $duration_seconds     How long to block in seconds.
+	 * @param string   $reason               Machine-readable retry reason.
+	 * @param int|null $status_code          HTTP status code, if known.
+	 * @param string   $error_message        Operator-facing error summary.
+	 * @param int      $consecutive_failures Consecutive retryable failure count.
 	 */
-	private function set_rate_limit_block( float $duration_seconds ): void {
+	private function set_retry_block( float $duration_seconds, string $reason, ?int $status_code, string $error_message, int $consecutive_failures ): void {
 		$blocked_until = microtime( true ) + $duration_seconds;
 		$cache_ttl     = (int) ceil( $duration_seconds ) + 1; // Add 1 second buffer.
 
-		// phpcs:ignore WordPressVIPMinimum.Performance.LowExpiryCacheTime.CacheTimeUndetermined -- Rate-limit blocks are intentionally short-lived: the value is the Retry-After window we're waiting out, typically <30s. Forcing >=300s would defeat the mechanism.
+		// phpcs:ignore WordPressVIPMinimum.Performance.LowExpiryCacheTime.CacheTimeUndetermined -- Retry blocks intentionally mirror the computed retry window. Forcing >=300s would make short Retry-After windows too slow.
 		wp_cache_set( self::CACHE_KEY_RATE_LIMIT_BLOCK, $blocked_until, self::CACHE_GROUP, $cache_ttl );
+
+		wp_cache_set(
+			self::CACHE_KEY_RETRY_STATE,
+			[
+				'blocked_until'        => $blocked_until,
+				'backoff_seconds'      => $duration_seconds,
+				'consecutive_failures' => $consecutive_failures,
+				'reason'               => $reason,
+				'status_code'          => $status_code,
+				'last_error_at'        => gmdate( 'c' ),
+				'last_error_message'   => $error_message,
+			],
+			self::CACHE_GROUP,
+			DAY_IN_SECONDS
+		);
+	}
+
+	/**
+	 * Get retry diagnostics from cache.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private static function get_retry_state(): array {
+		$state = wp_cache_get( self::CACHE_KEY_RETRY_STATE, self::CACHE_GROUP );
+
+		return is_array( $state ) ? $state : [];
+	}
+
+	/**
+	 * Set exponential backoff for a retryable failure with no explicit delay.
+	 *
+	 * @param string   $reason        Machine-readable retry reason.
+	 * @param int|null $status_code   HTTP status code, if known.
+	 * @param string   $error_message Operator-facing error summary.
+	 */
+	private function set_exponential_backoff( string $reason, ?int $status_code, string $error_message ): void {
+		$state                = self::get_retry_state();
+		$consecutive_failures = (int) ( $state['consecutive_failures'] ?? 0 ) + 1;
+		$base_seconds         = max(
+			1,
+			(int) apply_filters( 'vip_agentforce_api_retry_backoff_base_seconds', self::DEFAULT_RETRY_BACKOFF_SECONDS )
+		);
+		$max_seconds          = max(
+			$base_seconds,
+			(int) apply_filters( 'vip_agentforce_api_retry_backoff_max_seconds', self::MAX_RETRY_BACKOFF_SECONDS )
+		);
+		$exponent             = min( $consecutive_failures - 1, 10 );
+		$duration_seconds     = min( $max_seconds, $base_seconds * ( 2 ** $exponent ) );
+
+		$this->set_retry_block( (float) $duration_seconds, $reason, $status_code, $error_message, $consecutive_failures );
 	}
 
 	/**
@@ -332,13 +435,29 @@ class Ingestion_API_Client {
 	 * @param array<string, mixed> $response The HTTP response.
 	 */
 	private function handle_rate_limit_response( array $response ): void {
+		$this->handle_retryable_error_response( $response, 'rate_limited', 'Rate limited by Salesforce' );
+	}
+
+	/**
+	 * Handle a retryable HTTP response.
+	 *
+	 * Uses Retry-After when Salesforce supplies it; otherwise falls back to
+	 * exponential backoff.
+	 *
+	 * @param array<string, mixed> $response      The HTTP response.
+	 * @param string               $reason        Machine-readable retry reason.
+	 * @param string               $error_message Operator-facing error summary.
+	 */
+	private function handle_retryable_error_response( array $response, string $reason, string $error_message ): void {
 		$retry_after = $this->parse_retry_after_header( $response );
+		$status_code = (int) wp_remote_retrieve_response_code( $response );
 
 		if ( $retry_after > 0 ) {
-			$this->set_rate_limit_block( $retry_after );
+			$state                = self::get_retry_state();
+			$consecutive_failures = (int) ( $state['consecutive_failures'] ?? 0 ) + 1;
+			$this->set_retry_block( $retry_after, $reason, $status_code, $error_message, $consecutive_failures );
 		} else {
-			// Default to a short block if Retry-After was missing.
-			$this->set_rate_limit_block( self::DEFAULT_BLOCK_SECONDS );
+			$this->set_exponential_backoff( $reason, $status_code, $error_message );
 		}
 	}
 
@@ -360,7 +479,13 @@ class Ingestion_API_Client {
 			$now        = time();
 
 			if ( $reset_time > $now ) {
-				$this->set_rate_limit_block( (float) ( $reset_time - $now ) );
+				$this->set_retry_block(
+					(float) ( $reset_time - $now ),
+					'rate_limit_budget_low',
+					null,
+					'Rate limit budget is low',
+					0
+				);
 			}
 		}
 	}

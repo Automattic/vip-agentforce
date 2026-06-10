@@ -5,6 +5,7 @@
  * @package vip-agentforce
  */
 
+use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_API_Client;
 use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_REST;
 use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_Sync_Progress;
 use Automattic\VIP\Salesforce\Agentforce\Utils\Logger;
@@ -13,6 +14,7 @@ class Ingestion_REST_Test extends WP_UnitTestCase {
 	public function setUp(): void {
 		parent::setUp();
 		Logger::disable();
+		Ingestion_API_Client::clear_retry_status();
 
 		wp_set_current_user(
 			$this->factory()->user->create(
@@ -33,6 +35,7 @@ class Ingestion_REST_Test extends WP_UnitTestCase {
 		parent::tearDown();
 		Logger::enable();
 		Ingestion_Sync_Progress::reset();
+		Ingestion_API_Client::clear_retry_status();
 		wp_set_current_user( 0 );
 
 		global $wp_rest_server;
@@ -56,6 +59,8 @@ class Ingestion_REST_Test extends WP_UnitTestCase {
 		$this->assertSame( Ingestion_Sync_Progress::STATUS_IDLE, $data['status'] );
 		$this->assertSame( 'No sync has been initiated.', $data['message'] );
 		$this->assertArrayNotHasKey( 'progress_sources', $data );
+		$this->assertArrayHasKey( 'retry_backoff', $data );
+		$this->assertFalse( $data['retry_backoff']['active'] );
 	}
 
 	public function test_get_sync_progress_requires_manage_options_capability(): void {
