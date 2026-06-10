@@ -121,9 +121,10 @@ class Ingestion_Sync_Progress {
 	/**
 	 * Mark the sync as failed.
 	 *
-	 * @param string $reason Reason for failure.
+	 * @param string      $reason     Raw, developer-facing reason for failure.
+	 * @param string|null $error_code Stable customer-facing error code (see Ingestion_Error).
 	 */
-	public static function fail( string $reason = '' ): void {
+	public static function fail( string $reason = '', ?string $error_code = null ): void {
 		$progress = self::get();
 		if ( null === $progress || self::STATUS_RUNNING !== $progress['status'] ) {
 			return;
@@ -131,6 +132,7 @@ class Ingestion_Sync_Progress {
 
 		$progress['status']       = self::STATUS_FAILED;
 		$progress['error']        = $reason;
+		$progress['error_code']   = $error_code ?? Ingestion_Error::SYNC_FAILED;
 		$progress['completed_at'] = time();
 		$progress['updated_at']   = time();
 
@@ -281,6 +283,10 @@ class Ingestion_Sync_Progress {
 
 		$response['percentage']       = $effective['percentage'];
 		$response['progress_sources'] = $progress_sources;
+
+		if ( ! empty( $response['error_code'] ) ) {
+			$response['error_message'] = Ingestion_Error::message( $response['error_code'] );
+		}
 
 		return $response;
 	}

@@ -673,7 +673,41 @@ class Ingestion_CLI_Test extends WP_UnitTestCase {
 		$this->assertNotNull( $data, 'Output should be valid JSON.' );
 		$this->assertSame( 'failed', $data['status'] );
 		$this->assertSame( 'API timeout', $data['error'] );
+		$this->assertSame( 'sync_failed', $data['error_code'] );
+		$this->assertNotEmpty( $data['error_message'] );
 		$this->assertArrayHasKey( 'percentage', $data );
+	}
+
+	public function test_cli_sync_status_json_failed_surfaces_friendly_message_for_error_code(): void {
+		Ingestion_Sync_Progress::start( 50, [ 'post' ] );
+		Ingestion_Sync_Progress::fail( 'Bulk sync fast-failed after global auth error: 401 Unauthorized', 'auth_failed' );
+
+		$output = $this->run_cli_sync( [
+			'status' => '',
+			'format' => 'json',
+		] );
+		$data   = json_decode( $output, true );
+
+		$this->assertNotNull( $data, 'Output should be valid JSON.' );
+		$this->assertSame( 'failed', $data['status'] );
+		$this->assertSame( 'auth_failed', $data['error_code'] );
+		// Friendly message must not leak the raw developer detail.
+		$this->assertStringNotContainsString( '401', $data['error_message'] );
+		$this->assertStringContainsString( '401 Unauthorized', $data['error'] );
+	}
+
+	public function test_cli_sync_start_json_no_filter_registered(): void {
+		remove_all_filters( 'vip_agentforce_should_ingest_post' );
+
+		$output = $this->run_cli_sync( [ 'format' => 'json' ] );
+		$data   = json_decode( $output, true );
+
+		$this->assertNotNull( $data, 'Output should be valid JSON.' );
+		$this->assertFalse( $data['success'] );
+		$this->assertSame( 'filter_not_registered', $data['error_code'] );
+		// The raw, developer-facing text from the ticket must not leak into the message.
+		$this->assertStringNotContainsString( 'vip_agentforce_should_ingest_post', $data['message'] );
+		$this->assertStringContainsString( 'vip_agentforce_should_ingest_post', $data['detail'] );
 	}
 
 	public function test_cli_sync_status_json_via_subcommand(): void {
@@ -714,7 +748,9 @@ class Ingestion_CLI_Test extends WP_UnitTestCase {
 		$this->assertNotNull( $data, 'Output should be valid JSON.' );
 		$this->assertFalse( $data['success'] );
 		$this->assertSame( 'running', $data['status'] );
-		$this->assertStringContainsString( 'already in progress', $data['message'] );
+		$this->assertSame( 'sync_in_progress', $data['error_code'] );
+		$this->assertStringNotContainsString( 'vip_agentforce', $data['message'] );
+		$this->assertStringContainsString( 'already in progress', $data['detail'] );
 	}
 
 	public function test_cli_sync_start_json_no_published_posts(): void {
@@ -726,7 +762,9 @@ class Ingestion_CLI_Test extends WP_UnitTestCase {
 		$this->assertNotNull( $data, 'Output should be valid JSON.' );
 		$this->assertFalse( $data['success'] );
 		$this->assertSame( 'idle', $data['status'] );
-		$this->assertSame( 'No published posts found to sync.', $data['message'] );
+		$this->assertSame( 'no_published_posts', $data['error_code'] );
+		$this->assertSame( 'No published posts found to sync.', $data['detail'] );
+		$this->assertNotEmpty( $data['message'] );
 	}
 
 	public function test_cli_sync_start_json_fails_before_scheduling_when_api_config_is_missing(): void {
@@ -742,7 +780,9 @@ class Ingestion_CLI_Test extends WP_UnitTestCase {
 		$this->assertFalse( $data['success'] );
 		$this->assertSame( 'idle', $data['status'] );
 		$this->assertSame( 'config', $data['error_class'] );
-		$this->assertStringContainsString( 'Missing required API configuration', $data['message'] );
+		$this->assertSame( 'missing_api_config', $data['error_code'] );
+		$this->assertStringContainsString( 'Missing required API configuration', $data['detail'] );
+		$this->assertNotEmpty( $data['message'] );
 		$this->assertSame( 1, $this->api_errors_counter->get_sample( [ 'config' ] ) );
 		$this->assertNull( Ingestion_Sync_Progress::get(), 'Sync progress should not start when request preflight fails.' );
 		$this->assertFalse( Ingestion_Cron::is_scheduled(), 'Cron should not be scheduled when request preflight fails.' );
@@ -769,7 +809,9 @@ class Ingestion_CLI_Test extends WP_UnitTestCase {
 		$this->assertFalse( $data['success'] );
 		$this->assertSame( 'idle', $data['status'] );
 		$this->assertSame( 'auth', $data['error_class'] );
-		$this->assertSame( 'Ingestion API token has expired', $data['message'] );
+		$this->assertSame( 'token_expired', $data['error_code'] );
+		$this->assertSame( 'Ingestion API token has expired', $data['detail'] );
+		$this->assertNotEmpty( $data['message'] );
 		$this->assertSame( 1, $this->api_errors_counter->get_sample( [ 'auth' ] ) );
 		$this->assertNull( Ingestion_Sync_Progress::get(), 'Sync progress should not start when request preflight fails.' );
 		$this->assertFalse( Ingestion_Cron::is_scheduled(), 'Cron should not be scheduled when request preflight fails.' );
