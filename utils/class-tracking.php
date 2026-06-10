@@ -79,17 +79,16 @@ class Tracking {
 	/**
 	 * Record stats using VIP Stats
 	 *
-	 * @param string $stat_name Stat name.
+	 * @param string      $stat_name Stat name.
+	 * @param string|null $stat_code Optional stat code. Defaults to the plugin-level stat code.
 	 */
-	public static function record_stats( string $stat_name ): void {
-		$env_prefix = self::maybe_get_non_production_prefix( false );
-		$stat_code  = self::PREFIX;
-		if ( ! empty( $env_prefix ) ) {
-			$stat_code = self::PREFIX . '_' . $env_prefix;
-		}
-		// We're tracking the stats in production only
-		if ( Configs::is_local_env() ) {
+	public static function record_stats( string $stat_name, ?string $stat_code = null ): void {
+		$stat_code = $stat_code ?? self::get_default_stat_code();
+
+		// Test/local environments should log the stat path without emitting a pixel.
+		if ( Configs::is_local_env() || self::is_test_env() ) {
 			Logger::info( 'vip-agentforce', 'Bumping stats for /s/' . $stat_code . '/' . $stat_name, [
+				'stat_code' => $stat_code,
 				'stat_name' => $stat_name,
 			] );
 			return;
@@ -100,19 +99,37 @@ class Tracking {
 				\Automattic\VIP\Stats\send_pixel( [ $stat_code => $stat_name ] );
 			} catch ( \Exception $e ) {
 				Logger::error( 'vip-agentforce', 'Stats recording failed', [
+					'stat_code' => $stat_code,
 					'stat_name' => $stat_name,
 					'error'     => $e->getMessage(),
 				] );
 			}
 		} else {
 			Logger::warning( 'vip-agentforce', 'VIP Stats send_pixel function not available', [
+				'stat_code' => $stat_code,
 				'stat_name' => $stat_name,
 			] );
 		}
 	}
+
+	private static function get_default_stat_code(): string {
+		$env_prefix = self::maybe_get_non_production_prefix( false );
+		$stat_code  = self::PREFIX;
+
+		if ( ! empty( $env_prefix ) ) {
+			$stat_code = self::PREFIX . '_' . $env_prefix;
+		}
+
+		return $stat_code;
+	}
+
+	private static function is_test_env(): bool {
+		return defined( 'VIP_GO_APP_ENVIRONMENT' ) && 'test' === constant( 'VIP_GO_APP_ENVIRONMENT' );
+	}
+
 	private static function setup_action_hooks(): void {
 		// Custom hook to allow other plugin code to track events
 		add_action( 'vip_agentforce_track_event', [ __CLASS__, 'record_event' ], 10, 2 );
-		add_action( 'vip_agentforce_track_stat', [ __CLASS__, 'record_stats' ], 10, 1 );
+		add_action( 'vip_agentforce_track_stat', [ __CLASS__, 'record_stats' ], 10, 2 );
 	}
 }

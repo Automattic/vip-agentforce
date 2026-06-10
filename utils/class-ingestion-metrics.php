@@ -135,16 +135,29 @@ class Ingestion_Metrics {
 	}
 
 	public static function record_post_result( string $result, string $mode ): void {
+		$normalized_result = self::normalize_post_result( $result );
+		$normalized_mode   = self::normalize_post_mode( $mode );
+
+		self::record_post_result_stats( $normalized_result );
+
 		if ( null === self::$posts_counter ) {
 			return;
 		}
 
 		self::$posts_counter->inc(
 			[
-				self::normalize_post_result( $result ),
-				self::normalize_post_mode( $mode ),
+				$normalized_result,
+				$normalized_mode,
 			]
 		);
+	}
+
+	private static function record_post_result_stats( string $result ): void {
+		if ( ! in_array( $result, [ 'ingested', 'failed' ], true ) ) {
+			return;
+		}
+
+		do_action( 'vip_agentforce_track_stat', self::get_site_stats_bucket(), 'vip_agentforce_posts_' . $result );
 	}
 
 	public static function record_api_request( string $method, string $status_code, string $outcome ): void {
@@ -177,6 +190,19 @@ class Ingestion_Metrics {
 		return in_array( $mode, [ 'queue', 'bulk', 'sync' ], true )
 			? $mode
 			: 'sync';
+	}
+
+	private static function get_site_stats_bucket(): string {
+		return 'env_' . self::get_environment() . '_' . get_current_blog_id();
+	}
+
+	private static function get_environment(): string {
+		$environment = defined( 'VIP_GO_APP_ENVIRONMENT' ) ? (string) constant( 'VIP_GO_APP_ENVIRONMENT' ) : 'local';
+		$environment = strtolower( $environment );
+		$environment = (string) preg_replace( '/[^a-z0-9_]+/', '_', $environment );
+		$environment = trim( $environment, '_' );
+
+		return '' !== $environment ? $environment : 'unknown';
 	}
 
 	private static function normalize_method( string $method ): string {

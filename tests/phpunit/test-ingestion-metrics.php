@@ -12,6 +12,8 @@ use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_Sync_Progress;
 use Automattic\VIP\Salesforce\Agentforce\Utils\Configs;
 use Automattic\VIP\Salesforce\Agentforce\Utils\Ingestion_Metrics;
 use Automattic\VIP\Salesforce\Agentforce\Utils\Logger;
+use Automattic\VIP\Salesforce\Agentforce\Utils\Testable_Logger;
+use Automattic\VIP\Salesforce\Agentforce\Utils\Tracking;
 
 require_once __DIR__ . '/../class-fake-ingestion-metric.php';
 
@@ -62,6 +64,7 @@ class Ingestion_Metrics_Test extends WP_UnitTestCase {
 		delete_option( Ingestion_Queue::OPTION_DELETE_QUEUE );
 		Ingestion_Sync_Progress::reset();
 		wp_cache_delete( 'vip_agentforce_rate_limit_blocked_until', 'vip_agentforce' );
+		Testable_Logger::clear_entries();
 
 		foreach ( [ 'queue_pending_gauge', 'bulk_status_gauge', 'bulk_posts_gauge', 'bulk_updated_age_gauge', 'api_errors_counter', 'posts_counter', 'api_requests_counter' ] as $property ) {
 			$this->set_metric_property( $property, null );
@@ -259,6 +262,75 @@ class Ingestion_Metrics_Test extends WP_UnitTestCase {
 		$this->assertSame( 1, $this->posts_counter->get_sample( [ 'ingested', 'bulk' ] ) );
 		$this->assertSame( 1, $this->posts_counter->get_sample( [ 'failed', 'queue' ] ) );
 		$this->assertSame( 1, $this->posts_counter->get_sample( [ 'deleted', 'sync' ] ) );
+	}
+
+	public function test_record_stats_logs_without_sending_pixel_in_test_environment(): void {
+		Logger::enable();
+		Testable_Logger::clear_entries();
+
+		$pixel_requests = 0;
+
+		add_filter(
+			'pre_http_request',
+			static function ( $preempt, $args, $url ) use ( &$pixel_requests ) {
+				if ( is_string( $url ) && str_contains( $url, 'pixel.wp.com' ) ) {
+					++$pixel_requests;
+					return new WP_Error( 'vip_agentforce_unexpected_tracking_pixel', 'Unexpected tracking pixel request in test environment.' );
+				}
+
+				return $preempt;
+			},
+			10,
+			3
+		);
+
+		Tracking::record_stats( 'env_test_1', 'vip_agentforce_posts_ingested' );
+
+		$entries = Testable_Logger::get_entries();
+
+		$this->assertSame( 0, $pixel_requests, 'Test environment should log Stats paths without sending tracking pixels.' );
+		$this->assertNotEmpty( $entries, 'Test environment should log the Stats path.' );
+		$this->assertSame( 'info', $entries[0]['severity'] );
+		$this->assertSame( 'vip-agentforce', $entries[0]['feature'] );
+		$this->assertSame( 'Bumping stats for /s/vip_agentforce_posts_ingested/env_test_1', $entries[0]['message'] );
+		$this->assertSame( 'vip_agentforce_posts_ingested', $entries[0]['extra']['stat_code'] );
+		$this->assertSame( 'env_test_1', $entries[0]['extra']['stat_name'] );
+	}
+
+	public function test_post_result_stats_track_terminal_ingestion_outcomes_with_environment_drilldown(): void {
+		$tracked_stats = [];
+		$callback      = static function ( string $stat_name, string $stat_code ) use ( &$tracked_stats ): void {
+			$tracked_stats[] = [
+				'stat_code' => $stat_code,
+				'stat_name' => $stat_name,
+			];
+		};
+
+		add_action( 'vip_agentforce_track_stat', $callback, 1, 2 );
+
+		try {
+			Ingestion_Metrics::record_post_result( 'ingested', 'bulk' );
+			Ingestion_Metrics::record_post_result( 'failed', 'queue' );
+			Ingestion_Metrics::record_post_result( 'deleted', 'sync' );
+			Ingestion_Metrics::record_post_result( 'skipped', 'sync' );
+		} finally {
+			remove_action( 'vip_agentforce_track_stat', $callback, 1 );
+		}
+
+		$this->assertSame(
+			[
+				[
+					'stat_code' => 'vip_agentforce_posts_ingested',
+					'stat_name' => 'env_test_1',
+				],
+				[
+					'stat_code' => 'vip_agentforce_posts_failed',
+					'stat_name' => 'env_test_1',
+				],
+			],
+			$tracked_stats,
+			'Stats should expose top-level ingested/failed counters plus environment-specific drilldown counters.'
+		);
 	}
 
 	public function test_collect_gauges_tracks_queue_and_bulk_sync_progress(): void {
