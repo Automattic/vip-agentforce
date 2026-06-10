@@ -219,7 +219,7 @@ class Ingestion_Cron {
 		$results = self::process_deletions( $results, $batch_size );
 
 		// Process syncs with remaining batch capacity.
-		$remaining_batch = $batch_size - $results['deleted'] - $results['failed'];
+		$remaining_batch = $batch_size - $results['deleted'] - $results['failed'] - $results['skipped'];
 		if ( $remaining_batch > 0 ) {
 			$results = self::process_syncs( $results, $remaining_batch );
 		}

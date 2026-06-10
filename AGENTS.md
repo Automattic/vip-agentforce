@@ -10,6 +10,12 @@ ls -1 agent_docs/
 
 Read the files relevant to your task.
 
+For local dev-env configuration, mock integration config, or temporary API
+response shims, read `agent_docs/dev-environment.md` first. Use the gitignored
+plugin-root `env.php` hook for local `VIP_AGENTFORCE_CONFIGS` and test-only
+filters. Do not patch `.wpvip/plugin-loader.php` for local config or mocks
+unless the task is specifically about the loader itself.
+
 Check for memory files too:
 
 ```bash
