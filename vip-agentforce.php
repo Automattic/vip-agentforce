@@ -19,6 +19,7 @@ const VIP_AGENTFORCE_FILE = __FILE__;
 require_once __DIR__ . '/utils/class-configs.php';
 require_once __DIR__ . '/utils/class-constants.php';
 require_once __DIR__ . '/utils/class-logger.php';
+require_once __DIR__ . '/utils/class-ingestion-metrics.php';
 require_once __DIR__ . '/utils/class-tracking.php';
 require_once __DIR__ . '/utils/traits/trait-singleton.php';
 require_once __DIR__ . '/utils/traits/trait-with-plugin-paths.php';
@@ -69,6 +70,7 @@ if ( class_exists( 'Automattic\\VIP\\Prometheus\\Plugin' ) ) {
 // Load the modules
 require_once __DIR__ . '/modules/ingestion/class-ingestion-post-record.php';
 require_once __DIR__ . '/modules/ingestion/class-ingestion-api-result.php';
+require_once __DIR__ . '/modules/ingestion/class-ingestion-error.php';
 require_once __DIR__ . '/modules/ingestion/class-ingestion-api-client.php';
 require_once __DIR__ . '/modules/ingestion/class-default-transformer.php';
 require_once __DIR__ . '/modules/ingestion/class-sync-result.php';

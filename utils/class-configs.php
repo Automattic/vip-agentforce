@@ -2,6 +2,8 @@
 
 namespace Automattic\VIP\Salesforce\Agentforce\Utils;
 
+use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_Error;
+
 class Configs {
 	/**
 	 * Cached config
@@ -11,12 +13,26 @@ class Configs {
 	private static $cached_config = null;
 
 	/**
+	 * Cached ingestion token preflight failure.
+	 *
+	 * @var array{message: string, error_class: string, error_code: string}|null
+	 */
+	private static $cached_ingestion_token_failure = null;
+
+	/**
+	 * Whether the ingestion token preflight status has been cached.
+	 */
+	private static bool $cached_ingestion_token_status_loaded = false;
+
+	/**
 	 * Flush the cached config.
 	 *
 	 * Primarily useful for tests where configs may be overridden via filters.
 	 */
 	public static function flush_cache(): void {
-		self::$cached_config = null;
+		self::$cached_config                        = null;
+		self::$cached_ingestion_token_failure       = null;
+		self::$cached_ingestion_token_status_loaded = false;
 	}
 
 	/**
@@ -60,6 +76,7 @@ class Configs {
 	 *     site_key?: string,
 	 *     ingestion_api_instance_url?: string,
 	 *     ingestion_api_token?: string,
+	 *     ingestion_api_token_expires_at?: string|int,
 	 *     ingestion_api_endpoint?: string,
 	 *     ingestion_api_source_name?: string,
 	 *     ingestion_api_object_name?: string,
@@ -89,8 +106,111 @@ class Configs {
 		return $current_config;
 	}
 
+	/**
+	 * Whether the ingestion token exists and has usable expiry metadata.
+	 */
+	public static function has_valid_ingestion_token(): bool {
+		return null === self::get_ingestion_token_failure();
+	}
+
+	/**
+	 * Get the token preflight failure details.
+	 *
+	 * @return array{message: string, error_class: string, error_code: string}|null Failure details, or null when the token can be used.
+	 */
+	public static function get_ingestion_token_failure(): ?array {
+		if ( null === self::$cached_config ) {
+			self::init();
+		}
+
+		if ( ! self::$cached_ingestion_token_status_loaded ) {
+			self::$cached_ingestion_token_failure       = self::detect_ingestion_token_failure( self::get_config() );
+			self::$cached_ingestion_token_status_loaded = true;
+		}
+
+		return self::$cached_ingestion_token_failure;
+	}
+
+	/**
+	 * Detect the token preflight failure details.
+	 *
+	 * @param array<string, mixed> $config Ingestion API config.
+	 * @return array{message: string, error_class: string, error_code: string}|null Failure details, or null when the token can be used.
+	 */
+	private static function detect_ingestion_token_failure( array $config ): ?array {
+		if ( self::is_missing_ingestion_token( $config ) ) {
+			return [
+				'message'     => 'Missing required API configuration: ingestion_api_token',
+				'error_class' => 'config',
+				'error_code'  => Ingestion_Error::MISSING_API_CONFIG,
+			];
+		}
+
+		if ( ! array_key_exists( 'ingestion_api_token_expires_at', $config ) ) {
+			return null;
+		}
+
+		$expires_at_timestamp = self::get_ingestion_token_expiry_timestamp( $config['ingestion_api_token_expires_at'] );
+		if ( null === $expires_at_timestamp ) {
+			return [
+				'message'     => 'Ingestion API token expiry is invalid',
+				'error_class' => 'auth',
+				'error_code'  => Ingestion_Error::TOKEN_INVALID,
+			];
+		}
+
+		if ( $expires_at_timestamp <= time() ) {
+			return [
+				'message'     => 'Ingestion API token has expired',
+				'error_class' => 'auth',
+				'error_code'  => Ingestion_Error::TOKEN_EXPIRED,
+			];
+		}
+
+		return null;
+	}
+
+	/**
+	 * Whether the ingestion token is missing.
+	 *
+	 * @param array<string, mixed> $config Ingestion API config.
+	 */
+	private static function is_missing_ingestion_token( array $config ): bool {
+		$token = $config['ingestion_api_token'] ?? '';
+
+		return ! is_string( $token ) || '' === trim( $token );
+	}
+
+	/**
+	 * Get the token expiry timestamp.
+	 *
+	 * @param mixed $expires_at Token expiry value.
+	 * @return int|null Parsed expiry timestamp, or null when invalid.
+	 */
+	private static function get_ingestion_token_expiry_timestamp( $expires_at ): ?int {
+		if ( ! is_scalar( $expires_at ) ) {
+			return null;
+		}
+
+		$expires_at = trim( (string) $expires_at );
+		if ( '' === $expires_at ) {
+			return null;
+		}
+
+		$expires_at_timestamp = is_numeric( $expires_at ) ? (int) $expires_at : strtotime( $expires_at );
+		if ( false === $expires_at_timestamp ) {
+			return null;
+		}
+
+		return $expires_at_timestamp;
+	}
+
 	private static function init(): void {
-		self::$cached_config = self::get_actual_config();
+		$config = self::get_actual_config();
+
+		self::$cached_config                        = $config;
+		self::$cached_ingestion_token_failure       = self::detect_ingestion_token_failure( $config );
+		self::$cached_ingestion_token_status_loaded = true;
 	}
 
 	/**

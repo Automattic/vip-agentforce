@@ -7,6 +7,8 @@
 
 namespace Automattic\VIP\Salesforce\Agentforce\Ingestion;
 
+use Automattic\VIP\Salesforce\Agentforce\Utils\Ingestion_Metrics;
+
 /**
  * Handles ingestion filtering for posts to be sent to Salesforce.
  */
@@ -117,7 +119,8 @@ class Ingestion {
 				return new Sync_Result(
 					$is_retryable ? Sync_Result::FAILED_API_RETRYABLE : Sync_Result::FAILED_API,
 					$post,
-					$delete_result->error_message
+					$delete_result->error_message,
+					$delete_result->get_error_class()
 				);
 			}
 			return new Sync_Result( Sync_Result::SKIPPED, $post );
@@ -151,7 +154,8 @@ class Ingestion {
 			return new Sync_Result(
 				$is_retryable ? Sync_Result::FAILED_API_RETRYABLE : Sync_Result::FAILED_API,
 				$post,
-				$result->error_message
+				$result->error_message,
+				$result->get_error_class()
 			);
 		}
 
@@ -300,6 +304,8 @@ class Ingestion {
 		}
 
 		$result = self::delete_post_from_salesforce( $post );
+
+		Ingestion_Metrics::record_post_result( $result->success ? 'deleted' : 'failed', 'sync' );
 
 		// This path is the WP `before_delete_post` hook running in sync mode —
 		// there's no cron to retry on, so any failure (retryable or not)

@@ -8,6 +8,7 @@
 namespace Automattic\VIP\Salesforce\Agentforce\Ingestion;
 
 use Automattic\VIP\Salesforce\Agentforce\Utils\Logger;
+use Automattic\VIP\Salesforce\Agentforce\Utils\Ingestion_Metrics;
 
 /**
  * Handles queueing of posts for async Salesforce ingestion.
@@ -114,7 +115,8 @@ class Ingestion_Queue {
 			self::queue_for_sync( $post_id );
 		} else {
 			// Sync mode: process immediately.
-			Ingestion::sync_post( $post );
+			$sync_result = Ingestion::sync_post( $post );
+			self::record_sync_mode_result( $sync_result );
 		}
 	}
 
@@ -157,13 +159,15 @@ class Ingestion_Queue {
 		// Ensure the cron is scheduled.
 		Ingestion_Cron::schedule_processing();
 
-		Logger::info(
-			'ingestion-queue',
-			'Post queued for sync',
-			[
-				'post_id' => $post_id,
-			]
-		);
+		if ( Logger::is_verbose_ingestion_logging() ) {
+			Logger::info(
+				'ingestion-queue',
+				'Post queued for sync',
+				[
+					'post_id' => $post_id,
+				]
+			);
+		}
 	}
 
 	/**
@@ -235,14 +239,16 @@ class Ingestion_Queue {
 		// Ensure the cron is scheduled.
 		Ingestion_Cron::schedule_processing();
 
-		Logger::info(
-			'ingestion-queue',
-			'Post queued for deletion',
-			[
-				'post_id'   => $post_id,
-				'record_id' => $record_id,
-			]
-		);
+		if ( Logger::is_verbose_ingestion_logging() ) {
+			Logger::info(
+				'ingestion-queue',
+				'Post queued for deletion',
+				[
+					'post_id'   => $post_id,
+					'record_id' => $record_id,
+				]
+			);
+		}
 	}
 
 	/**
@@ -457,5 +463,37 @@ class Ingestion_Queue {
 			'sync'   => $sync_count,
 			'delete' => $delete_count,
 		];
+	}
+
+	private static function record_sync_mode_result( Sync_Result $sync_result ): void {
+		switch ( $sync_result->status ) {
+			case Sync_Result::INGESTED:
+				Ingestion_Metrics::record_post_result( 'ingested', 'sync' );
+				break;
+
+			case Sync_Result::DELETED:
+				Ingestion_Metrics::record_post_result( 'deleted', 'sync' );
+				break;
+
+			case Sync_Result::SKIPPED:
+				Ingestion_Metrics::record_post_result( 'skipped', 'sync' );
+				break;
+
+			case Sync_Result::FAILED_TRANSFORM:
+			case Sync_Result::FAILED_API:
+			case Sync_Result::FAILED_API_RETRYABLE:
+				Ingestion_Metrics::record_post_result( 'failed', 'sync' );
+				Logger::warning(
+					'ingestion-queue',
+					'Sync mode ingestion failed',
+					[
+						'post_id'       => $sync_result->post->ID,
+						'status'        => $sync_result->status,
+						'error_class'   => $sync_result->error_class,
+						'error_message' => $sync_result->error_message,
+					]
+				);
+				break;
+		}
 	}
 }

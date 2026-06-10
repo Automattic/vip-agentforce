@@ -36,6 +36,13 @@ class Ingestion_API_Result {
 	public ?string $error_message;
 
 	/**
+	 * Low-cardinality error class for logs and metrics.
+	 *
+	 * @var string|null
+	 */
+	public ?string $error_class = null;
+
+	/**
 	 * The raw HTTP response from wp_remote_request.
 	 *
 	 * @var array<string, mixed>|\WP_Error|null
@@ -87,13 +94,14 @@ class Ingestion_API_Result {
 	 * @param string|null                         $record_id     Optional record ID.
 	 * @return self
 	 */
-	public static function failure( string $error_message, $response = null, ?string $record_id = null ): self {
+	public static function failure( string $error_message, $response = null, ?string $record_id = null, ?string $error_class = null ): self {
 		$result                = new self();
 		$result->success       = false;
 		$result->record_id     = $record_id;
 		$result->error_message = $error_message;
 		$result->response      = $response;
 		$result->timestamp     = gmdate( 'c' );
+		$result->error_class   = $error_class;
 
 		return $result;
 	}
@@ -109,9 +117,69 @@ class Ingestion_API_Result {
 	 * @return self
 	 */
 	public static function deferred( string $error_message, ?string $record_id = null ): self {
-		$result                     = self::failure( $error_message, null, $record_id );
+		$result                     = self::failure( $error_message, null, $record_id, 'rate_limit' );
 		$result->retryable_override = true;
 		return $result;
+	}
+
+	/**
+	 * Get the low-cardinality error class for this result.
+	 */
+	public function get_error_class(): string {
+		if ( null !== $this->error_class ) {
+			return $this->error_class;
+		}
+
+		if ( $this->success ) {
+			return 'unexpected';
+		}
+
+		if ( is_wp_error( $this->response ) ) {
+			return 'network';
+		}
+
+		if ( ! is_array( $this->response ) ) {
+			return 'unexpected';
+		}
+
+		$status_code = (int) wp_remote_retrieve_response_code( $this->response );
+
+		if ( in_array( $status_code, [ 401, 403 ], true ) ) {
+			return 'auth';
+		}
+
+		if ( 429 === $status_code ) {
+			return 'rate_limit';
+		}
+
+		if ( 408 === $status_code || $status_code >= 500 ) {
+			return 'server';
+		}
+
+		if ( $status_code >= 400 ) {
+			return 'client';
+		}
+
+		return 'unexpected';
+	}
+
+	/**
+	 * Get the metric outcome for this request result.
+	 */
+	public function get_request_outcome(): string {
+		if ( $this->success ) {
+			return 'success';
+		}
+
+		$class_to_outcome = [
+			'auth'       => 'auth_error',
+			'rate_limit' => 'rate_limit',
+			'server'     => 'server_error',
+			'network'    => 'network_error',
+			'client'     => 'client_error',
+		];
+
+		return $class_to_outcome[ $this->get_error_class() ] ?? 'unexpected';
 	}
 
 	/**
@@ -150,7 +218,7 @@ class Ingestion_API_Result {
 
 		$status_code = (int) wp_remote_retrieve_response_code( $this->response );
 
-		return in_array( $status_code, [ 408, 429, 500, 502, 503, 504 ], true );
+		return 408 === $status_code || 429 === $status_code || $status_code >= 500;
 	}
 
 	/**
