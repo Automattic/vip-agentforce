@@ -11,9 +11,14 @@ use Automattic\VIP\Salesforce\Agentforce\Utils\Configs;
 class Tracking {
 
 	/**
-	 * Prefix for stats and events.
+	 * Prefix for events.
 	 */
 	const PREFIX = 'vip-agentforce';
+
+	/**
+	 * Prefix for stats.
+	 */
+	const STAT_PREFIX = 'vip_agentforce';
 
 	/**
 	 * Telemetry instance.
@@ -80,10 +85,10 @@ class Tracking {
 	 * Record stats using VIP Stats
 	 *
 	 * @param string      $stat_name Stat name.
-	 * @param string|null $stat_code Optional stat code. Defaults to the plugin-level stat code.
+	 * @param string|null $stat_code_suffix Optional stat code suffix. Defaults to the plugin-level stat code.
 	 */
-	public static function record_stats( string $stat_name, ?string $stat_code = null ): void {
-		$stat_code = $stat_code ?? self::get_default_stat_code();
+	public static function record_stats( string $stat_name, ?string $stat_code_suffix = null ): void {
+		$stat_code = self::get_stat_code( $stat_code_suffix );
 
 		// Test/local environments should log the stat path without emitting a pixel.
 		if ( Configs::is_local_env() || self::is_test_env() ) {
@@ -112,12 +117,20 @@ class Tracking {
 		}
 	}
 
+	private static function get_stat_code( ?string $stat_code_suffix ): string {
+		if ( null === $stat_code_suffix ) {
+			return self::get_default_stat_code();
+		}
+
+		return self::STAT_PREFIX . '_' . $stat_code_suffix;
+	}
+
 	private static function get_default_stat_code(): string {
 		$env_prefix = self::maybe_get_non_production_prefix( false );
-		$stat_code  = self::PREFIX;
+		$stat_code  = self::STAT_PREFIX;
 
 		if ( ! empty( $env_prefix ) ) {
-			$stat_code = self::PREFIX . '_' . $env_prefix;
+			$stat_code = self::STAT_PREFIX . '_' . $env_prefix;
 		}
 
 		return $stat_code;

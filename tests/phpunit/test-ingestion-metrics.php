@@ -284,7 +284,8 @@ class Ingestion_Metrics_Test extends WP_UnitTestCase {
 			3
 		);
 
-		Tracking::record_stats( 'env_101_1', 'vip_agentforce_posts_ingested' );
+		Tracking::record_stats( 'env_101_1', 'posts_ingested' );
+		Tracking::record_stats( 'cmp_page_viewed' );
 
 		$entries = Testable_Logger::get_entries();
 
@@ -295,14 +296,17 @@ class Ingestion_Metrics_Test extends WP_UnitTestCase {
 		$this->assertSame( 'Bumping stats for /s/vip_agentforce_posts_ingested/env_101_1', $entries[0]['message'] );
 		$this->assertSame( 'vip_agentforce_posts_ingested', $entries[0]['extra']['stat_code'] );
 		$this->assertSame( 'env_101_1', $entries[0]['extra']['stat_name'] );
+		$this->assertSame( 'Bumping stats for /s/vip_agentforce_nonprod/cmp_page_viewed', $entries[1]['message'] );
+		$this->assertSame( 'vip_agentforce_nonprod', $entries[1]['extra']['stat_code'] );
+		$this->assertSame( 'cmp_page_viewed', $entries[1]['extra']['stat_name'] );
 	}
 
 	public function test_post_result_stats_track_terminal_ingestion_outcomes_with_site_drilldown(): void {
 		$tracked_stats = [];
-		$callback      = static function ( string $stat_name, string $stat_code ) use ( &$tracked_stats ): void {
+		$callback      = static function ( string $stat_name, string $stat_code_suffix ) use ( &$tracked_stats ): void {
 			$tracked_stats[] = [
-				'stat_code' => $stat_code,
-				'stat_name' => $stat_name,
+				'stat_code_suffix' => $stat_code_suffix,
+				'stat_name'        => $stat_name,
 			];
 		};
 
@@ -320,16 +324,16 @@ class Ingestion_Metrics_Test extends WP_UnitTestCase {
 		$this->assertSame(
 			[
 				[
-					'stat_code' => 'vip_agentforce_posts_ingested',
-					'stat_name' => 'env_101_1',
+					'stat_code_suffix' => 'posts_ingested',
+					'stat_name'        => 'env_101_1',
 				],
 				[
-					'stat_code' => 'vip_agentforce_posts_failed',
-					'stat_name' => 'env_101_1',
+					'stat_code_suffix' => 'posts_failed',
+					'stat_name'        => 'env_101_1',
 				],
 			],
 			$tracked_stats,
-			'Stats should expose top-level ingested/failed counters plus VIP app/blog-specific drilldown counters.'
+			'Stats should expose top-level ingested/failed suffixes plus VIP app/blog-specific drilldown counters.'
 		);
 	}
 

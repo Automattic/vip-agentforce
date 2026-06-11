@@ -157,7 +157,7 @@ class Ingestion_Metrics {
 			return;
 		}
 
-		do_action( 'vip_agentforce_track_stat', self::get_site_stats_bucket(), 'vip_agentforce_posts_' . $result );
+		do_action( 'vip_agentforce_track_stat', self::get_site_stats_bucket(), 'posts_' . $result );
 	}
 
 	public static function record_api_request( string $method, string $status_code, string $outcome ): void {
