@@ -193,16 +193,16 @@ class Ingestion_Metrics {
 	}
 
 	private static function get_site_stats_bucket(): string {
-		return 'env_' . self::get_environment() . '_' . get_current_blog_id();
+		return 'env_' . self::get_app_id() . '_' . get_current_blog_id();
 	}
 
-	private static function get_environment(): string {
-		$environment = defined( 'VIP_GO_APP_ENVIRONMENT' ) ? (string) constant( 'VIP_GO_APP_ENVIRONMENT' ) : 'local';
-		$environment = strtolower( $environment );
-		$environment = (string) preg_replace( '/[^a-z0-9_]+/', '_', $environment );
-		$environment = trim( $environment, '_' );
+	private static function get_app_id(): string {
+		$app_id = defined( 'VIP_GO_APP_ID' ) ? (string) constant( 'VIP_GO_APP_ID' ) : '0';
+		$app_id = strtolower( $app_id );
+		$app_id = (string) preg_replace( '/[^a-z0-9_]+/', '_', $app_id );
+		$app_id = trim( $app_id, '_' );
 
-		return '' !== $environment ? $environment : 'unknown';
+		return '' !== $app_id ? $app_id : 'unknown';
 	}
 
 	private static function normalize_method( string $method ): string {

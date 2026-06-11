@@ -284,7 +284,7 @@ class Ingestion_Metrics_Test extends WP_UnitTestCase {
 			3
 		);
 
-		Tracking::record_stats( 'env_test_1', 'vip_agentforce_posts_ingested' );
+		Tracking::record_stats( 'env_101_1', 'vip_agentforce_posts_ingested' );
 
 		$entries = Testable_Logger::get_entries();
 
@@ -292,12 +292,12 @@ class Ingestion_Metrics_Test extends WP_UnitTestCase {
 		$this->assertNotEmpty( $entries, 'Test environment should log the Stats path.' );
 		$this->assertSame( 'info', $entries[0]['severity'] );
 		$this->assertSame( 'vip-agentforce', $entries[0]['feature'] );
-		$this->assertSame( 'Bumping stats for /s/vip_agentforce_posts_ingested/env_test_1', $entries[0]['message'] );
+		$this->assertSame( 'Bumping stats for /s/vip_agentforce_posts_ingested/env_101_1', $entries[0]['message'] );
 		$this->assertSame( 'vip_agentforce_posts_ingested', $entries[0]['extra']['stat_code'] );
-		$this->assertSame( 'env_test_1', $entries[0]['extra']['stat_name'] );
+		$this->assertSame( 'env_101_1', $entries[0]['extra']['stat_name'] );
 	}
 
-	public function test_post_result_stats_track_terminal_ingestion_outcomes_with_environment_drilldown(): void {
+	public function test_post_result_stats_track_terminal_ingestion_outcomes_with_site_drilldown(): void {
 		$tracked_stats = [];
 		$callback      = static function ( string $stat_name, string $stat_code ) use ( &$tracked_stats ): void {
 			$tracked_stats[] = [
@@ -321,15 +321,15 @@ class Ingestion_Metrics_Test extends WP_UnitTestCase {
 			[
 				[
 					'stat_code' => 'vip_agentforce_posts_ingested',
-					'stat_name' => 'env_test_1',
+					'stat_name' => 'env_101_1',
 				],
 				[
 					'stat_code' => 'vip_agentforce_posts_failed',
-					'stat_name' => 'env_test_1',
+					'stat_name' => 'env_101_1',
 				],
 			],
 			$tracked_stats,
-			'Stats should expose top-level ingested/failed counters plus environment-specific drilldown counters.'
+			'Stats should expose top-level ingested/failed counters plus VIP app/blog-specific drilldown counters.'
 		);
 	}
 
