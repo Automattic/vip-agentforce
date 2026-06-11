@@ -175,9 +175,7 @@ class Ingestion_API_Client {
 		$block_remaining = $this->get_rate_limit_block_remaining();
 		if ( $block_remaining > 0 ) {
 			$retry_status = self::get_retry_status();
-			// The shared block is no longer 429-only, so derive the class from
-			// the stored reason instead of reporting every defer as rate-limit.
-			$error_class = match ( $retry_status['reason'] ) {
+			$error_class  = match ( $retry_status['reason'] ) {
 				'rate_limited', 'rate_limit_budget_low' => 'rate_limit',
 				'transient_server_error' => 'server',
 				'http_error' => 'network',
