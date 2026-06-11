@@ -481,7 +481,7 @@ class Ingestion_Cron_Test extends WP_UnitTestCase {
 		$this->assertFalse( Ingestion_Sync_Progress::is_running() );
 	}
 
-	public function test_bulk_sync_retryable_failure_keeps_partial_final_batch_running(): void {
+	public function test_bulk_sync_retryable_failure_keeps_cursor_on_failed_post(): void {
 		$this->mock_http_500();
 		$this->setup_ingestion_filters();
 
@@ -490,13 +490,25 @@ class Ingestion_Cron_Test extends WP_UnitTestCase {
 
 		$results = Ingestion_Cron::process_queue( 10 );
 
-		$this->assertSame( 1, $results['failed'] );
+		$this->assertSame( 0, $results['failed'] );
 		$this->assertTrue( Ingestion_Sync_Progress::is_running(), 'A retryable failure must not mark an unfinished final bulk-sync batch completed.' );
 		$this->assertCount( 1, $this->captured_requests, 'Bulk sync should stop the batch once retry backoff starts.' );
 
 		$progress = Ingestion_Sync_Progress::get();
 		$this->assertSame( Ingestion_Sync_Progress::STATUS_RUNNING, $progress['status'] );
-		$this->assertSame( 1, $progress['processed'] );
+		$this->assertSame( 0, $progress['processed'], 'Retryable failures are deferred, not processed, so the failed post can be retried.' );
+		$this->assertSame( 0, $progress['last_post_id'], 'The cursor must stay behind the retryable failure so the next run retries that post.' );
+
+		remove_all_filters( 'pre_http_request' );
+		$this->captured_requests = [];
+		Ingestion_API_Client::clear_retry_status();
+		$this->mock_http_success();
+
+		$results = Ingestion_Cron::process_queue( 10 );
+
+		$this->assertSame( 3, $results['synced'] );
+		$this->assertCount( 3, $this->captured_requests, 'After backoff clears, bulk sync should retry the failed post instead of skipping past it.' );
+		$this->assertFalse( Ingestion_Sync_Progress::is_running() );
 	}
 
 	public function test_bulk_sync_keeps_cron_scheduled(): void {
@@ -770,11 +782,12 @@ class Ingestion_Cron_Test extends WP_UnitTestCase {
 		$progress     = Ingestion_Sync_Progress::get();
 		$retry_status = Ingestion_API_Client::get_retry_status();
 
-		$this->assertSame( 1, $results['failed'] );
+		$this->assertSame( 0, $results['failed'] );
 		$this->assertCount( 1, $this->captured_requests );
 		$this->assertSame( Ingestion_Sync_Progress::STATUS_RUNNING, $progress['status'], 'Retryable global failures should pause the sync under backoff instead of completing it as failed.' );
-		$this->assertSame( 1, $progress['processed'] );
-		$this->assertSame( 1, $progress['failed'] );
+		$this->assertSame( 0, $progress['processed'], 'Retryable global failures should leave the cursor and progress behind the deferred post.' );
+		$this->assertSame( 0, $progress['failed'] );
+		$this->assertSame( 0, $progress['last_post_id'] );
 		$this->assertTrue( $retry_status['active'] );
 		$this->assertSame( 1, $retry_status['consecutive_failures'] );
 		$this->assertSame( $expected_backoff_reason, $retry_status['reason'] );

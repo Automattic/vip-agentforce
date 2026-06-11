@@ -150,6 +150,8 @@ class Ingestion_CLI extends WP_CLI_Command {
 
 		$preflight_failure = Ingestion_API_Client::get_request_preflight_failure();
 		if ( null !== $preflight_failure ) {
+			// Do not start a bulk sync when setup/auth is already known bad.
+			// JSON keeps Dashboard on stable error codes; text keeps WP-CLI direct.
 			$detail = $preflight_failure['message'];
 			Ingestion_Metrics::record_api_error( $preflight_failure['error_class'] );
 			if ( 'json' === $format ) {
@@ -594,6 +596,8 @@ class Ingestion_CLI extends WP_CLI_Command {
 
 			$retry_status = Ingestion_API_Client::get_retry_status();
 			if ( $retry_status['active'] ) {
+				// `--all` must stop at the shared backoff boundary. Looping here
+				// would turn one deferred item into many wasted attempts.
 				WP_CLI::warning(
 					sprintf(
 						'Ingestion API retry backoff is active; stopping before the next batch. Next retry: in %s.',
@@ -694,6 +698,8 @@ class Ingestion_CLI extends WP_CLI_Command {
 		$status = Ingestion_API_Client::get_retry_status();
 
 		if ( ! $status['active'] && 0 === $status['consecutive_failures'] ) {
+			// Keep normal status output compact. Once an incident has happened,
+			// even an expired state is useful enough to show for Support.
 			return;
 		}
 
@@ -703,6 +709,8 @@ class Ingestion_CLI extends WP_CLI_Command {
 		WP_CLI::log( sprintf( 'Consecutive retryable failures: %d', $status['consecutive_failures'] ) );
 
 		if ( $status['active'] && null !== $status['blocked_until'] ) {
+			// Only active states get an ETA; expired diagnostic state should not
+			// imply that cron is still waiting.
 			WP_CLI::log(
 				sprintf(
 					'Next retry: in %s (%s UTC)',

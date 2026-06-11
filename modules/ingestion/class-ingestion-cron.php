@@ -217,6 +217,8 @@ class Ingestion_Cron {
 
 		$retry_status = Ingestion_API_Client::get_retry_status();
 		if ( $retry_status['active'] ) {
+			// The shared block applies to every API call. Skip the whole queue
+			// until it expires so this cron tick does not burn retry attempts.
 			Logger::info(
 				'ingestion-cron',
 				'Ingestion API retry backoff active, skipping queue processing',
@@ -235,6 +237,8 @@ class Ingestion_Cron {
 		$retry_backoff_started = false;
 		$results               = self::process_deletions( $results, $batch_size, $retry_backoff_started );
 		if ( $retry_backoff_started ) {
+			// Stop before syncs/bulk work: the same shared API block would
+			// defer those items too and could consume their attempt counters.
 			self::unschedule_if_idle();
 			return $results;
 		}
@@ -245,6 +249,8 @@ class Ingestion_Cron {
 			$retry_backoff_started = false;
 			$results               = self::process_syncs( $results, $remaining_batch, $retry_backoff_started );
 			if ( $retry_backoff_started ) {
+				// Do not enter bulk sync under a newly armed backoff. Bulk sync
+				// uses a cursor, so processing while blocked risks skipping work.
 				self::unschedule_if_idle();
 				return $results;
 			}
@@ -608,6 +614,8 @@ class Ingestion_Cron {
 
 		$preflight_failure = Ingestion_API_Client::get_request_preflight_failure();
 		if ( null !== $preflight_failure ) {
+			// Preflight failures are site-wide setup/auth problems. Fail the
+			// batch once instead of making every post repeat the same failure.
 			$first_post       = reset( $posts );
 			$first_post       = $first_post instanceof \WP_Post ? $first_post : null;
 			$preflight_result = null !== $first_post
@@ -618,6 +626,8 @@ class Ingestion_Cron {
 					$preflight_failure['error_class']
 				)
 				: null;
+			// Config failures can be reported directly; auth/API failures use
+			// the normal bulk wording so Dashboard sees the same failure shape.
 			$fast_fail_reason = 'config' === $preflight_failure['error_class'] || null === $preflight_result
 				? $preflight_failure['message']
 				: self::get_bulk_fast_fail_reason( $preflight_result );
@@ -640,6 +650,8 @@ class Ingestion_Cron {
 		}
 
 		if ( null === $fast_fail_reason ) {
+			// Only walk posts when there is no known site-wide failure. Once a
+			// global failure appears, the rest of the batch would fail the same way.
 			foreach ( $posts as $post ) {
 				$sync_result = Ingestion::sync_post( $post );
 
@@ -665,30 +677,37 @@ class Ingestion_Cron {
 					case Sync_Result::FAILED_TRANSFORM:
 					case Sync_Result::FAILED_API:
 					case Sync_Result::FAILED_API_RETRYABLE:
-						// Bulk sync iterates a cursor — there's no per-item queue
-						// to retry from. A retryable failure still records the
-						// current post as failed, then pauses the rest of the batch
-						// while the shared retry block is active.
+						if ( Sync_Result::FAILED_API_RETRYABLE === $sync_result->status ) {
+							// Retryable bulk failures are deferred, not processed.
+							// Keep the cursor behind this post so the next run
+							// retries it after the shared backoff clears.
+							$failure_summary       = self::record_bulk_failure( $failure_summary, $post, $sync_result, $last_post_id, $limit );
+							$retry_backoff_started = true;
+							break;
+						}
+
 						++$results['failed'];
 						++$batch_results['failed'];
 						Ingestion_Metrics::record_post_result( 'failed', 'bulk' );
 
 						$failure_summary = self::record_bulk_failure( $failure_summary, $post, $sync_result, $last_post_id, $limit );
-						if ( Sync_Result::FAILED_API_RETRYABLE === $sync_result->status ) {
-							$retry_backoff_started = true;
-						} elseif ( self::is_global_bulk_failure( $sync_result ) ) {
+						if ( self::is_global_bulk_failure( $sync_result ) ) {
+							// These classes are not post-specific. Stop the batch
+							// so progress records one clear global failure.
 							$fast_fail_reason = self::get_bulk_fast_fail_reason( $sync_result );
 							$fast_fail_code   = Ingestion_Error::code_for_error_class( $sync_result->error_class );
 						}
 						break;
 				}
 
-				$new_last_post_id = $post->ID;
-				Ingestion_Sync_Progress::update_live_progress( $progress, $batch_results, $new_last_post_id );
-
 				if ( $retry_backoff_started || null !== $fast_fail_reason ) {
+					// Cursor/progress advance only after a post reaches a final
+					// state. Deferred retry and global failure both stop before that.
 					break;
 				}
+
+				$new_last_post_id = $post->ID;
+				Ingestion_Sync_Progress::update_live_progress( $progress, $batch_results, $new_last_post_id );
 			}
 		}
 
@@ -726,11 +745,15 @@ class Ingestion_Cron {
 		}
 
 		if ( null !== $fast_fail_reason ) {
+			// Store a terminal sync status for deterministic site-wide failures
+			// so Dashboard can stop polling as "running".
 			Ingestion_Sync_Progress::fail( $fast_fail_reason, $fast_fail_code );
 			return $results;
 		}
 
 		// If fewer posts returned than requested, we've processed everything.
+		// Do not complete while retry backoff is active: the current post has
+		// intentionally been left behind the cursor for the next run.
 		if ( ! $retry_backoff_started && count( $posts ) < $limit ) {
 			Ingestion_Sync_Progress::complete();
 
@@ -751,6 +774,8 @@ class Ingestion_Cron {
 	 * Whether a bulk failure means the rest of the current run is doomed.
 	 */
 	private static function is_global_bulk_failure( Sync_Result $result ): bool {
+		// These classes describe shared setup/API state rather than malformed
+		// individual posts, so continuing would only duplicate the same failure.
 		return in_array( $result->error_class, [ 'config', 'auth', 'rate_limit', 'server', 'network' ], true );
 	}
 

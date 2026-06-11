@@ -299,6 +299,8 @@ class Ingestion_Sync_Progress {
 		$response['retry_backoff']    = Ingestion_API_Client::get_retry_status();
 
 		if ( ! empty( $response['error_code'] ) ) {
+			// Dashboard reads stable error codes, while Support still gets the
+			// raw stored error. Add display copy only when a code exists.
 			$response['error_message'] = Ingestion_Error::message( $response['error_code'] );
 		}
 

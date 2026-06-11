@@ -139,6 +139,8 @@ class Configs {
 	 */
 	private static function detect_ingestion_token_failure( array $config ): ?array {
 		if ( self::is_missing_ingestion_token( $config ) ) {
+			// Missing token is a setup/config problem, not an auth failure from
+			// Salesforce, so Dashboard should point users back to setup.
 			return [
 				'message'     => 'Missing required API configuration: ingestion_api_token',
 				'error_class' => 'config',
@@ -147,11 +149,15 @@ class Configs {
 		}
 
 		if ( ! array_key_exists( 'ingestion_api_token_expires_at', $config ) ) {
+			// Older/local configs may not include expiry metadata. Treat absence
+			// as usable so we do not block working sites on a new optional field.
 			return null;
 		}
 
 		$expires_at_timestamp = self::get_ingestion_token_expiry_timestamp( $config['ingestion_api_token_expires_at'] );
 		if ( null === $expires_at_timestamp ) {
+			// Bad expiry metadata is safer to surface as auth/config drift than
+			// to keep sending requests with an unknown token lifetime.
 			return [
 				'message'     => 'Ingestion API token expiry is invalid',
 				'error_class' => 'auth',
@@ -160,6 +166,8 @@ class Configs {
 		}
 
 		if ( $expires_at_timestamp <= time() ) {
+			// Expired tokens are deterministic: retry backoff will not help
+			// until the customer reconnects.
 			return [
 				'message'     => 'Ingestion API token has expired',
 				'error_class' => 'auth',

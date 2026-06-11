@@ -158,7 +158,8 @@ class Ingestion_API_Client {
 	private function make_request( string $method, string $body, string $record_id ): Ingestion_API_Result {
 		$preflight_failure = self::get_request_preflight_failure();
 		if ( null !== $preflight_failure ) {
-			// Permanent — don't mark retryable; cron will fire the failure event.
+			// Config/token failures are deterministic. Retrying would only
+			// hide the real setup problem behind the shared backoff flow.
 			Ingestion_Metrics::record_api_error( $preflight_failure['error_class'] );
 			return Ingestion_API_Result::failure(
 				$preflight_failure['message'],
@@ -168,13 +169,15 @@ class Ingestion_API_Client {
 			);
 		}
 
-		// If a previous 429 (or our own preemptive block) said "back off",
-		// defer this call entirely. Cron will pick it up on a later tick once
-		// the block expires. Saves us a guaranteed-rejected request to SF.
+		// If another worker already hit a retryable API failure, defer this
+		// request without touching Salesforce. This keeps all workers aligned
+		// to the same next retry window and avoids burning attempt counters.
 		$block_remaining = $this->get_rate_limit_block_remaining();
 		if ( $block_remaining > 0 ) {
 			$retry_status = self::get_retry_status();
-			$error_class  = match ( $retry_status['reason'] ) {
+			// The shared block is no longer 429-only, so derive the class from
+			// the stored reason instead of reporting every defer as rate-limit.
+			$error_class = match ( $retry_status['reason'] ) {
 				'rate_limited', 'rate_limit_budget_low' => 'rate_limit',
 				'transient_server_error' => 'server',
 				'http_error' => 'network',
@@ -196,6 +199,8 @@ class Ingestion_API_Client {
 		$response = $this->execute_request( $method, $body );
 
 		if ( is_wp_error( $response ) ) {
+			// A transport failure means Salesforce was not reached at all. Arm
+			// backoff so the next worker does not immediately repeat it.
 			$this->set_exponential_backoff( 'http_error', null, $response->get_error_message() );
 			Ingestion_Metrics::record_api_request( $method, 'none', 'network_error' );
 			Ingestion_Metrics::record_api_error( 'network' );
@@ -217,6 +222,8 @@ class Ingestion_API_Client {
 
 		// Success.
 		if ( 202 === $status_code ) {
+			// One accepted request proves the shared incident has cleared.
+			// Reset both the active block and its diagnostic state.
 			self::clear_retry_status();
 			Ingestion_Metrics::record_api_request( $method, (string) $status_code, 'success' );
 			$this->process_rate_limit_headers( $response );
@@ -284,6 +291,9 @@ class Ingestion_API_Client {
 		$error_class = in_array( $status_code, [ 401, 403 ], true ) ? 'auth' : 'client';
 		$outcome     = 'auth' === $error_class ? 'auth_error' : 'client_error';
 		if ( $status_code < 400 ) {
+			// The Ingestion API success contract is 202. Other 2xx/3xx
+			// responses are not retryable, but they also should not be counted
+			// as client mistakes.
 			$error_class = 'unexpected';
 			$outcome     = 'unexpected';
 		}
@@ -303,6 +313,9 @@ class Ingestion_API_Client {
 			);
 		}
 
+		// A permanent response means waiting longer will not fix this request.
+		// Clear any old shared retry state so future runs report their own
+		// current failure instead of a stale backoff window.
 		self::clear_retry_status();
 		return Ingestion_API_Result::failure(
 			'Unexpected response code: ' . $status_code,
@@ -365,6 +378,8 @@ class Ingestion_API_Client {
 		$token_failure = Configs::get_ingestion_token_failure();
 
 		if ( null !== $token_failure ) {
+			// Token failures have more precise customer-facing codes than the
+			// generic missing-field check below, so preserve that detail.
 			return $token_failure;
 		}
 
@@ -377,6 +392,8 @@ class Ingestion_API_Client {
 		$empty_fields = [];
 		foreach ( $fields_to_check as $field ) {
 			if ( empty( $config[ $field ] ) ) {
+				// Collect all missing fields so Support sees the full setup gap
+				// from a single status/preflight response.
 				$empty_fields[] = $field;
 			}
 		}
@@ -509,10 +526,14 @@ class Ingestion_API_Client {
 		$status_code = (int) wp_remote_retrieve_response_code( $response );
 
 		if ( $retry_after > 0 ) {
+			// Salesforce gave an explicit retry window. Use it as the source of
+			// truth, but keep the failure count so diagnostics still show trend.
 			$state                = self::get_retry_state();
 			$consecutive_failures = (int) ( $state['consecutive_failures'] ?? 0 ) + 1;
 			$this->set_retry_block( $retry_after, $reason, $status_code, $error_message, $consecutive_failures );
 		} else {
+			// No Retry-After means we own the pacing. Use bounded exponential
+			// backoff so repeated incidents slow down without stalling forever.
 			$this->set_exponential_backoff( $reason, $status_code, $error_message );
 		}
 	}
@@ -529,12 +550,15 @@ class Ingestion_API_Client {
 		$remaining = $this->get_header_value( $headers, 'x-ratelimit-remaining' );
 		$reset     = $this->get_header_value( $headers, 'x-ratelimit-reset' );
 
-		// If we're running low on remaining requests, set a small block.
+		// If the next request would likely hit the rate limit, pause until the
+		// reset timestamp so concurrent workers do not spend the last slot.
 		if ( null !== $remaining && null !== $reset && (int) $remaining <= 1 ) {
 			$reset_time = (int) $reset;
 			$now        = time();
 
 			if ( $reset_time > $now ) {
+				// Ignore stale reset timestamps; they would create a confusing
+				// zero-length block instead of useful Support diagnostics.
 				$this->set_retry_block(
 					(float) ( $reset_time - $now ),
 					'rate_limit_budget_low',
