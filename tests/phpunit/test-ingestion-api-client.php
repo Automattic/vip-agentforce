@@ -554,6 +554,19 @@ class Ingestion_API_Client_Test extends WP_UnitTestCase {
 		$blocked_until = microtime( true ) + 10;
 		// phpcs:ignore WordPressVIPMinimum.Performance.LowExpiryCacheTime.LowCacheTime -- Test fixture mirrors production rate-limit TTL semantics; not a real cache write.
 		wp_cache_set( 'vip_agentforce_rate_limit_blocked_until', $blocked_until, 'vip_agentforce', 12 );
+		wp_cache_set(
+			'vip_agentforce_ingestion_api_retry_state',
+			[
+				'blocked_until'        => $blocked_until,
+				'consecutive_failures' => 1,
+				'reason'               => 'transient_server_error',
+				'status_code'          => 500,
+				'last_error_at'        => gmdate( 'c' ),
+				'last_error_message'   => 'Server error (500)',
+			],
+			'vip_agentforce',
+			DAY_IN_SECONDS
+		);
 
 		// Mock a success response so we'd notice if the client actually called.
 		$this->mock_http_responses( [ $this->success_response() ] );
@@ -564,7 +577,10 @@ class Ingestion_API_Client_Test extends WP_UnitTestCase {
 		$this->assertFalse( $result->success );
 		$this->assertTrue( $result->is_retryable(), 'Deferred-by-block result must be retryable.' );
 		$this->assertCount( 0, $this->captured_requests, 'Client must skip the HTTP call entirely while the block is active.' );
-		$this->assertStringContainsString( 'block active', $result->error_message );
+		$this->assertStringContainsString( 'retry backoff active', $result->error_message );
+		$this->assertStringContainsString( 'transient_server_error', $result->error_message );
+		$this->assertSame( 'server', $result->get_error_class() );
+		$this->assertSame( 'server_error', $result->get_request_outcome() );
 	}
 
 	public function test_expired_cache_block_does_not_defer(): void {

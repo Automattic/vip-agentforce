@@ -930,6 +930,26 @@ class Ingestion_Cron_Test extends WP_UnitTestCase {
 		$this->assertNotEmpty( get_post_meta( $post->ID, Ingestion_Queue::META_KEY_QUEUED_FOR_SYNC, true ) );
 	}
 
+	public function test_active_retry_backoff_unschedules_when_no_work_remains(): void {
+		Ingestion_Cron::schedule_processing();
+		$this->assertTrue( Ingestion_Cron::is_scheduled() );
+
+		wp_cache_set( 'vip_agentforce_rate_limit_blocked_until', microtime( true ) + 60, 'vip_agentforce', 300 );
+
+		$results = Ingestion_Cron::process_queue( 10 );
+
+		$this->assertSame(
+			[
+				'synced'  => 0,
+				'deleted' => 0,
+				'failed'  => 0,
+				'skipped' => 0,
+			],
+			$results
+		);
+		$this->assertFalse( Ingestion_Cron::is_scheduled(), 'Cron should not stay scheduled when backoff is active but no work remains.' );
+	}
+
 	public function test_retryable_failure_stops_current_batch_before_next_sync(): void {
 		$this->mock_http_500();
 		$this->setup_ingestion_filters();
@@ -1009,6 +1029,8 @@ class Ingestion_Cron_Test extends WP_UnitTestCase {
 			Ingestion_Queue::MAX_RETRYABLE_ATTEMPTS - 1
 		);
 		wp_cache_delete( 'vip_agentforce_rate_limit_blocked_until', 'vip_agentforce' );
+		Ingestion_Cron::schedule_processing();
+		$this->assertTrue( Ingestion_Cron::is_scheduled() );
 
 		$fired = false;
 		add_action(
@@ -1026,6 +1048,7 @@ class Ingestion_Cron_Test extends WP_UnitTestCase {
 		// Post is dequeued; both queue meta keys are gone.
 		$this->assertEmpty( get_post_meta( $post->ID, Ingestion_Queue::META_KEY_QUEUED_FOR_SYNC, true ) );
 		$this->assertSame( 0, Ingestion_Queue::get_sync_attempts( $post->ID ) );
+		$this->assertFalse( Ingestion_Cron::is_scheduled(), 'Cron should unschedule when retry-cap exhaustion leaves no queued work.' );
 	}
 
 	public function test_permanent_sync_failure_dequeues_immediately_and_fires_event(): void {
@@ -1151,6 +1174,8 @@ class Ingestion_Cron_Test extends WP_UnitTestCase {
 		$queue[ $record_id ]['attempts'] = Ingestion_Queue::MAX_RETRYABLE_ATTEMPTS - 1;
 		update_option( Ingestion_Queue::OPTION_DELETE_QUEUE, $queue, false );
 		wp_cache_delete( 'vip_agentforce_rate_limit_blocked_until', 'vip_agentforce' );
+		Ingestion_Cron::schedule_processing();
+		$this->assertTrue( Ingestion_Cron::is_scheduled() );
 
 		$fired = false;
 		add_action(
@@ -1168,6 +1193,7 @@ class Ingestion_Cron_Test extends WP_UnitTestCase {
 		// Delete queue entry gone.
 		$queued = Ingestion_Queue::get_queued_for_delete();
 		$this->assertCount( 0, $queued );
+		$this->assertFalse( Ingestion_Cron::is_scheduled(), 'Cron should unschedule when delete retry-cap exhaustion leaves no queued work.' );
 	}
 
 	public function test_delete_retry_cap_exhausted_stops_current_batch_before_next_delete(): void {

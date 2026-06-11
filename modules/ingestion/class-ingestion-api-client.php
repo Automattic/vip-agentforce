@@ -173,10 +173,23 @@ class Ingestion_API_Client {
 		// the block expires. Saves us a guaranteed-rejected request to SF.
 		$block_remaining = $this->get_rate_limit_block_remaining();
 		if ( $block_remaining > 0 ) {
-			Ingestion_Metrics::record_api_error( 'rate_limit' );
+			$retry_status = self::get_retry_status();
+			$error_class  = match ( $retry_status['reason'] ) {
+				'rate_limited', 'rate_limit_budget_low' => 'rate_limit',
+				'transient_server_error' => 'server',
+				'http_error' => 'network',
+				default => 'unexpected',
+			};
+
+			Ingestion_Metrics::record_api_error( $error_class );
 			return Ingestion_API_Result::deferred(
-				sprintf( 'Rate-limit block active for %.1fs; deferring request', $block_remaining ),
-				$record_id
+				sprintf(
+					'Ingestion API retry backoff active for %.1fs; deferring request (%s)',
+					$block_remaining,
+					$retry_status['reason'] ?? 'unknown'
+				),
+				$record_id,
+				$error_class
 			);
 		}
 

@@ -227,6 +227,7 @@ class Ingestion_Cron {
 				]
 			);
 
+			self::unschedule_if_idle();
 			return $results;
 		}
 
@@ -234,6 +235,7 @@ class Ingestion_Cron {
 		$retry_backoff_started = false;
 		$results               = self::process_deletions( $results, $batch_size, $retry_backoff_started );
 		if ( $retry_backoff_started ) {
+			self::unschedule_if_idle();
 			return $results;
 		}
 
@@ -243,6 +245,7 @@ class Ingestion_Cron {
 			$retry_backoff_started = false;
 			$results               = self::process_syncs( $results, $remaining_batch, $retry_backoff_started );
 			if ( $retry_backoff_started ) {
+				self::unschedule_if_idle();
 				return $results;
 			}
 		}
@@ -259,12 +262,18 @@ class Ingestion_Cron {
 			$results
 		);
 
-		// Unschedule if queue is empty AND no bulk sync is running.
+		self::unschedule_if_idle();
+
+		return $results;
+	}
+
+	/**
+	 * Unschedule processing when no queued work or bulk sync remains.
+	 */
+	private static function unschedule_if_idle(): void {
 		if ( ! Ingestion_Queue::has_queued_items() && ! Ingestion_Sync_Progress::is_running() ) {
 			self::unschedule_processing();
 		}
-
-		return $results;
 	}
 
 	/**
@@ -354,7 +363,6 @@ class Ingestion_Cron {
 					$retry_backoff_started = true;
 					break;
 				}
-				continue;
 			}
 
 			// Permanent delete failure (4xx other than 408/429, config issues).
@@ -467,7 +475,6 @@ class Ingestion_Cron {
 					$retry_backoff_started = true;
 					break;
 				}
-				continue;
 			}
 
 			switch ( $sync_result->status ) {

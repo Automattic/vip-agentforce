@@ -108,16 +108,17 @@ class Ingestion_API_Result {
 
 	/**
 	 * Create a failure result for a request that was deferred because a
-	 * shared rate-limit cache block was active — the call never reached
-	 * SF. Marked retryable explicitly so cron picks it up on the next
-	 * tick once the block expires.
+	 * shared retry block was active — the call never reached SF. Marked
+	 * retryable explicitly so cron picks it up on the next tick once the
+	 * block expires.
 	 *
 	 * @param string      $error_message Why we deferred.
 	 * @param string|null $record_id     Optional record ID.
+	 * @param string      $error_class   Low-cardinality error class.
 	 * @return self
 	 */
-	public static function deferred( string $error_message, ?string $record_id = null ): self {
-		$result                     = self::failure( $error_message, null, $record_id, 'rate_limit' );
+	public static function deferred( string $error_message, ?string $record_id = null, string $error_class = 'rate_limit' ): self {
+		$result                     = self::failure( $error_message, null, $record_id, $error_class );
 		$result->retryable_override = true;
 		return $result;
 	}
