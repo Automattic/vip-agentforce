@@ -6,6 +6,7 @@
  */
 
 use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion;
+use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_API_Client;
 use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_Cron;
 use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_Post_Record;
 use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_Queue;
@@ -40,6 +41,7 @@ class Ingestion_Cron_Test extends WP_UnitTestCase {
 				'ingestion_api_object_name'  => 'test-object',
 			]
 		);
+		Ingestion_API_Client::clear_retry_status();
 	}
 
 	public function tearDown(): void {
@@ -77,6 +79,7 @@ class Ingestion_Cron_Test extends WP_UnitTestCase {
 
 		// Unschedule cron.
 		Ingestion_Cron::unschedule_processing();
+		Ingestion_API_Client::clear_retry_status();
 	}
 
 	/**
@@ -478,6 +481,36 @@ class Ingestion_Cron_Test extends WP_UnitTestCase {
 		$this->assertFalse( Ingestion_Sync_Progress::is_running() );
 	}
 
+	public function test_bulk_sync_retryable_failure_keeps_cursor_on_failed_post(): void {
+		$this->mock_http_500();
+		$this->setup_ingestion_filters();
+
+		$this->factory()->post->create_many( 3, [ 'post_status' => 'publish' ] );
+		Ingestion_Sync_Progress::start( 3, [ 'post' ] );
+
+		$results = Ingestion_Cron::process_queue( 10 );
+
+		$this->assertSame( 0, $results['failed'] );
+		$this->assertTrue( Ingestion_Sync_Progress::is_running(), 'A retryable failure must not mark an unfinished final bulk-sync batch completed.' );
+		$this->assertCount( 1, $this->captured_requests, 'Bulk sync should stop the batch once retry backoff starts.' );
+
+		$progress = Ingestion_Sync_Progress::get();
+		$this->assertSame( Ingestion_Sync_Progress::STATUS_RUNNING, $progress['status'] );
+		$this->assertSame( 0, $progress['processed'], 'Retryable failures are deferred, not processed, so the failed post can be retried.' );
+		$this->assertSame( 0, $progress['last_post_id'], 'The cursor must stay behind the retryable failure so the next run retries that post.' );
+
+		remove_all_filters( 'pre_http_request' );
+		$this->captured_requests = [];
+		Ingestion_API_Client::clear_retry_status();
+		$this->mock_http_success();
+
+		$results = Ingestion_Cron::process_queue( 10 );
+
+		$this->assertSame( 3, $results['synced'] );
+		$this->assertCount( 3, $this->captured_requests, 'After backoff clears, bulk sync should retry the failed post instead of skipping past it.' );
+		$this->assertFalse( Ingestion_Sync_Progress::is_running() );
+	}
+
 	public function test_bulk_sync_keeps_cron_scheduled(): void {
 		$this->mock_http_success();
 		$this->setup_ingestion_filters();
@@ -719,7 +752,7 @@ class Ingestion_Cron_Test extends WP_UnitTestCase {
 	 *
 	 * @param array<string, mixed>|\WP_Error $mock_response Mocked HTTP response.
 	 */
-	public function test_bulk_sync_fast_fails_global_salesforce_failures( $mock_response, string $expected_error_class ): void {
+	public function test_bulk_sync_retryable_global_salesforce_failures_pause_under_backoff( $mock_response, string $expected_backoff_reason, ?int $expected_status_code ): void {
 		$this->setup_ingestion_filters();
 
 		add_filter(
@@ -743,20 +776,28 @@ class Ingestion_Cron_Test extends WP_UnitTestCase {
 
 		$this->factory()->post->create_many( 3, [ 'post_status' => 'publish' ] );
 		Ingestion_Sync_Progress::start( 3, [ 'post' ] );
-		wp_cache_delete( 'vip_agentforce_rate_limit_blocked_until', 'vip_agentforce' );
+		Ingestion_API_Client::clear_retry_status();
 
-		$results  = Ingestion_Cron::process_queue( 10 );
-		$progress = Ingestion_Sync_Progress::get();
+		$results      = Ingestion_Cron::process_queue( 10 );
+		$progress     = Ingestion_Sync_Progress::get();
+		$retry_status = Ingestion_API_Client::get_retry_status();
 
-		$this->assertSame( 1, $results['failed'] );
+		$this->assertSame( 0, $results['failed'] );
 		$this->assertCount( 1, $this->captured_requests );
-		$this->assertSame( Ingestion_Sync_Progress::STATUS_FAILED, $progress['status'] );
-		$this->assertStringContainsString( 'global ' . $expected_error_class . ' error', $progress['error'] );
-		$this->assertSame( 1, $progress['processed'] );
+		$this->assertSame( Ingestion_Sync_Progress::STATUS_RUNNING, $progress['status'], 'Retryable global failures should pause the sync under backoff instead of completing it as failed.' );
+		$this->assertSame( 0, $progress['processed'], 'Retryable global failures should leave the cursor and progress behind the deferred post.' );
+		$this->assertSame( 0, $progress['failed'] );
+		$this->assertSame( 0, $progress['last_post_id'] );
+		$this->assertTrue( $retry_status['active'] );
+		$this->assertSame( 1, $retry_status['consecutive_failures'] );
+		$this->assertSame( $expected_backoff_reason, $retry_status['reason'] );
+		$this->assertSame( $expected_status_code, $retry_status['status_code'] );
+		$this->assertGreaterThan( 0, $retry_status['seconds_remaining'] );
+		$this->assertNotNull( $retry_status['next_retry_at'] );
 	}
 
 	/**
-	 * @return array<string, array{0: array<string, mixed>|\WP_Error, 1: string}>
+	 * @return array<string, array{0: array<string, mixed>|\WP_Error, 1: string, 2: int|null}>
 	 */
 	public function global_bulk_failure_provider(): array {
 		return [
@@ -769,7 +810,8 @@ class Ingestion_Cron_Test extends WP_UnitTestCase {
 					'headers'  => [],
 					'body'     => '',
 				],
-				'rate_limit',
+				'rate_limited',
+				429,
 			],
 			'server unavailable' => [
 				[
@@ -780,11 +822,13 @@ class Ingestion_Cron_Test extends WP_UnitTestCase {
 					'headers'  => [],
 					'body'     => '',
 				],
-				'server',
+				'transient_server_error',
+				503,
 			],
 			'network failure'    => [
 				new WP_Error( 'vip_agentforce_network_failure', 'Network unavailable' ),
-				'network',
+				'http_error',
+				null,
 			],
 		];
 	}
@@ -820,8 +864,36 @@ class Ingestion_Cron_Test extends WP_UnitTestCase {
 						'message' => 'Too Many Requests',
 					],
 					// Intentionally no Retry-After: client falls back to a
-					// short default block. Tests that need a longer block
-					// install their own filter.
+					// shared exponential retry block.
+					'headers'  => [],
+					'body'     => '',
+				];
+			},
+			10,
+			3
+		);
+	}
+
+	/**
+	 * Mock SF returning 500 and capture the request.
+	 */
+	private function mock_http_500(): void {
+		add_filter(
+			'pre_http_request',
+			function ( $preempt, $args, $url ) {
+				if ( strpos( $url, 'test.salesforce.com' ) === false ) {
+					return $preempt;
+				}
+				$this->captured_requests[] = [
+					'url'    => $url,
+					'method' => $args['method'] ?? 'GET',
+					'body'   => $args['body'] ?? '',
+				];
+				return [
+					'response' => [
+						'code'    => 500,
+						'message' => 'Server Error',
+					],
 					'headers'  => [],
 					'body'     => '',
 				];
@@ -851,6 +923,84 @@ class Ingestion_Cron_Test extends WP_UnitTestCase {
 		// Post stays queued for the next tick.
 		$this->assertNotEmpty( get_post_meta( $post->ID, Ingestion_Queue::META_KEY_QUEUED_FOR_SYNC, true ) );
 		$this->assertSame( 1, Ingestion_Queue::get_sync_attempts( $post->ID ) );
+	}
+
+	public function test_active_retry_backoff_skips_queue_without_incrementing_attempts(): void {
+		$this->mock_http_success();
+		$this->setup_ingestion_filters();
+
+		$post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
+		Ingestion_Queue::queue_for_sync( $post->ID );
+
+		wp_cache_set( 'vip_agentforce_rate_limit_blocked_until', microtime( true ) + 60, 'vip_agentforce', 300 );
+
+		$results = Ingestion_Cron::process_queue( 10 );
+
+		$this->assertSame( 0, $results['synced'] );
+		$this->assertSame( 0, $results['failed'] );
+		$this->assertSame( 0, Ingestion_Queue::get_sync_attempts( $post->ID ), 'Deferred queue ticks must not burn retry attempts.' );
+		$this->assertCount( 0, $this->captured_requests, 'Cron should not call Salesforce while shared backoff is active.' );
+		$this->assertNotEmpty( get_post_meta( $post->ID, Ingestion_Queue::META_KEY_QUEUED_FOR_SYNC, true ) );
+	}
+
+	public function test_active_retry_backoff_unschedules_when_no_work_remains(): void {
+		Ingestion_Cron::schedule_processing();
+		$this->assertTrue( Ingestion_Cron::is_scheduled() );
+
+		wp_cache_set( 'vip_agentforce_rate_limit_blocked_until', microtime( true ) + 60, 'vip_agentforce', 300 );
+
+		$results = Ingestion_Cron::process_queue( 10 );
+
+		$this->assertSame(
+			[
+				'synced'  => 0,
+				'deleted' => 0,
+				'failed'  => 0,
+				'skipped' => 0,
+			],
+			$results
+		);
+		$this->assertFalse( Ingestion_Cron::is_scheduled(), 'Cron should not stay scheduled when backoff is active but no work remains.' );
+	}
+
+	public function test_retryable_failure_stops_current_batch_before_next_sync(): void {
+		$this->mock_http_500();
+		$this->setup_ingestion_filters();
+
+		$first_post  = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
+		$second_post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
+		Ingestion_Queue::queue_for_sync( $first_post->ID );
+		Ingestion_Queue::queue_for_sync( $second_post->ID );
+		update_post_meta( $first_post->ID, Ingestion_Queue::META_KEY_QUEUED_FOR_SYNC, 1 );
+		update_post_meta( $second_post->ID, Ingestion_Queue::META_KEY_QUEUED_FOR_SYNC, 2 );
+
+		$results = Ingestion_Cron::process_queue( 10 );
+
+		$this->assertSame( 1, $results['skipped'] );
+		$this->assertCount( 1, $this->captured_requests, 'Cron should stop the batch once retry backoff is active.' );
+		$this->assertSame( 1, Ingestion_Queue::get_sync_attempts( $first_post->ID ) );
+		$this->assertSame( 0, Ingestion_Queue::get_sync_attempts( $second_post->ID ) );
+		$this->assertNotEmpty( get_post_meta( $second_post->ID, Ingestion_Queue::META_KEY_QUEUED_FOR_SYNC, true ) );
+	}
+
+	public function test_retry_cap_exhausted_stops_current_batch_before_next_sync(): void {
+		$this->mock_http_500();
+		$this->setup_ingestion_filters();
+
+		$first_post  = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
+		$second_post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
+		Ingestion_Queue::queue_for_sync( $first_post->ID );
+		Ingestion_Queue::queue_for_sync( $second_post->ID );
+		update_post_meta( $first_post->ID, Ingestion_Queue::META_KEY_QUEUED_FOR_SYNC, 1 );
+		update_post_meta( $second_post->ID, Ingestion_Queue::META_KEY_QUEUED_FOR_SYNC, 2 );
+		update_post_meta( $first_post->ID, Ingestion_Queue::META_KEY_SYNC_ATTEMPTS, Ingestion_Queue::MAX_RETRYABLE_ATTEMPTS - 1 );
+
+		$results = Ingestion_Cron::process_queue( 10 );
+
+		$this->assertSame( 1, $results['failed'] );
+		$this->assertCount( 1, $this->captured_requests, 'A cap-hit retryable failure still starts shared backoff, so cron should stop before the next item.' );
+		$this->assertSame( 0, Ingestion_Queue::get_sync_attempts( $second_post->ID ) );
+		$this->assertNotEmpty( get_post_meta( $second_post->ID, Ingestion_Queue::META_KEY_QUEUED_FOR_SYNC, true ) );
 	}
 
 	public function test_retryable_sync_failure_does_not_fire_ingestion_failed_event(): void {
@@ -892,6 +1042,8 @@ class Ingestion_Cron_Test extends WP_UnitTestCase {
 			Ingestion_Queue::MAX_RETRYABLE_ATTEMPTS - 1
 		);
 		wp_cache_delete( 'vip_agentforce_rate_limit_blocked_until', 'vip_agentforce' );
+		Ingestion_Cron::schedule_processing();
+		$this->assertTrue( Ingestion_Cron::is_scheduled() );
 
 		$fired = false;
 		add_action(
@@ -909,6 +1061,7 @@ class Ingestion_Cron_Test extends WP_UnitTestCase {
 		// Post is dequeued; both queue meta keys are gone.
 		$this->assertEmpty( get_post_meta( $post->ID, Ingestion_Queue::META_KEY_QUEUED_FOR_SYNC, true ) );
 		$this->assertSame( 0, Ingestion_Queue::get_sync_attempts( $post->ID ) );
+		$this->assertFalse( Ingestion_Cron::is_scheduled(), 'Cron should unschedule when retry-cap exhaustion leaves no queued work.' );
 	}
 
 	public function test_permanent_sync_failure_dequeues_immediately_and_fires_event(): void {
@@ -980,6 +1133,29 @@ class Ingestion_Cron_Test extends WP_UnitTestCase {
 		$this->assertSame( 1, Ingestion_Queue::get_delete_attempts( $post->ID ) );
 	}
 
+	public function test_retryable_delete_failure_stops_current_batch_before_next_delete(): void {
+		$this->mock_http_500();
+
+		$first_post  = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
+		$second_post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
+		Ingestion_Queue::queue_for_delete( $first_post->ID );
+		Ingestion_Queue::queue_for_delete( $second_post->ID );
+
+		$queue = get_option( Ingestion_Queue::OPTION_DELETE_QUEUE, [] );
+		foreach ( $queue as &$item ) {
+			$item['queued_at'] = $item['post_id'] === $first_post->ID ? 1 : 2;
+		}
+		unset( $item );
+		update_option( Ingestion_Queue::OPTION_DELETE_QUEUE, $queue, false );
+
+		$results = Ingestion_Cron::process_queue( 10 );
+
+		$this->assertSame( 1, $results['skipped'] );
+		$this->assertCount( 1, $this->captured_requests, 'Cron should stop delete processing once retry backoff starts.' );
+		$this->assertSame( 1, Ingestion_Queue::get_delete_attempts( $first_post->ID ) );
+		$this->assertSame( 0, Ingestion_Queue::get_delete_attempts( $second_post->ID ) );
+	}
+
 	public function test_retryable_delete_failure_consumes_batch_capacity(): void {
 		$this->mock_http_429();
 		$this->setup_ingestion_filters();
@@ -1011,6 +1187,8 @@ class Ingestion_Cron_Test extends WP_UnitTestCase {
 		$queue[ $record_id ]['attempts'] = Ingestion_Queue::MAX_RETRYABLE_ATTEMPTS - 1;
 		update_option( Ingestion_Queue::OPTION_DELETE_QUEUE, $queue, false );
 		wp_cache_delete( 'vip_agentforce_rate_limit_blocked_until', 'vip_agentforce' );
+		Ingestion_Cron::schedule_processing();
+		$this->assertTrue( Ingestion_Cron::is_scheduled() );
 
 		$fired = false;
 		add_action(
@@ -1028,5 +1206,32 @@ class Ingestion_Cron_Test extends WP_UnitTestCase {
 		// Delete queue entry gone.
 		$queued = Ingestion_Queue::get_queued_for_delete();
 		$this->assertCount( 0, $queued );
+		$this->assertFalse( Ingestion_Cron::is_scheduled(), 'Cron should unschedule when delete retry-cap exhaustion leaves no queued work.' );
+	}
+
+	public function test_delete_retry_cap_exhausted_stops_current_batch_before_next_delete(): void {
+		$this->mock_http_500();
+
+		$first_post  = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
+		$second_post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
+		Ingestion_Queue::queue_for_delete( $first_post->ID );
+		Ingestion_Queue::queue_for_delete( $second_post->ID );
+
+		$queue = get_option( Ingestion_Queue::OPTION_DELETE_QUEUE, [] );
+		foreach ( $queue as &$item ) {
+			$item['queued_at'] = $item['post_id'] === $first_post->ID ? 1 : 2;
+			if ( $item['post_id'] === $first_post->ID ) {
+				$item['attempts'] = Ingestion_Queue::MAX_RETRYABLE_ATTEMPTS - 1;
+			}
+		}
+		unset( $item );
+		update_option( Ingestion_Queue::OPTION_DELETE_QUEUE, $queue, false );
+
+		$results = Ingestion_Cron::process_queue( 10 );
+
+		$this->assertSame( 1, $results['failed'] );
+		$this->assertCount( 1, $this->captured_requests, 'A cap-hit delete failure still starts shared backoff, so cron should stop before the next delete.' );
+		$this->assertSame( 0, Ingestion_Queue::get_delete_attempts( $first_post->ID ) );
+		$this->assertSame( 0, Ingestion_Queue::get_delete_attempts( $second_post->ID ) );
 	}
 }

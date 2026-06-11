@@ -48,6 +48,7 @@ class Ingestion_API_Client_Test extends WP_UnitTestCase {
 
 		// Clear object cache for rate limit testing.
 		wp_cache_delete( 'vip_agentforce_rate_limit_blocked_until', 'vip_agentforce' );
+		wp_cache_delete( 'vip_agentforce_ingestion_api_retry_state', 'vip_agentforce' );
 	}
 
 	public function tearDown(): void {
@@ -61,6 +62,7 @@ class Ingestion_API_Client_Test extends WP_UnitTestCase {
 
 		// Clear object cache.
 		wp_cache_delete( 'vip_agentforce_rate_limit_blocked_until', 'vip_agentforce' );
+		wp_cache_delete( 'vip_agentforce_ingestion_api_retry_state', 'vip_agentforce' );
 	}
 
 	/**
@@ -405,6 +407,51 @@ class Ingestion_API_Client_Test extends WP_UnitTestCase {
 		$this->assertStringContainsString( '400', $result->error_message );
 	}
 
+	public function test_permanent_error_clears_existing_retry_backoff_state(): void {
+		add_filter(
+			'pre_http_request',
+			function ( $preempt, $args, $url ) {
+				$this->captured_requests[] = [
+					'url'     => $url,
+					'method'  => $args['method'] ?? 'GET',
+					'body'    => $args['body'] ?? '',
+					'headers' => $args['headers'] ?? [],
+				];
+
+				// Simulate another worker setting a shared retry block while
+				// this request is already in flight.
+				wp_cache_set( 'vip_agentforce_rate_limit_blocked_until', microtime( true ) + 60, 'vip_agentforce', 300 );
+				wp_cache_set(
+					'vip_agentforce_ingestion_api_retry_state',
+					[
+						'blocked_until'        => microtime( true ) + 60,
+						'consecutive_failures' => 1,
+						'reason'               => 'rate_limited',
+						'status_code'          => 429,
+						'last_error_at'        => gmdate( 'c' ),
+						'last_error_message'   => 'Rate limited by Salesforce',
+					],
+					'vip_agentforce',
+					DAY_IN_SECONDS
+				);
+
+				return $this->error_response( 400, 'Bad Request' );
+			},
+			10,
+			3
+		);
+
+		$client = new Ingestion_API_Client();
+		$result = $client->send( $this->create_test_record() );
+
+		$this->assertFalse( $result->success );
+		$this->assertCount( 1, $this->captured_requests, 'The request was already in flight before the shared retry block existed.' );
+
+		$status = Ingestion_API_Client::get_retry_status();
+		$this->assertFalse( $status['active'], 'A later permanent API response is allowed to clear older shared retry state.' );
+		$this->assertSame( 0, $status['consecutive_failures'] );
+	}
+
 	public function test_returns_failure_on_wp_error(): void {
 		$this->mock_http_responses( [ new WP_Error( 'http_error', 'Connection failed' ) ] );
 
@@ -445,8 +492,8 @@ class Ingestion_API_Client_Test extends WP_UnitTestCase {
 		$this->assertGreaterThan( microtime( true ), (float) $blocked_until );
 	}
 
-	public function test_429_without_retry_after_header_uses_short_default_block(): void {
-		// Retry-After absent — client should still set a short default block
+	public function test_429_without_retry_after_header_uses_exponential_backoff(): void {
+		// Retry-After absent — client should still set a shared retry block
 		// so other workers know to back off.
 		$this->mock_http_responses(
 			[
@@ -471,6 +518,11 @@ class Ingestion_API_Client_Test extends WP_UnitTestCase {
 
 		$blocked_until = wp_cache_get( 'vip_agentforce_rate_limit_blocked_until', 'vip_agentforce' );
 		$this->assertNotFalse( $blocked_until );
+
+		$status = Ingestion_API_Client::get_retry_status();
+		$this->assertTrue( $status['active'] );
+		$this->assertSame( 1, $status['consecutive_failures'] );
+		$this->assertSame( 'rate_limited', $status['reason'] );
 	}
 
 	public function test_429_parses_http_date_retry_after(): void {
@@ -502,6 +554,19 @@ class Ingestion_API_Client_Test extends WP_UnitTestCase {
 		$blocked_until = microtime( true ) + 10;
 		// phpcs:ignore WordPressVIPMinimum.Performance.LowExpiryCacheTime.LowCacheTime -- Test fixture mirrors production rate-limit TTL semantics; not a real cache write.
 		wp_cache_set( 'vip_agentforce_rate_limit_blocked_until', $blocked_until, 'vip_agentforce', 12 );
+		wp_cache_set(
+			'vip_agentforce_ingestion_api_retry_state',
+			[
+				'blocked_until'        => $blocked_until,
+				'consecutive_failures' => 1,
+				'reason'               => 'transient_server_error',
+				'status_code'          => 500,
+				'last_error_at'        => gmdate( 'c' ),
+				'last_error_message'   => 'Server error (500)',
+			],
+			'vip_agentforce',
+			DAY_IN_SECONDS
+		);
 
 		// Mock a success response so we'd notice if the client actually called.
 		$this->mock_http_responses( [ $this->success_response() ] );
@@ -512,7 +577,10 @@ class Ingestion_API_Client_Test extends WP_UnitTestCase {
 		$this->assertFalse( $result->success );
 		$this->assertTrue( $result->is_retryable(), 'Deferred-by-block result must be retryable.' );
 		$this->assertCount( 0, $this->captured_requests, 'Client must skip the HTTP call entirely while the block is active.' );
-		$this->assertStringContainsString( 'block active', $result->error_message );
+		$this->assertStringContainsString( 'retry backoff active', $result->error_message );
+		$this->assertStringContainsString( 'transient_server_error', $result->error_message );
+		$this->assertSame( 'server', $result->get_error_class() );
+		$this->assertSame( 'server_error', $result->get_request_outcome() );
 	}
 
 	public function test_expired_cache_block_does_not_defer(): void {
@@ -571,6 +639,7 @@ class Ingestion_API_Client_Test extends WP_UnitTestCase {
 		foreach ( [ 500, 501, 502, 503, 504, 505 ] as $status_code ) {
 			$this->captured_requests = [];
 			remove_all_filters( 'pre_http_request' );
+			Ingestion_API_Client::clear_retry_status();
 
 			$this->mock_http_responses( [ $this->error_response( $status_code ) ] );
 
@@ -581,6 +650,83 @@ class Ingestion_API_Client_Test extends WP_UnitTestCase {
 			$this->assertTrue( $result->is_retryable(), "{$status_code} should be retryable" );
 			$this->assertCount( 1, $this->captured_requests, "{$status_code} must be a single attempt" );
 		}
+	}
+
+	public function test_retryable_errors_without_retry_after_use_exponential_backoff(): void {
+		$this->mock_http_responses(
+			[
+				$this->error_response( 500 ),
+				$this->error_response( 500 ),
+			]
+		);
+
+		$client = new Ingestion_API_Client();
+		$client->send( $this->create_test_record() );
+
+		$first_status = Ingestion_API_Client::get_retry_status();
+		$this->assertTrue( $first_status['active'] );
+		$this->assertSame( 1, $first_status['consecutive_failures'] );
+		$this->assertGreaterThanOrEqual( 4, $first_status['seconds_remaining'] );
+
+		// Simulate time passing so the next real request can happen while
+		// preserving the consecutive failure state.
+		wp_cache_set( 'vip_agentforce_rate_limit_blocked_until', microtime( true ) - 1, 'vip_agentforce', 300 );
+
+		$client->send( $this->create_test_record() );
+
+		$second_status = Ingestion_API_Client::get_retry_status();
+		$this->assertTrue( $second_status['active'] );
+		$this->assertSame( 2, $second_status['consecutive_failures'] );
+		$this->assertGreaterThan( $first_status['seconds_remaining'], $second_status['seconds_remaining'] );
+	}
+
+	public function test_success_clears_retry_backoff_state(): void {
+		wp_cache_set( 'vip_agentforce_rate_limit_blocked_until', microtime( true ) - 1, 'vip_agentforce', 300 );
+		wp_cache_set(
+			'vip_agentforce_ingestion_api_retry_state',
+			[
+				'blocked_until'        => microtime( true ) - 1,
+				'consecutive_failures' => 3,
+				'reason'               => 'transient_server_error',
+				'last_error_at'        => gmdate( 'c' ),
+				'last_error_message'   => 'Server error (500)',
+			],
+			'vip_agentforce',
+			DAY_IN_SECONDS
+		);
+
+		$this->mock_http_responses( [ $this->success_response() ] );
+
+		$client = new Ingestion_API_Client();
+		$result = $client->send( $this->create_test_record() );
+
+		$this->assertTrue( $result->success );
+
+		$status = Ingestion_API_Client::get_retry_status();
+		$this->assertFalse( $status['active'] );
+		$this->assertSame( 0, $status['consecutive_failures'] );
+	}
+
+	public function test_clear_retry_status_removes_backoff_state(): void {
+		wp_cache_set( 'vip_agentforce_rate_limit_blocked_until', microtime( true ) + 60, 'vip_agentforce', 300 );
+		wp_cache_set(
+			'vip_agentforce_ingestion_api_retry_state',
+			[
+				'blocked_until'        => microtime( true ) + 60,
+				'consecutive_failures' => 2,
+				'reason'               => 'http_error',
+				'last_error_at'        => gmdate( 'c' ),
+				'last_error_message'   => 'Connection failed',
+			],
+			'vip_agentforce',
+			DAY_IN_SECONDS
+		);
+
+		Ingestion_API_Client::clear_retry_status();
+
+		$status = Ingestion_API_Client::get_retry_status();
+		$this->assertFalse( $status['active'] );
+		$this->assertSame( 0, $status['consecutive_failures'] );
 	}
 
 	public function test_408_returns_retryable_failure(): void {

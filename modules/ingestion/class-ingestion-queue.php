@@ -482,6 +482,8 @@ class Ingestion_Queue {
 			case Sync_Result::FAILED_TRANSFORM:
 			case Sync_Result::FAILED_API:
 			case Sync_Result::FAILED_API_RETRYABLE:
+				// Sync mode has no cron-owned retry queue. Count retryable
+				// failures as failed here so operators see the immediate result.
 				Ingestion_Metrics::record_post_result( 'failed', 'sync' );
 				Logger::warning(
 					'ingestion-queue',

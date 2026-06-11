@@ -69,10 +69,7 @@ class Ingestion_REST {
 
 		if ( null === $progress ) {
 			return new \WP_REST_Response(
-				[
-					'status'  => Ingestion_Sync_Progress::STATUS_IDLE,
-					'message' => 'No sync has been initiated.',
-				],
+				Ingestion_Sync_Progress::get_idle_status_response(),
 				200
 			);
 		}

@@ -150,6 +150,8 @@ class Ingestion_CLI extends WP_CLI_Command {
 
 		$preflight_failure = Ingestion_API_Client::get_request_preflight_failure();
 		if ( null !== $preflight_failure ) {
+			// Do not start a bulk sync when setup/auth is already known bad.
+			// JSON keeps Dashboard on stable error codes; text keeps WP-CLI direct.
 			$detail = $preflight_failure['message'];
 			Ingestion_Metrics::record_api_error( $preflight_failure['error_class'] );
 			if ( 'json' === $format ) {
@@ -339,6 +341,7 @@ class Ingestion_CLI extends WP_CLI_Command {
 
 		if ( null === $progress ) {
 			WP_CLI::log( 'No sync has been initiated.' );
+			$this->log_retry_status();
 			return;
 		}
 
@@ -377,6 +380,8 @@ class Ingestion_CLI extends WP_CLI_Command {
 		if ( ! empty( $progress['error'] ) ) {
 			WP_CLI::warning( sprintf( 'Error: %s', $progress['error'] ) );
 		}
+
+		$this->log_retry_status();
 	}
 
 	/**
@@ -389,10 +394,7 @@ class Ingestion_CLI extends WP_CLI_Command {
 	 */
 	private function show_sync_status_json( ?array $progress ): void {
 		if ( null === $progress ) {
-			$output = [
-				'status'  => Ingestion_Sync_Progress::STATUS_IDLE,
-				'message' => 'No sync has been initiated.',
-			];
+			$output = Ingestion_Sync_Progress::get_idle_status_response();
 		} else {
 			$output = Ingestion_Sync_Progress::get_status_response( $progress );
 		}
@@ -555,6 +557,7 @@ class Ingestion_CLI extends WP_CLI_Command {
 		// Show current queue status.
 		$counts = Ingestion_Queue::get_queue_counts();
 		WP_CLI::log( sprintf( 'Queue status: %d syncs, %d deletions pending.', $counts['sync'], $counts['delete'] ) );
+		$this->log_retry_status();
 
 		$bulk_sync_running = Ingestion_Sync_Progress::is_running();
 
@@ -590,6 +593,19 @@ class Ingestion_CLI extends WP_CLI_Command {
 					$results['skipped']
 				)
 			);
+
+			$retry_status = Ingestion_API_Client::get_retry_status();
+			if ( $retry_status['active'] ) {
+				// `--all` must stop at the shared backoff boundary. Looping here
+				// would turn one deferred item into many wasted attempts.
+				WP_CLI::warning(
+					sprintf(
+						'Ingestion API retry backoff is active; stopping before the next batch. Next retry: in %s.',
+						human_time_diff( time(), (int) ceil( $retry_status['blocked_until'] ?? time() ) )
+					)
+				);
+				break;
+			}
 
 			// Check if there are more items (queue or active bulk sync).
 			$has_more = Ingestion_Queue::has_queued_items() || Ingestion_Sync_Progress::is_running();
@@ -634,6 +650,7 @@ class Ingestion_CLI extends WP_CLI_Command {
 		WP_CLI::log( sprintf( 'Posts queued for sync: %d', $counts['sync'] ) );
 		WP_CLI::log( sprintf( 'Posts queued for deletion: %d', $counts['delete'] ) );
 		WP_CLI::log( sprintf( 'Total queued: %d', $counts['sync'] + $counts['delete'] ) );
+		$this->log_retry_status();
 
 		// Check cron status.
 		$is_scheduled = Ingestion_Cron::is_scheduled();
@@ -658,6 +675,64 @@ class Ingestion_CLI extends WP_CLI_Command {
 			WP_CLI::log( '' );
 			WP_CLI::log( Ingestion_Sync_Progress::get_summary() );
 		}
+	}
+
+	/**
+	 * Clear the shared Ingestion API retry backoff.
+	 *
+	 * ## EXAMPLES
+	 *
+	 *     wp vip-agentforce ingestion clear-retry-backoff
+	 *
+	 * @subcommand clear-retry-backoff
+	 */
+	public function clear_retry_backoff(): void {
+		Ingestion_API_Client::clear_retry_status();
+		WP_CLI::success( 'Ingestion API retry backoff cleared.' );
+	}
+
+	/**
+	 * Log shared retry status for Support diagnostics.
+	 */
+	private function log_retry_status(): void {
+		$status = Ingestion_API_Client::get_retry_status();
+
+		if ( ! $status['active'] && 0 === $status['consecutive_failures'] ) {
+			// Keep normal status output compact. Once an incident has happened,
+			// even an expired state is useful enough to show for Support.
+			return;
+		}
+
+		WP_CLI::log( '' );
+		WP_CLI::log( '=== Ingestion API Retry Backoff ===' );
+		WP_CLI::log( sprintf( 'Active: %s', $status['active'] ? 'Yes' : 'No' ) );
+		WP_CLI::log( sprintf( 'Consecutive retryable failures: %d', $status['consecutive_failures'] ) );
+
+		if ( $status['active'] && null !== $status['blocked_until'] ) {
+			// Only active states get an ETA; expired diagnostic state should not
+			// imply that cron is still waiting.
+			WP_CLI::log(
+				sprintf(
+					'Next retry: in %s (%s UTC)',
+					human_time_diff( time(), (int) ceil( $status['blocked_until'] ) ),
+					gmdate( 'Y-m-d H:i:s', (int) ceil( $status['blocked_until'] ) )
+				)
+			);
+		}
+
+		if ( null !== $status['reason'] ) {
+			WP_CLI::log( sprintf( 'Reason: %s', $status['reason'] ) );
+		}
+
+		if ( null !== $status['status_code'] ) {
+			WP_CLI::log( sprintf( 'Last status code: %d', $status['status_code'] ) );
+		}
+
+		if ( null !== $status['last_error_message'] ) {
+			WP_CLI::log( sprintf( 'Last error: %s', $status['last_error_message'] ) );
+		}
+
+		WP_CLI::log( 'Clear with: wp vip-agentforce ingestion clear-retry-backoff' );
 	}
 }
 
