@@ -182,8 +182,8 @@ class Ingestion_CLI extends WP_CLI_Command {
 			return;
 		}
 
-		// Plain `sync` starts fresh only after a terminal failure. A running
-		// sync should keep its existing cursor and fail through start().
+		// Plain `sync` can start fresh from any non-running state. Failed
+		// progress needs an explicit reset before start() can replace it.
 		$existing_progress = Ingestion_Sync_Progress::get();
 		if ( Ingestion_Sync_Progress::STATUS_FAILED === ( $existing_progress['status'] ?? null ) ) {
 			Ingestion_Sync_Progress::reset();

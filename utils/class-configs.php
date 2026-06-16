@@ -247,7 +247,7 @@ class Configs {
 		}
 
 		if ( null === $configs ) {
-			Logger::warning_log_if_user_logged_in( 'sb_configs', 'VIP_AGENTFORCE_CONFIGS is not defined.' );
+			Logger::warning_log_if_user_logged_in( 'sb_configs', 'VIP Agentforce config is not available from platform config or VIP_AGENTFORCE_CONFIGS.' );
 			$configs = [];
 		}
 

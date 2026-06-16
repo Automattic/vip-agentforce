@@ -212,12 +212,12 @@ The mock also accepts `vip_agentforce_mock_scenario` from request query/body
 params and records intercepted calls in `vip_agentforce_mock_ingestion_requests`.
 
 ```bash
-vip dev-env exec --slug=vip-agentforce -- wp vip-agentforce ingestion sync --preflight-check --format=json
-vip dev-env exec --slug=vip-agentforce -- wp post create --post_title="Agentforce Local Smoke" --post_status=publish
-vip dev-env exec --slug=vip-agentforce -- wp vip-agentforce ingestion sync --reset
-vip dev-env exec --slug=vip-agentforce -- wp vip-agentforce ingestion sync
-vip dev-env exec --slug=vip-agentforce -- wp vip-agentforce ingestion process-queue --all
-vip dev-env exec --slug=vip-agentforce -- wp vip-agentforce ingestion sync --status
+vip dev-env exec -- wp vip-agentforce ingestion sync --preflight-check --format=json
+vip dev-env exec -- wp post create --post_title="Agentforce Local Smoke" --post_status=publish
+vip dev-env exec -- wp vip-agentforce ingestion sync --reset
+vip dev-env exec -- wp vip-agentforce ingestion sync
+vip dev-env exec -- wp vip-agentforce ingestion process-queue --all
+vip dev-env exec -- wp vip-agentforce ingestion sync --status
 ```
 
 Expected: preflight reports `ready: true`, queue processing prints mock API
