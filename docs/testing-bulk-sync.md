@@ -31,7 +31,7 @@ You can test with either a **mock API** (no real Salesforce calls) or a **real S
 <?php
 define( 'VIP_AGENTFORCE_CONFIGS', [
     'ingestion_api_instance_url' => 'https://fake.salesforce.com',
-    'ingestion_api_token'        => 'fake-token',
+    'ingestion_api_token'        => 'mock:202',
     'ingestion_api_source_name'  => 'test-source',
     'ingestion_api_object_name'  => 'test-object',
     'ingestion_api_sync_all_posts' => true,
@@ -39,6 +39,21 @@ define( 'VIP_AGENTFORCE_CONFIGS', [
 define( 'VIP_AGENTFORCE_DEVELOPER_MODE', true );
 define( 'VIP_AGENTFORCE_MOCK_INGESTION_API', true );
 ```
+
+Use a normal fake token or `mock:202` for the default success path. For failure
+smoke tests, change only the token:
+
+```php
+'ingestion_api_token' => 'mock:401',            // Unauthorized
+'ingestion_api_token' => 'mock:403',            // Forbidden
+'ingestion_api_token' => 'mock:429',            // Rate limited
+'ingestion_api_token' => 'mock:500',            // Server error
+'ingestion_api_token' => 'mock:network',        // Transport failure
+'ingestion_api_token' => 'mock:rotate-recover', // 401 once, then rotate local token option to mock:202
+```
+
+The mock also accepts `vip_agentforce_mock_scenario` from request query/body
+params and records calls in the `vip_agentforce_mock_ingestion_requests` option.
 
 ### Option B: Real Salesforce instance
 

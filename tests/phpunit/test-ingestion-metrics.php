@@ -26,6 +26,10 @@ class Ingestion_Metrics_Test extends WP_UnitTestCase {
 	private Fake_Ingestion_Metric $posts_counter;
 	private Fake_Ingestion_Metric $api_requests_counter;
 	private int $request_count = 0;
+	/**
+	 * @var array<string, mixed>
+	 */
+	private array $refreshable_config = [];
 
 	public function setUp(): void {
 		parent::setUp();
@@ -60,6 +64,8 @@ class Ingestion_Metrics_Test extends WP_UnitTestCase {
 	public function tearDown(): void {
 		Logger::enable();
 		remove_all_filters( 'pre_http_request' );
+		remove_all_filters( 'vip_agentforce_config' );
+		remove_all_filters( 'vip_agentforce_api_auth_retry_count' );
 		Configs::flush_cache();
 		delete_option( Ingestion_Queue::OPTION_DELETE_QUEUE );
 		Ingestion_Sync_Progress::reset();
@@ -84,10 +90,20 @@ class Ingestion_Metrics_Test extends WP_UnitTestCase {
 	 * @param array<string, mixed> $config
 	 */
 	private function prime_configs_cache( array $config ): void {
+		$this->refreshable_config = $config;
+
 		$ref  = new ReflectionClass( Configs::class );
 		$prop = $ref->getProperty( 'cached_config' );
 		$prop->setAccessible( true );
 		$prop->setValue( null, $config );
+
+		remove_all_filters( 'vip_agentforce_config' );
+		add_filter(
+			'vip_agentforce_config',
+			function () {
+				return $this->refreshable_config;
+			}
+		);
 	}
 
 	/**
@@ -155,6 +171,8 @@ class Ingestion_Metrics_Test extends WP_UnitTestCase {
 	}
 
 	public function test_api_request_metrics_track_auth_failures(): void {
+		add_filter( 'vip_agentforce_api_auth_retry_count', '__return_zero' );
+
 		$this->mock_http_response(
 			[
 				'response' => [
@@ -173,6 +191,35 @@ class Ingestion_Metrics_Test extends WP_UnitTestCase {
 		$this->assertSame( 'auth', $result->get_error_class() );
 		$this->assertSame( 1, $this->api_requests_counter->get_sample( [ 'POST', '401', 'auth_error' ] ) );
 		$this->assertSame( 1, $this->api_errors_counter->get_sample( [ 'auth' ] ) );
+	}
+
+	public function test_deferred_auth_retry_does_not_record_api_error_metrics(): void {
+		$this->mock_http_response(
+			[
+				'response' => [
+					'code'    => 401,
+					'message' => 'Unauthorized',
+				],
+				'headers'  => [],
+				'body'     => '',
+			]
+		);
+
+		$client = new Ingestion_API_Client();
+
+		$result = $client->send( $this->create_test_record() );
+
+		$this->assertFalse( $result->success );
+		$this->assertTrue( $result->is_retryable() );
+		$this->assertSame( 'auth', $result->get_error_class() );
+
+		$deferred_result = $client->send( $this->create_test_record() );
+
+		$this->assertFalse( $deferred_result->success );
+		$this->assertTrue( $deferred_result->is_retryable() );
+		$this->assertSame( 1, $this->request_count, 'Active auth backoff should defer without another HTTP request.' );
+		$this->assertNull( $this->api_requests_counter->get_sample( [ 'POST', '401', 'auth_error' ] ) );
+		$this->assertNull( $this->api_errors_counter->get_sample( [ 'auth' ] ) );
 	}
 
 	public function test_api_request_metrics_track_rate_limit_failures(): void {

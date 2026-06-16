@@ -127,6 +127,33 @@ class Ingestion_Sync_Progress_Test extends WP_UnitTestCase {
 		$this->assertSame( 42, $progress['last_post_id'] );
 	}
 
+	public function test_update_ignores_stale_sync_id_after_new_sync_starts(): void {
+		Ingestion_Sync_Progress::start( 100 );
+		$old_progress = Ingestion_Sync_Progress::get();
+		$old_sync_id  = $old_progress['sync_id'];
+
+		Ingestion_Sync_Progress::reset();
+		Ingestion_Sync_Progress::start( 50 );
+
+		Ingestion_Sync_Progress::update(
+			[
+				'synced'  => 10,
+				'skipped' => 0,
+				'failed'  => 0,
+				'deleted' => 0,
+			],
+			123,
+			$old_sync_id
+		);
+
+		$current_progress = Ingestion_Sync_Progress::get();
+
+		$this->assertSame( 50, $current_progress['total'] );
+		$this->assertSame( 0, $current_progress['processed'] );
+		$this->assertSame( 0, $current_progress['last_post_id'] );
+		$this->assertNotSame( $old_sync_id, $current_progress['sync_id'] );
+	}
+
 	public function test_update_accumulates_across_batches(): void {
 		Ingestion_Sync_Progress::start( 100 );
 
