@@ -18,6 +18,7 @@ parameters:
     - %rootDir%/../../php-stubs/wp-cli-stubs/wp-cli-stubs.php
     - %rootDir%/../../php-stubs/wp-cli-stubs/wp-cli-commands-stubs.php
     - %rootDir%/../../php-stubs/wp-cli-stubs/wp-cli-i18n-stubs.php
+    - dev/mock-ingestion-api.php
   dynamicConstantNames:
     - VIP_GO_APP_ENVIRONMENT
     - VIP_GO_APP_ID
