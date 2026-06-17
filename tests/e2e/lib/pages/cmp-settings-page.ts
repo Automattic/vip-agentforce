@@ -3,6 +3,7 @@ import type { Locator, Page } from '@playwright/test';
 const selectors = {
 	heading: '.agentforce-wrap h1',
 	onetrustRow: '#row_onetrust',
+	cookieyesRow: '#row_cookieyes',
 	cookiebotRow: '#row_cookiebot',
 	iubendaRow: '#row_iubenda',
 	saveButton: 'button[type="submit"]',
@@ -15,6 +16,8 @@ export class CmpSettingsPage {
 	public readonly consentType: Locator;
 	public readonly onetrustRow: Locator;
 	public readonly onetrustGroupId: Locator;
+	public readonly cookieyesRow: Locator;
+	public readonly cookieyesCategory: Locator;
 	public readonly cookiebotRow: Locator;
 	public readonly cookiebotCategory: Locator;
 	public readonly iubendaRow: Locator;
@@ -28,6 +31,8 @@ export class CmpSettingsPage {
 		this.consentType = page.getByLabel('Consent Type');
 		this.onetrustRow = page.locator(selectors.onetrustRow);
 		this.onetrustGroupId = page.getByLabel('OneTrust Group ID');
+		this.cookieyesRow = page.locator(selectors.cookieyesRow);
+		this.cookieyesCategory = page.getByLabel('CookieYes Category');
 		this.cookiebotRow = page.locator(selectors.cookiebotRow);
 		this.cookiebotCategory = page.getByLabel('Cookiebot Category');
 		this.iubendaRow = page.locator(selectors.iubendaRow);

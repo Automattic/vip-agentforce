@@ -14,7 +14,11 @@ declare global {
 			embedding?: {
 				bootstrapSrc?: string;
 			};
+			cookieyesCategory?: string;
 			prechatFields?: Record<string, unknown>;
+		};
+		getCkyConsent?: () => {
+			categories?: Record<string, boolean>;
 		};
 		initEmbeddedMessaging?: () => void;
 		embeddedservice_bootstrap?: {
@@ -48,6 +52,7 @@ test.describe('CMP Settings', () => {
 			await cmpSettings.setConsentType('OneTrust');
 
 			await expect(cmpSettings.onetrustRow).toBeVisible();
+			await expect(cmpSettings.cookieyesRow).toBeHidden();
 			await expect(cmpSettings.cookiebotRow).toBeHidden();
 			await expect(cmpSettings.iubendaRow).toBeHidden();
 
@@ -55,10 +60,32 @@ test.describe('CMP Settings', () => {
 			await cmpSettings.save();
 		});
 
+		await test.step('Save a CookieYes category value', async () => {
+			await cmpSettings.setConsentType('CookieYes');
+
+			await expect(cmpSettings.onetrustRow).toBeHidden();
+			await expect(cmpSettings.cookieyesRow).toBeVisible();
+			await expect(cmpSettings.cookiebotRow).toBeHidden();
+			await expect(cmpSettings.iubendaRow).toBeHidden();
+			await expect(cmpSettings.cookieyesCategory).toHaveValue(
+				'advertisement'
+			);
+
+			await cmpSettings.cookieyesCategory.selectOption('analytics');
+			await cmpSettings.save();
+
+			await expect(cmpSettings.consentType).toHaveValue('CookieYes');
+			await expect(cmpSettings.cookieyesRow).toBeVisible();
+			await expect(cmpSettings.cookieyesCategory).toHaveValue(
+				'analytics'
+			);
+		});
+
 		await test.step('Save a CookieBot value and clear inactive OneTrust value', async () => {
 			await cmpSettings.setConsentType('CookieBot');
 
 			await expect(cmpSettings.onetrustRow).toBeHidden();
+			await expect(cmpSettings.cookieyesRow).toBeHidden();
 			await expect(cmpSettings.cookiebotRow).toBeVisible();
 			await expect(cmpSettings.iubendaRow).toBeHidden();
 
@@ -75,14 +102,15 @@ test.describe('CMP Settings', () => {
 
 			await cmpSettings.setConsentType('OneTrust');
 			await expect(cmpSettings.onetrustRow).toBeVisible();
-			await expect(cmpSettings.onetrustGroupId).not.toHaveValue(
-				'C0099'
-			);
+			await expect(cmpSettings.onetrustGroupId).not.toHaveValue('C0099');
 		});
 
 		await test.step('Ignore draft provider values when saving a different consent type', async () => {
 			await cmpSettings.setConsentType('CookieBot');
 			await cmpSettings.cookiebotCategory.fill('preferences');
+
+			await cmpSettings.setConsentType('CookieYes');
+			await cmpSettings.cookieyesCategory.selectOption('functional');
 
 			await cmpSettings.setConsentType('Custom');
 			await cmpSettings.save();
@@ -93,6 +121,74 @@ test.describe('CMP Settings', () => {
 			await expect(cmpSettings.cookiebotCategory).not.toHaveValue(
 				'preferences'
 			);
+
+			await cmpSettings.setConsentType('CookieYes');
+			await expect(cmpSettings.cookieyesCategory).not.toHaveValue(
+				'functional'
+			);
+		});
+	});
+
+	test('CookieYes frontend gate uses the configured category', async ({
+		page,
+	}) => {
+		const cmpSettings = new CmpSettingsPage(page);
+		const bootstrapSrc = 'https://example.local/assets/js/bootstrap.min.js';
+
+		await page.addInitScript(() => {
+			window.getCkyConsent = () => ({
+				categories: {
+					advertisement: false,
+					analytics: true,
+				},
+			});
+		});
+
+		await test.step('Advertisement setting does not load for analytics-only consent', async () => {
+			await cmpSettings.visit();
+			await cmpSettings.setConsentType('CookieYes');
+			await cmpSettings.cookieyesCategory.selectOption('advertisement');
+			await cmpSettings.save();
+
+			await page.goto('/');
+			await page.waitForLoadState('domcontentloaded');
+
+			const state = await page.evaluate(() => ({
+				configuredCategory:
+					window.vipAgentforceConsentData?.cookieyesCategory,
+				hasScript: Boolean(document.getElementById('agentforce-sdk')),
+				consent: window.AFConsentGranted === true,
+			}));
+
+			expect(state.configuredCategory).toBe('advertisement');
+			expect(state.hasScript).toBe(false);
+			expect(state.consent).toBe(false);
+		});
+
+		await test.step('Analytics setting loads for analytics-only consent', async () => {
+			await cmpSettings.visit();
+			await cmpSettings.setConsentType('CookieYes');
+			await cmpSettings.cookieyesCategory.selectOption('analytics');
+			await cmpSettings.save();
+
+			await page.goto('/');
+
+			const state = await page.evaluate(() => {
+				const script = document.getElementById('agentforce-sdk');
+
+				return {
+					configuredCategory:
+						window.vipAgentforceConsentData?.cookieyesCategory,
+					hasScript: Boolean(script),
+					sdkSrc: script?.getAttribute('src') || '',
+					consent: window.AFConsentGranted === true,
+				};
+			});
+
+			expect(state.configuredCategory).toBe('analytics');
+			expect(state.hasScript).toBe(true);
+			expect(state.consent).toBe(true);
+			expect(state.sdkSrc).toContain(bootstrapSrc);
 		});
 	});
 

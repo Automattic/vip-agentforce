@@ -7,6 +7,9 @@ class Constants {
 	const SUPPORTED_CMPS  = array( 'CookieYes', 'CookieBot', 'OneTrust', 'iubenda', 'Custom' );
 	const DEFAULT_CMP     = 'Custom';
 
+	const COOKIEYES_CATEGORIES       = array( 'necessary', 'functional', 'analytics', 'performance', 'advertisement' );
+	const DEFAULT_COOKIEYES_CATEGORY = 'advertisement';
+
 	/**
 	 * Default OneTrust consent group ID
 	 */

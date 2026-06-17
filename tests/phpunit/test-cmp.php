@@ -74,6 +74,7 @@ HTML;
 	public function tearDown(): void {
 		delete_option( 'vip_agentforce_consent_type' );
 		delete_option( 'vip_agentforce_onetrust_group_id' );
+		delete_option( 'vip_agentforce_cookieyes_category' );
 		delete_option( 'vip_agentforce_cookiebot_category' );
 		delete_option( 'vip_agentforce_iubenda_category' );
 		delete_option( 'vip_agentforce_alignment' );
@@ -451,6 +452,44 @@ HTML;
 
 		$localized_data = wp_scripts()->get_data( 'vip-af-cookiebot-consent', 'data' );
 		$this->assertStringContainsString( '"cookiebotCategory":"' . Constants::DEFAULT_COOKIEBOT_CATEGORY . '"', $localized_data );
+	}
+
+	public function test_cookieyes_localization_uses_default_category(): void {
+		$this->prime_configs_cache(
+			[
+				'agentforce_js_sdk_activated' => true,
+				'agentforce_embedding_script' => $this->get_embedding_script_fixture(),
+			]
+		);
+
+		update_option( 'vip_agentforce_consent_type', 'CookieYes' );
+		delete_option( 'vip_agentforce_cookieyes_category' );
+
+		$this->reset_consent_script( 'vip-af-cookieyes-consent' );
+
+		Assets::get_instance()->enqueue_consent_scripts();
+
+		$localized_data = wp_scripts()->get_data( 'vip-af-cookieyes-consent', 'data' );
+		$this->assertStringContainsString( '"cookieyesCategory":"' . Constants::DEFAULT_COOKIEYES_CATEGORY . '"', $localized_data );
+	}
+
+	public function test_cookieyes_localization_falls_back_for_invalid_category(): void {
+		$this->prime_configs_cache(
+			[
+				'agentforce_js_sdk_activated' => true,
+				'agentforce_embedding_script' => $this->get_embedding_script_fixture(),
+			]
+		);
+
+		update_option( 'vip_agentforce_consent_type', 'CookieYes' );
+		update_option( 'vip_agentforce_cookieyes_category', 'invalid-category' );
+
+		$this->reset_consent_script( 'vip-af-cookieyes-consent' );
+
+		Assets::get_instance()->enqueue_consent_scripts();
+
+		$localized_data = wp_scripts()->get_data( 'vip-af-cookieyes-consent', 'data' );
+		$this->assertStringContainsString( '"cookieyesCategory":"' . Constants::DEFAULT_COOKIEYES_CATEGORY . '"', $localized_data );
 	}
 
 	public function test_iubenda_localization_uses_default_purpose_id(): void {

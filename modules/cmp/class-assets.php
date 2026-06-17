@@ -194,7 +194,10 @@ class Assets {
 		}
 
 		// we're late loading the options to make sure we load them only if needed.
-		if ( 'OneTrust' === $consent_type ) {
+		if ( 'CookieYes' === $consent_type ) {
+			$cookieyes_category                 = get_option( 'vip_agentforce_cookieyes_category', Constants::DEFAULT_COOKIEYES_CATEGORY );
+			$localize_data['cookieyesCategory'] = Settings_Page::get_instance()->validate_cookieyes_category( $cookieyes_category );
+		} elseif ( 'OneTrust' === $consent_type ) {
 			$onetrust_group_id        = get_option( 'vip_agentforce_onetrust_group_id', Constants::DEFAULT_ONETRUST_GROUP_ID );
 			$localize_data['groupId'] = $onetrust_group_id;
 		} elseif ( 'CookieBot' === $consent_type ) {
