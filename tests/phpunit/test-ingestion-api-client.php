@@ -682,6 +682,45 @@ class Ingestion_API_Client_Test extends WP_UnitTestCase {
 		$this->assertGreaterThan( $first_status['seconds_remaining'], $second_status['seconds_remaining'] );
 	}
 
+	public function test_retry_after_failure_count_is_scoped_to_same_retry_reason(): void {
+		wp_cache_set( 'vip_agentforce_rate_limit_blocked_until', microtime( true ) - 1, 'vip_agentforce', 300 );
+		wp_cache_set(
+			'vip_agentforce_ingestion_api_retry_state',
+			[
+				'blocked_until'        => microtime( true ) - 1,
+				'consecutive_failures' => 2,
+				'reason'               => 'http_error',
+				'last_error_at'        => gmdate( 'c' ),
+				'last_error_message'   => 'Connection failed',
+			],
+			'vip_agentforce',
+			DAY_IN_SECONDS
+		);
+
+		$this->mock_http_responses(
+			[
+				[
+					'response' => [
+						'code'    => 503,
+						'message' => 'Service Unavailable',
+					],
+					'headers'  => [
+						'retry-after' => '5',
+					],
+					'body'     => '',
+				],
+			]
+		);
+
+		$client = new Ingestion_API_Client();
+		$client->send( $this->create_test_record() );
+
+		$status = Ingestion_API_Client::get_retry_status();
+
+		$this->assertSame( 'transient_server_error', $status['reason'] );
+		$this->assertSame( 1, $status['consecutive_failures'] );
+	}
+
 	public function test_success_clears_retry_backoff_state(): void {
 		wp_cache_set( 'vip_agentforce_rate_limit_blocked_until', microtime( true ) - 1, 'vip_agentforce', 300 );
 		wp_cache_set(

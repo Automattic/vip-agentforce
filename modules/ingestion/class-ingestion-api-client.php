@@ -616,8 +616,7 @@ class Ingestion_API_Client {
 		if ( $retry_after > 0 ) {
 			// Salesforce gave an explicit retry window. Use it as the source of
 			// truth, but keep the failure count so diagnostics still show trend.
-			$state                = self::get_retry_state();
-			$consecutive_failures = (int) ( $state['consecutive_failures'] ?? 0 ) + 1;
+			$consecutive_failures = $this->get_consecutive_failures_for_reason( $reason ) + 1;
 			$this->set_retry_block( $retry_after, $reason, $status_code, $error_message, $consecutive_failures );
 		} else {
 			// No Retry-After means we own the pacing. Use bounded exponential
