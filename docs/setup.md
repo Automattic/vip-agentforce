@@ -48,7 +48,21 @@ define( 'VIP_AGENTFORCE_DEVELOPER_MODE', true );
 define( 'VIP_AGENTFORCE_MOCK_INGESTION_API', true );
 ```
 
-This intercepts all ingestion API calls and returns mock success responses, logging request details via `error_log()`.
+This intercepts all ingestion API calls and returns mock responses, logging request details in WP-CLI output.
+The default response is `202 Accepted`. To test failure paths without replacing the mock, set the ingestion API token
+to one of these local-only values:
+
+```php
+'ingestion_api_token' => 'mock:401',            // Unauthorized
+'ingestion_api_token' => 'mock:403',            // Forbidden
+'ingestion_api_token' => 'mock:429',            // Rate limited with Retry-After
+'ingestion_api_token' => 'mock:500',            // Server error
+'ingestion_api_token' => 'mock:network',        // WP_Error transport failure
+'ingestion_api_token' => 'mock:rotate-recover', // First request 401, then local token option rotates to mock:202
+```
+
+The mock also accepts `vip_agentforce_mock_scenario` from request query/body params and records local calls in
+the `vip_agentforce_mock_ingestion_requests` option for inspection.
 
 ## End-to-End Tests
 

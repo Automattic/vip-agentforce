@@ -579,19 +579,39 @@ class Ingestion_CLI_Test extends WP_UnitTestCase {
 		$this->assertCount( 0, $this->get_ingestion_requests() );
 	}
 
-	public function test_cli_sync_blocks_when_already_running(): void {
+	public function test_cli_sync_preserves_running_progress(): void {
 		$this->setup_ingestion_filters();
 		$this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
 
 		// Simulate running sync.
 		Ingestion_Sync_Progress::start( 100, [ 'post' ] );
+		$old_sync_id = Ingestion_Sync_Progress::get()['sync_id'];
 
 		$this->run_cli_sync();
 
-		// Should not overwrite existing progress.
-		$this->assertEquals( 100, Ingestion_Sync_Progress::get()['total'] );
+		$progress = Ingestion_Sync_Progress::get();
 
-		// No new API calls.
+		$this->assertSame( Ingestion_Sync_Progress::STATUS_RUNNING, $progress['status'] );
+		$this->assertSame( 100, $progress['total'] );
+		$this->assertSame( $old_sync_id, $progress['sync_id'] );
+		$this->assertCount( 0, $this->get_ingestion_requests() );
+	}
+
+	public function test_cli_sync_restarts_after_failed_progress(): void {
+		$this->setup_ingestion_filters();
+		$this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
+
+		Ingestion_Sync_Progress::start( 100, [ 'post' ] );
+		Ingestion_Sync_Progress::fail( 'Previous sync failed' );
+		$old_sync_id = Ingestion_Sync_Progress::get()['sync_id'];
+
+		$this->run_cli_sync();
+
+		$progress = Ingestion_Sync_Progress::get();
+
+		$this->assertSame( Ingestion_Sync_Progress::STATUS_RUNNING, $progress['status'] );
+		$this->assertSame( 1, $progress['total'] );
+		$this->assertNotSame( $old_sync_id, $progress['sync_id'] );
 		$this->assertCount( 0, $this->get_ingestion_requests() );
 	}
 
@@ -890,19 +910,56 @@ class Ingestion_CLI_Test extends WP_UnitTestCase {
 		$this->assertArrayHasKey( 'post_types', $data );
 	}
 
-	public function test_cli_sync_start_json_already_running(): void {
+	public function test_cli_sync_start_json_preserves_running_progress(): void {
 		$this->setup_ingestion_filters();
+		$this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
 		Ingestion_Sync_Progress::start( 100, [ 'post' ] );
+		$old_sync_id = Ingestion_Sync_Progress::get()['sync_id'];
+
+		$output   = $this->run_cli_sync( [ 'format' => 'json' ] );
+		$data     = json_decode( $output, true );
+		$progress = Ingestion_Sync_Progress::get();
+
+		$this->assertNotNull( $data, 'Output should be valid JSON.' );
+		$this->assertFalse( $data['success'] );
+		$this->assertSame( 'sync_in_progress', $data['error_code'] );
+		$this->assertSame( 'running', $data['status'] );
+		$this->assertSame( 100, $progress['total'] );
+		$this->assertSame( $old_sync_id, $progress['sync_id'] );
+	}
+
+	public function test_cli_sync_start_json_restarts_after_failed_progress(): void {
+		$this->setup_ingestion_filters();
+		$this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
+		Ingestion_Sync_Progress::start( 100, [ 'post' ] );
+		Ingestion_Sync_Progress::fail( 'Previous sync failed' );
+		$old_sync_id = Ingestion_Sync_Progress::get()['sync_id'];
+
+		$output   = $this->run_cli_sync( [ 'format' => 'json' ] );
+		$data     = json_decode( $output, true );
+		$progress = Ingestion_Sync_Progress::get();
+
+		$this->assertNotNull( $data, 'Output should be valid JSON.' );
+		$this->assertTrue( $data['success'] );
+		$this->assertSame( 'running', $data['status'] );
+		$this->assertSame( 1, $data['total'] );
+		$this->assertNotSame( $old_sync_id, $progress['sync_id'] );
+	}
+
+	public function test_cli_sync_start_json_preserves_existing_progress_when_preflight_fails(): void {
+		$this->setup_ingestion_filters();
+		$this->prime_configs_cache( [] );
+		$this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
+		Ingestion_Sync_Progress::start( 100, [ 'post' ] );
+		$old_progress = Ingestion_Sync_Progress::get();
 
 		$output = $this->run_cli_sync( [ 'format' => 'json' ] );
 		$data   = json_decode( $output, true );
 
 		$this->assertNotNull( $data, 'Output should be valid JSON.' );
 		$this->assertFalse( $data['success'] );
-		$this->assertSame( 'running', $data['status'] );
-		$this->assertSame( 'sync_in_progress', $data['error_code'] );
-		$this->assertStringNotContainsString( 'vip_agentforce', $data['message'] );
-		$this->assertStringContainsString( 'already in progress', $data['detail'] );
+		$this->assertSame( 'missing_api_config', $data['error_code'] );
+		$this->assertSame( $old_progress, Ingestion_Sync_Progress::get() );
 	}
 
 	public function test_cli_sync_start_json_no_published_posts(): void {

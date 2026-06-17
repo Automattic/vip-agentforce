@@ -52,6 +52,7 @@ class Ingestion_Cron_Test extends WP_UnitTestCase {
 		remove_all_filters( 'vip_agentforce_should_ingest_post' );
 		remove_all_filters( 'vip_agentforce_transform_post' );
 		remove_all_filters( 'vip_agentforce_ingestion_log_verbosity' );
+		remove_all_filters( 'vip_agentforce_config' );
 		remove_all_filters( 'pre_http_request' );
 		remove_all_filters( 'cron_schedules' );
 		remove_all_actions( Ingestion_Cron::CRON_HOOK );
@@ -620,6 +621,17 @@ class Ingestion_Cron_Test extends WP_UnitTestCase {
 		Testable_Logger::clear_entries();
 		update_option( 'vip_agentforce_ingestion_log_verbosity', 'normal', false );
 		$this->setup_ingestion_filters();
+		add_filter(
+			'vip_agentforce_config',
+			function () {
+				return [
+					'ingestion_api_instance_url' => 'https://test.salesforce.com',
+					'ingestion_api_token'        => 'test-token',
+					'ingestion_api_source_name'  => 'test-source',
+					'ingestion_api_object_name'  => 'test-object',
+				];
+			}
+		);
 
 		add_filter(
 			'pre_http_request',
@@ -650,12 +662,28 @@ class Ingestion_Cron_Test extends WP_UnitTestCase {
 		$this->factory()->post->create_many( 3, [ 'post_status' => 'publish' ] );
 		Ingestion_Sync_Progress::start( 3, [ 'post' ] );
 
+		$results = Ingestion_Cron::process_queue( 10 );
+
+		$this->assertSame( 0, $results['failed'] );
+		$this->assertCount( 1, $this->captured_requests, 'First 401 should refresh config and defer via shared backoff.' );
+		$this->assertTrue( Ingestion_API_Client::get_retry_status()['active'] );
+
+		wp_cache_set( 'vip_agentforce_rate_limit_blocked_until', microtime( true ) - 1, 'vip_agentforce', 300 );
+
+		$results = Ingestion_Cron::process_queue( 10 );
+
+		$this->assertSame( 0, $results['failed'] );
+		$this->assertCount( 2, $this->captured_requests, 'Second 401 should use the first deferred retry and defer once more.' );
+		$this->assertTrue( Ingestion_API_Client::get_retry_status()['active'] );
+
+		wp_cache_set( 'vip_agentforce_rate_limit_blocked_until', microtime( true ) - 1, 'vip_agentforce', 300 );
+
 		$results  = Ingestion_Cron::process_queue( 10 );
 		$entries  = Testable_Logger::get_entries();
 		$messages = array_column( $entries, 'message' );
 
 		$this->assertSame( 1, $results['failed'] );
-		$this->assertCount( 1, $this->captured_requests, 'Bulk sync should stop after the first global auth failure.' );
+		$this->assertCount( 3, $this->captured_requests, 'Bulk sync should stop after deferred auth retries are exhausted.' );
 		$this->assertSame( 0, count( array_keys( $messages, 'Bulk sync: failed to sync post', true ) ) );
 		$this->assertSame( 1, count( array_keys( $messages, 'Bulk sync encountered first failure', true ) ) );
 		$this->assertSame( 1, count( array_keys( $messages, 'Bulk sync batch completed with failures', true ) ) );
@@ -690,6 +718,83 @@ class Ingestion_Cron_Test extends WP_UnitTestCase {
 		$progress = Ingestion_Sync_Progress::get();
 		$this->assertSame( Ingestion_Sync_Progress::STATUS_FAILED, $progress['status'] );
 		$this->assertStringContainsString( 'global auth error', $progress['error'] );
+		$this->assertSame( 1, $progress['processed'] );
+	}
+
+	public function test_bulk_sync_recovers_when_401_refreshes_to_rotated_token(): void {
+		$this->setup_ingestion_filters();
+
+		add_filter(
+			'vip_agentforce_config',
+			function () {
+				return [
+					'ingestion_api_instance_url' => 'https://test.salesforce.com',
+					'ingestion_api_token'        => 'rotated-token',
+					'ingestion_api_source_name'  => 'test-source',
+					'ingestion_api_object_name'  => 'test-object',
+				];
+			}
+		);
+
+		add_filter(
+			'pre_http_request',
+			function ( $preempt, $args, $url ) {
+				if ( strpos( $url, 'test.salesforce.com' ) === false ) {
+					return $preempt;
+				}
+
+				$this->captured_requests[] = [
+					'url'    => $url,
+					'method' => $args['method'] ?? 'GET',
+					'body'   => $args['body'] ?? '',
+				];
+
+				if ( 1 === count( $this->captured_requests ) ) {
+					return [
+						'response' => [
+							'code'    => 401,
+							'message' => 'Unauthorized',
+						],
+						'headers'  => [],
+						'body'     => '',
+					];
+				}
+
+				return [
+					'response' => [
+						'code'    => 202,
+						'message' => 'Accepted',
+					],
+					'headers'  => [],
+					'body'     => '',
+				];
+			},
+			10,
+			3
+		);
+
+		$this->factory()->post->create_many( 1, [ 'post_status' => 'publish' ] );
+		Ingestion_Sync_Progress::start( 1, [ 'post' ] );
+
+		$results  = Ingestion_Cron::process_queue( 10 );
+		$progress = Ingestion_Sync_Progress::get();
+
+		$this->assertSame( 0, $results['synced'] );
+		$this->assertSame( 0, $results['failed'] );
+		$this->assertCount( 1, $this->captured_requests );
+		$this->assertSame( Ingestion_Sync_Progress::STATUS_RUNNING, $progress['status'] );
+		$this->assertSame( 0, $progress['processed'] );
+		$this->assertTrue( Ingestion_API_Client::get_retry_status()['active'] );
+
+		wp_cache_set( 'vip_agentforce_rate_limit_blocked_until', microtime( true ) - 1, 'vip_agentforce', 300 );
+
+		$results  = Ingestion_Cron::process_queue( 10 );
+		$progress = Ingestion_Sync_Progress::get();
+
+		$this->assertSame( 1, $results['synced'] );
+		$this->assertSame( 0, $results['failed'] );
+		$this->assertCount( 2, $this->captured_requests );
+		$this->assertSame( Ingestion_Sync_Progress::STATUS_COMPLETED, $progress['status'] );
 		$this->assertSame( 1, $progress['processed'] );
 	}
 
@@ -1065,7 +1170,7 @@ class Ingestion_Cron_Test extends WP_UnitTestCase {
 	}
 
 	public function test_permanent_sync_failure_dequeues_immediately_and_fires_event(): void {
-		// 4xx (other than 408/429) is permanent — no retry, fire event now.
+		// 4xx (other than 401/408/429) is permanent — no retry, fire event now.
 		add_filter(
 			'pre_http_request',
 			function ( $preempt, $args, $url ) {
@@ -1074,8 +1179,8 @@ class Ingestion_Cron_Test extends WP_UnitTestCase {
 				}
 				return [
 					'response' => [
-						'code'    => 401,
-						'message' => 'Unauthorized',
+						'code'    => 403,
+						'message' => 'Forbidden',
 					],
 					'headers'  => [],
 					'body'     => '',

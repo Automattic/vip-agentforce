@@ -205,13 +205,19 @@ enabled. The fixture must include the four ingestion API fields and either
 `ingestion_api_sync_all_posts` or `ingestion_api_categories`, otherwise the sync
 preflight should fail closed.
 
+The built-in mock returns `202` by default. To exercise specific failure paths
+without replacing the mock, use a local-only token value such as `mock:401`,
+`mock:403`, `mock:429`, `mock:500`, `mock:network`, or `mock:rotate-recover`.
+The mock also accepts `vip_agentforce_mock_scenario` from request query/body
+params and records intercepted calls in `vip_agentforce_mock_ingestion_requests`.
+
 ```bash
-vip dev-env exec --slug=vip-agentforce -- wp vip-agentforce ingestion sync --preflight-check --format=json
-vip dev-env exec --slug=vip-agentforce -- wp post create --post_title="Agentforce Local Smoke" --post_status=publish
-vip dev-env exec --slug=vip-agentforce -- wp vip-agentforce ingestion sync --reset
-vip dev-env exec --slug=vip-agentforce -- wp vip-agentforce ingestion sync
-vip dev-env exec --slug=vip-agentforce -- wp vip-agentforce ingestion process-queue --all
-vip dev-env exec --slug=vip-agentforce -- wp vip-agentforce ingestion sync --status
+vip dev-env exec -- wp vip-agentforce ingestion sync --preflight-check --format=json
+vip dev-env exec -- wp post create --post_title="Agentforce Local Smoke" --post_status=publish
+vip dev-env exec -- wp vip-agentforce ingestion sync --reset
+vip dev-env exec -- wp vip-agentforce ingestion sync
+vip dev-env exec -- wp vip-agentforce ingestion process-queue --all
+vip dev-env exec -- wp vip-agentforce ingestion sync --status
 ```
 
 Expected: preflight reports `ready: true`, queue processing prints mock API

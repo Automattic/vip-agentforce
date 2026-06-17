@@ -4,6 +4,8 @@ use Automattic\VIP\Salesforce\Agentforce\Utils\Configs;
 
 class ClassConfigsTest extends WP_UnitTestCase {
 	public function tearDown(): void {
+		remove_all_filters( 'vip_agentforce_config' );
+		remove_all_filters( 'vip_integrations_pre_load_config' );
 		Configs::flush_cache();
 		parent::tearDown();
 	}
@@ -174,6 +176,62 @@ class ClassConfigsTest extends WP_UnitTestCase {
 
 		$this->assertTrue( Configs::has_valid_ingestion_token() );
 		$this->assertNull( Configs::get_ingestion_token_failure() );
+	}
+
+	public function test_refresh_config_reloads_filtered_config_and_token_status(): void {
+		$this->prime_configs_cache(
+			[
+				'ingestion_api_token'            => 'expired-token',
+				'ingestion_api_token_expires_at' => time() - HOUR_IN_SECONDS,
+			]
+		);
+
+		add_filter(
+			'vip_agentforce_config',
+			function () {
+				return [
+					'ingestion_api_token'            => 'fresh-token',
+					'ingestion_api_token_expires_at' => time() + HOUR_IN_SECONDS,
+				];
+			}
+		);
+
+		$config = Configs::refresh_config();
+
+		$this->assertSame( 'fresh-token', $config['ingestion_api_token'] );
+		$this->assertTrue( Configs::has_valid_ingestion_token() );
+		$this->assertNull( Configs::get_ingestion_token_failure() );
+	}
+
+	public function test_refresh_config_uses_platform_integration_config_when_available(): void {
+		if ( ! class_exists( '\\Automattic\\VIP\\Integrations\\IntegrationVipConfig' ) ) {
+			require_once dirname( __DIR__, 2 ) . '/mu-plugins/integrations/integration-vip-config.php';
+		}
+
+		add_filter(
+			'vip_integrations_pre_load_config',
+			function ( $config_data, $_config_file_path, $slug ) {
+				if ( 'agentforce' !== $slug ) {
+					return $config_data;
+				}
+
+				return [
+					'env' => [
+						'config' => [
+							'ingestion_api_token'       => 'platform-token',
+							'ingestion_api_source_name' => 'platform-source',
+						],
+					],
+				];
+			},
+			10,
+			3
+		);
+
+		$config = Configs::refresh_config();
+
+		$this->assertSame( 'platform-token', $config['ingestion_api_token'] );
+		$this->assertSame( 'platform-source', $config['ingestion_api_source_name'] );
 	}
 
 	public function test_get_site_key_returns_empty_when_missing(): void {
