@@ -25,10 +25,17 @@ type ConsentType =
 	| 'iubenda'
 	| 'Custom';
 type Alignment = 'bottom-right' | 'bottom-left';
+type CookieYesCategory =
+	| 'necessary'
+	| 'functional'
+	| 'analytics'
+	| 'performance'
+	| 'advertisement';
 
 interface SettingsValues {
 	consentType: ConsentType;
 	oneTrustGroupId: string;
+	cookieyesCategory: CookieYesCategory;
 	cookiebotCategory: string;
 	iubendaPurposeId: string;
 	alignment: Alignment;
@@ -58,12 +65,24 @@ const CONSENT_OPTIONS = [
 	'Custom',
 ] satisfies ConsentType[];
 
+const COOKIEYES_CATEGORY_OPTIONS = [
+	{ label: __('Necessary', 'vip-agentforce'), value: 'necessary' },
+	{ label: __('Functional', 'vip-agentforce'), value: 'functional' },
+	{ label: __('Analytics', 'vip-agentforce'), value: 'analytics' },
+	{ label: __('Performance', 'vip-agentforce'), value: 'performance' },
+	{ label: __('Advertisement', 'vip-agentforce'), value: 'advertisement' },
+] satisfies { label: string; value: CookieYesCategory }[];
+
 function isConsentType(value: string): value is ConsentType {
 	return CONSENT_OPTIONS.some((option) => option === value);
 }
 
 function isAlignment(value: string): value is Alignment {
 	return value === 'bottom-right' || value === 'bottom-left';
+}
+
+function isCookieYesCategory(value: string): value is CookieYesCategory {
+	return COOKIEYES_CATEGORY_OPTIONS.some((option) => option.value === value);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -79,6 +98,8 @@ function isSettingsValues(value: unknown): value is SettingsValues {
 		typeof value.consentType === 'string' &&
 		isConsentType(value.consentType) &&
 		typeof value.oneTrustGroupId === 'string' &&
+		typeof value.cookieyesCategory === 'string' &&
+		isCookieYesCategory(value.cookieyesCategory) &&
 		typeof value.cookiebotCategory === 'string' &&
 		typeof value.iubendaPurposeId === 'string' &&
 		typeof value.alignment === 'string' &&
@@ -134,6 +155,9 @@ function AgentforceSettingsApp({ settings }: { settings: SettingsData }) {
 	const [oneTrustGroupId, setOneTrustGroupId] = useState(
 		values.oneTrustGroupId
 	);
+	const [cookieyesCategory, setCookieYesCategory] = useState(
+		values.cookieyesCategory
+	);
 	const [cookiebotCategory, setCookiebotCategory] = useState(
 		values.cookiebotCategory
 	);
@@ -143,6 +167,7 @@ function AgentforceSettingsApp({ settings }: { settings: SettingsData }) {
 	const [alignment, setAlignment] = useState(values.alignment);
 	const [customCss, setCustomCss] = useState(values.customCss);
 	const shouldShowOneTrust = consentType === 'OneTrust';
+	const shouldShowCookieYes = consentType === 'CookieYes';
 	const shouldShowCookiebot = consentType === 'CookieBot';
 	const shouldShowIubenda = consentType === 'iubenda';
 	const shouldShowCustom = consentType === 'Custom';
@@ -161,6 +186,11 @@ function AgentforceSettingsApp({ settings }: { settings: SettingsData }) {
 	const handleAlignmentChange = (value: string) => {
 		if (isAlignment(value)) {
 			setAlignment(value);
+		}
+	};
+	const handleCookieYesCategoryChange = (value: string) => {
+		if (isCookieYesCategory(value)) {
+			setCookieYesCategory(value);
 		}
 	};
 
@@ -231,6 +261,30 @@ function AgentforceSettingsApp({ settings }: { settings: SettingsData }) {
 								<HiddenField
 									name="vip_agentforce_onetrust_group_id"
 									value={oneTrustGroupId}
+								/>
+							</div>
+						)}
+
+						{shouldShowCookieYes && (
+							<div id="row_cookieyes">
+								<SelectControl
+									__next40pxDefaultSize
+									__nextHasNoMarginBottom
+									help={__(
+										'Choose the CookieYes category that must be granted before Agentforce loads.',
+										'vip-agentforce'
+									)}
+									label={__(
+										'CookieYes Category',
+										'vip-agentforce'
+									)}
+									options={COOKIEYES_CATEGORY_OPTIONS}
+									value={cookieyesCategory}
+									onChange={handleCookieYesCategoryChange}
+								/>
+								<HiddenField
+									name="vip_agentforce_cookieyes_category"
+									value={cookieyesCategory}
 								/>
 							</div>
 						)}
