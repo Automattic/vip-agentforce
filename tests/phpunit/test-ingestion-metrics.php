@@ -51,8 +51,7 @@ class Ingestion_Metrics_Test extends WP_UnitTestCase {
 		$this->set_metric_property( 'posts_counter', $this->posts_counter );
 		$this->set_metric_property( 'api_requests_counter', $this->api_requests_counter );
 		$this->set_counter_storage_is_persistent( false );
-		delete_option( 'vip_agentforce_ingestion_metric_counter_samples' );
-		delete_option( 'vip_agentforce_ingestion_metric_counter_replay_lock' );
+		$this->clear_pending_counter_samples();
 
 		$this->prime_configs_cache(
 			[
@@ -71,8 +70,7 @@ class Ingestion_Metrics_Test extends WP_UnitTestCase {
 		remove_all_filters( 'vip_agentforce_api_auth_retry_count' );
 		Configs::flush_cache();
 		delete_option( Ingestion_Queue::OPTION_DELETE_QUEUE );
-		delete_option( 'vip_agentforce_ingestion_metric_counter_samples' );
-		delete_option( 'vip_agentforce_ingestion_metric_counter_replay_lock' );
+		$this->clear_pending_counter_samples();
 		Ingestion_Sync_Progress::reset();
 		wp_cache_delete( 'vip_agentforce_rate_limit_blocked_until', 'vip_agentforce' );
 		Testable_Logger::clear_entries();
@@ -88,11 +86,30 @@ class Ingestion_Metrics_Test extends WP_UnitTestCase {
 		Ingestion_Metrics::collect_counters();
 	}
 
+	private function clear_pending_counter_samples(): void {
+		wp_cache_delete( 'ingestion_metric_counter_samples', 'vip_agentforce' );
+		wp_cache_delete( 'vip_agentforce_ingestion_metric_counter_replay_lock', 'vip_agentforce' );
+	}
+
+	/**
+	 * @return mixed
+	 */
+	private function get_pending_counter_samples() {
+		$found   = false;
+		$samples = wp_cache_get( 'ingestion_metric_counter_samples', 'vip_agentforce', false, $found );
+
+		return $found ? $samples : false;
+	}
+
 	/**
 	 * @param mixed $samples
 	 */
 	private function update_pending_counter_samples( $samples ): void {
-		update_option( 'vip_agentforce_ingestion_metric_counter_samples', $samples, false );
+		wp_cache_set( 'ingestion_metric_counter_samples', $samples, 'vip_agentforce' );
+	}
+
+	private function update_counter_replay_lock( int $expires_at ): void {
+		wp_cache_set( 'vip_agentforce_ingestion_metric_counter_replay_lock', $expires_at, 'vip_agentforce' );
 	}
 
 	private function set_metric_property( string $property, ?Fake_Ingestion_Metric $value ): void {
@@ -189,7 +206,7 @@ class Ingestion_Metrics_Test extends WP_UnitTestCase {
 		Ingestion_Metrics::record_api_request( 'POST', '202', 'success' );
 
 		$this->assertIsArray(
-			get_option( 'vip_agentforce_ingestion_metric_counter_samples' ),
+			$this->get_pending_counter_samples(),
 			'In-memory Prometheus storage should buffer counter samples until collection.'
 		);
 
@@ -376,7 +393,7 @@ class Ingestion_Metrics_Test extends WP_UnitTestCase {
 		$this->assertSame( 2, $this->api_requests_counter->get_sample( [ 'POST', '202', 'success' ] ) );
 		$this->assertSame( 1, $this->api_errors_counter->get_sample( [ 'server' ] ) );
 		$this->assertSame( 1, $this->posts_counter->get_sample( [ 'ingested', 'bulk' ] ) );
-		$this->assertFalse( get_option( 'vip_agentforce_ingestion_metric_counter_samples' ) );
+		$this->assertFalse( $this->get_pending_counter_samples() );
 
 		$this->collect_counter_metrics();
 
@@ -416,7 +433,7 @@ class Ingestion_Metrics_Test extends WP_UnitTestCase {
 					],
 				],
 			],
-			get_option( 'vip_agentforce_ingestion_metric_counter_samples' ),
+			$this->get_pending_counter_samples(),
 			'Unavailable known counters should remain buffered for a later scrape.'
 		);
 	}
@@ -468,11 +485,11 @@ class Ingestion_Metrics_Test extends WP_UnitTestCase {
 		$this->assertSame( 2, $this->api_requests_counter->get_sample( [ 'POST', '202', 'success' ] ) );
 		$this->assertNull( $this->api_requests_counter->get_sample( [ 'POST', '500', 'server_error' ] ) );
 		$this->assertNull( $this->api_requests_counter->get_sample( [ 'POST', '401', 'auth_error' ] ) );
-		$this->assertFalse( get_option( 'vip_agentforce_ingestion_metric_counter_samples' ) );
+		$this->assertFalse( $this->get_pending_counter_samples() );
 	}
 
 	public function test_counter_collection_skips_replay_while_another_collector_holds_the_lock(): void {
-		update_option( 'vip_agentforce_ingestion_metric_counter_replay_lock', time() + MINUTE_IN_SECONDS, false );
+		$this->update_counter_replay_lock( time() + MINUTE_IN_SECONDS );
 		$this->update_pending_counter_samples(
 			[
 				'api_requests' => [
@@ -487,16 +504,16 @@ class Ingestion_Metrics_Test extends WP_UnitTestCase {
 		$this->collect_counter_metrics();
 
 		$this->assertNull( $this->api_requests_counter->get_sample( [ 'POST', '202', 'success' ] ) );
-		$this->assertIsArray( get_option( 'vip_agentforce_ingestion_metric_counter_samples' ) );
+		$this->assertIsArray( $this->get_pending_counter_samples() );
 	}
 
 	public function test_counter_recording_recovers_expired_lock_before_buffering(): void {
 		$this->set_metric_property( 'api_requests_counter', null );
-		update_option( 'vip_agentforce_ingestion_metric_counter_replay_lock', time() - MINUTE_IN_SECONDS, false );
+		$this->update_counter_replay_lock( time() - MINUTE_IN_SECONDS );
 
 		Ingestion_Metrics::record_api_request( 'POST', '202', 'success' );
 
-		$samples = get_option( 'vip_agentforce_ingestion_metric_counter_samples' );
+		$samples = $this->get_pending_counter_samples();
 
 		$this->assertIsArray( $samples );
 		$this->assertSame(
@@ -517,7 +534,7 @@ class Ingestion_Metrics_Test extends WP_UnitTestCase {
 		$this->assertSame( 1, $this->api_requests_counter->get_sample( [ 'POST', '202', 'success' ] ) );
 		$this->assertSame( 1, $this->api_requests_counter->get_sample( [ 'POST', 'none', 'success' ] ) );
 		$this->assertNull( $this->api_requests_counter->get_sample( [ 'POST', 'garbage', 'success' ] ) );
-		$this->assertFalse( get_option( 'vip_agentforce_ingestion_metric_counter_samples' ) );
+		$this->assertFalse( $this->get_pending_counter_samples() );
 	}
 
 	public function test_record_stats_logs_without_sending_pixel_in_test_environment(): void {

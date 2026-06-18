@@ -12,13 +12,14 @@ use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_Sync_Progress;
 use Prometheus\RegistryInterface;
 
 class Ingestion_Metrics {
-	private const NAMESPACE              = 'vip_agentforce';
-	private const COUNTER_SAMPLES_OPTION = 'vip_agentforce_ingestion_metric_counter_samples';
-	private const COUNTER_REPLAY_LOCK    = 'vip_agentforce_ingestion_metric_counter_replay_lock';
-	private const COUNTER_LOCK_TTL       = 10;
-	private const COUNTER_API_ERRORS     = 'api_errors';
-	private const COUNTER_POSTS          = 'posts';
-	private const COUNTER_API_REQUESTS   = 'api_requests';
+	private const NAMESPACE            = 'vip_agentforce';
+	private const CACHE_GROUP          = 'vip_agentforce';
+	private const COUNTER_SAMPLES_KEY  = 'ingestion_metric_counter_samples';
+	private const COUNTER_REPLAY_LOCK  = 'vip_agentforce_ingestion_metric_counter_replay_lock';
+	private const COUNTER_LOCK_TTL     = 10;
+	private const COUNTER_API_ERRORS   = 'api_errors';
+	private const COUNTER_POSTS        = 'posts';
+	private const COUNTER_API_REQUESTS = 'api_requests';
 
 	/** @var \Prometheus\Gauge|null */
 	private static $queue_pending_gauge;
@@ -147,9 +148,9 @@ class Ingestion_Metrics {
 				return;
 			}
 
-			delete_option( self::COUNTER_SAMPLES_OPTION );
+			wp_cache_delete( self::COUNTER_SAMPLES_KEY, self::CACHE_GROUP );
 		} finally {
-			delete_option( self::COUNTER_REPLAY_LOCK );
+			wp_cache_delete( self::COUNTER_REPLAY_LOCK, self::CACHE_GROUP );
 		}
 
 		$remaining_samples = [];
@@ -268,9 +269,9 @@ class Ingestion_Metrics {
 			];
 			$samples[ $counter_type ] = $counter_samples;
 
-			update_option( self::COUNTER_SAMPLES_OPTION, $samples, false );
+			wp_cache_set( self::COUNTER_SAMPLES_KEY, $samples, self::CACHE_GROUP );
 		} finally {
-			delete_option( self::COUNTER_REPLAY_LOCK );
+			wp_cache_delete( self::COUNTER_REPLAY_LOCK, self::CACHE_GROUP );
 		}
 	}
 
@@ -278,9 +279,10 @@ class Ingestion_Metrics {
 	 * @return array<string, array<string, mixed>>
 	 */
 	private static function get_pending_counter_samples(): array {
-		$samples = get_option( self::COUNTER_SAMPLES_OPTION, [] );
+		$found   = false;
+		$samples = wp_cache_get( self::COUNTER_SAMPLES_KEY, self::CACHE_GROUP, false, $found );
 
-		return is_array( $samples ) ? $samples : [];
+		return $found && is_array( $samples ) ? $samples : [];
 	}
 
 	/**
@@ -308,9 +310,9 @@ class Ingestion_Metrics {
 				}
 			}
 
-			update_option( self::COUNTER_SAMPLES_OPTION, $pending_samples, false );
+			wp_cache_set( self::COUNTER_SAMPLES_KEY, $pending_samples, self::CACHE_GROUP );
 		} finally {
-			delete_option( self::COUNTER_REPLAY_LOCK );
+			wp_cache_delete( self::COUNTER_REPLAY_LOCK, self::CACHE_GROUP );
 		}
 	}
 
@@ -380,13 +382,13 @@ class Ingestion_Metrics {
 		$deadline = microtime( true ) + self::COUNTER_LOCK_TTL;
 		do {
 			$lock_expires_at = time() + self::COUNTER_LOCK_TTL;
-			if ( add_option( self::COUNTER_REPLAY_LOCK, $lock_expires_at, '', false ) ) {
+			if ( wp_cache_add( self::COUNTER_REPLAY_LOCK, $lock_expires_at, self::CACHE_GROUP ) ) {
 				return true;
 			}
 
-			$current_lock_expires_at = (int) get_option( self::COUNTER_REPLAY_LOCK, 0 );
+			$current_lock_expires_at = (int) wp_cache_get( self::COUNTER_REPLAY_LOCK, self::CACHE_GROUP );
 			if ( $current_lock_expires_at <= time() ) {
-				delete_option( self::COUNTER_REPLAY_LOCK );
+				wp_cache_delete( self::COUNTER_REPLAY_LOCK, self::CACHE_GROUP );
 				continue;
 			}
 

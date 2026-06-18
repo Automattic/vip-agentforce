@@ -51,8 +51,7 @@ class Ingestion_CLI_Test extends WP_UnitTestCase {
 		$this->captured_requests  = [];
 		$this->api_errors_counter = new Fake_Ingestion_Metric();
 		$this->set_metric_property( 'api_errors_counter', $this->api_errors_counter );
-		delete_option( 'vip_agentforce_ingestion_metric_counter_samples' );
-		delete_option( 'vip_agentforce_ingestion_metric_counter_replay_lock' );
+		$this->clear_pending_counter_samples();
 
 		// Initialize cron hooks (registers the custom schedule needed by schedule_processing).
 		Ingestion_Cron::init();
@@ -108,8 +107,7 @@ class Ingestion_CLI_Test extends WP_UnitTestCase {
 		remove_all_actions( Ingestion_Cron::CRON_HOOK );
 		$this->captured_requests = [];
 		$this->set_metric_property( 'api_errors_counter', null );
-		delete_option( 'vip_agentforce_ingestion_metric_counter_samples' );
-		delete_option( 'vip_agentforce_ingestion_metric_counter_replay_lock' );
+		$this->clear_pending_counter_samples();
 		Ingestion_Sync_Progress::reset();
 		Ingestion_Cron::unschedule_processing();
 		Ingestion_API_Client::clear_retry_status();
@@ -124,6 +122,11 @@ class Ingestion_CLI_Test extends WP_UnitTestCase {
 
 	private function collect_counter_metrics(): void {
 		Ingestion_Metrics::collect_counters();
+	}
+
+	private function clear_pending_counter_samples(): void {
+		wp_cache_delete( 'ingestion_metric_counter_samples', 'vip_agentforce' );
+		wp_cache_delete( 'vip_agentforce_ingestion_metric_counter_replay_lock', 'vip_agentforce' );
 	}
 
 	/**
