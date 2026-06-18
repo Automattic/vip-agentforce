@@ -133,7 +133,8 @@ test.describe('CMP Settings', () => {
 		page,
 	}) => {
 		const cmpSettings = new CmpSettingsPage(page);
-		const bootstrapSrc = 'https://example.local/assets/js/bootstrap.min.js';
+		const bootstrapSrc =
+			'https://example.my.site.com/assets/js/bootstrap.min.js';
 
 		await page.addInitScript(() => {
 			window.getCkyConsent = () => ({
