@@ -15,13 +15,14 @@ class Fake_Ingestion_Metric {
 	 * @param array<int, string> $labels
 	 */
 	public function inc( array $labels = [] ): void {
-		$this->inc_by( 1, $labels );
+		$this->incBy( 1, $labels );
 	}
 
 	/**
 	 * @param array<int, string> $labels
 	 */
-	private function inc_by( int|float $count, array $labels = [] ): void {
+	// phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Mirrors Prometheus counter API.
+	public function incBy( int|float $count, array $labels = [] ): void {
 		$key                   = wp_json_encode( $labels );
 		$this->samples[ $key ] = ( $this->samples[ $key ] ?? 0 ) + $count;
 	}
