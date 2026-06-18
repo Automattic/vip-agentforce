@@ -10,15 +10,13 @@ class Constants {
 	const COOKIEYES_CATEGORIES       = array( 'necessary', 'functional', 'analytics', 'performance', 'advertisement' );
 	const DEFAULT_COOKIEYES_CATEGORY = 'functional';
 
+	const COOKIEBOT_CATEGORIES       = array( 'necessary', 'preferences', 'statistics', 'marketing' );
+	const DEFAULT_COOKIEBOT_CATEGORY = 'marketing';
+
 	/**
 	 * Default OneTrust consent group ID
 	 */
 	const DEFAULT_ONETRUST_GROUP_ID = 'C0004';
-
-	/**
-	 * Default Cookiebot category
-	 */
-	const DEFAULT_COOKIEBOT_CATEGORY = 'marketing';
 
 	/**
 	 * Default iubenda Purpose ID

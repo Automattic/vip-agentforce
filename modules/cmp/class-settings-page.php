@@ -133,6 +133,19 @@ class Settings_Page {
 	}
 
 	/**
+	 * Validate Cookiebot category value.
+	 *
+	 * @param mixed $category The Cookiebot category value to validate.
+	 *
+	 * @return string Validated Cookiebot category or default if invalid.
+	 */
+	public function validate_cookiebot_category( $category ): string {
+		$category = is_string( $category ) ? strtolower( trim( $category ) ) : Constants::DEFAULT_COOKIEBOT_CATEGORY;
+
+		return in_array( $category, Constants::COOKIEBOT_CATEGORIES, true ) ? $category : Constants::DEFAULT_COOKIEBOT_CATEGORY;
+	}
+
+	/**
 	 * Sanitize custom CSS so valid selectors are preserved while HTML payloads are stripped.
 	 *
 	 * @param mixed $css The CSS to sanitize.
@@ -179,7 +192,13 @@ class Settings_Page {
 				'sanitize_callback' => array( $this, 'validate_cookieyes_category' ),
 			)
 		);
-		register_setting( 'agentforce_settings_group', 'vip_agentforce_cookiebot_category' );
+		register_setting(
+			'agentforce_settings_group',
+			'vip_agentforce_cookiebot_category',
+			array(
+				'sanitize_callback' => array( $this, 'validate_cookiebot_category' ),
+			)
+		);
 		register_setting(
 			'agentforce_settings_group',
 			'vip_agentforce_iubenda_category',
@@ -230,7 +249,7 @@ class Settings_Page {
 				'consentType'       => get_option( 'vip_agentforce_consent_type', Constants::DEFAULT_CMP ),
 				'oneTrustGroupId'   => get_option( 'vip_agentforce_onetrust_group_id', Constants::DEFAULT_ONETRUST_GROUP_ID ),
 				'cookieyesCategory' => $this->validate_cookieyes_category( get_option( 'vip_agentforce_cookieyes_category', Constants::DEFAULT_COOKIEYES_CATEGORY ) ),
-				'cookiebotCategory' => get_option( 'vip_agentforce_cookiebot_category', Constants::DEFAULT_COOKIEBOT_CATEGORY ),
+				'cookiebotCategory' => $this->validate_cookiebot_category( get_option( 'vip_agentforce_cookiebot_category', Constants::DEFAULT_COOKIEBOT_CATEGORY ) ),
 				'iubendaPurposeId'  => get_option( 'vip_agentforce_iubenda_category', Constants::DEFAULT_IUBENDA_PURPOSE_ID ),
 				'alignment'         => get_option( 'vip_agentforce_alignment', 'bottom-right' ),
 				'customCss'         => self::sanitize_custom_css( get_option( 'vip_agentforce_custom_css', '' ) ),

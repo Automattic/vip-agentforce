@@ -31,12 +31,17 @@ type CookieYesCategory =
 	| 'analytics'
 	| 'performance'
 	| 'advertisement';
+type CookiebotCategory =
+	| 'necessary'
+	| 'preferences'
+	| 'statistics'
+	| 'marketing';
 
 interface SettingsValues {
 	consentType: ConsentType;
 	oneTrustGroupId: string;
 	cookieyesCategory: CookieYesCategory;
-	cookiebotCategory: string;
+	cookiebotCategory: CookiebotCategory;
 	iubendaPurposeId: string;
 	alignment: Alignment;
 	customCss: string;
@@ -73,6 +78,13 @@ const COOKIEYES_CATEGORY_OPTIONS = [
 	{ label: __('Advertisement', 'vip-agentforce'), value: 'advertisement' },
 ] satisfies { label: string; value: CookieYesCategory }[];
 
+const COOKIEBOT_CATEGORY_OPTIONS = [
+	{ label: __('Necessary', 'vip-agentforce'), value: 'necessary' },
+	{ label: __('Preferences', 'vip-agentforce'), value: 'preferences' },
+	{ label: __('Statistics', 'vip-agentforce'), value: 'statistics' },
+	{ label: __('Marketing', 'vip-agentforce'), value: 'marketing' },
+] satisfies { label: string; value: CookiebotCategory }[];
+
 function isConsentType(value: string): value is ConsentType {
 	return CONSENT_OPTIONS.some((option) => option === value);
 }
@@ -83,6 +95,10 @@ function isAlignment(value: string): value is Alignment {
 
 function isCookieYesCategory(value: string): value is CookieYesCategory {
 	return COOKIEYES_CATEGORY_OPTIONS.some((option) => option.value === value);
+}
+
+function isCookiebotCategory(value: string): value is CookiebotCategory {
+	return COOKIEBOT_CATEGORY_OPTIONS.some((option) => option.value === value);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -101,6 +117,7 @@ function isSettingsValues(value: unknown): value is SettingsValues {
 		typeof value.cookieyesCategory === 'string' &&
 		isCookieYesCategory(value.cookieyesCategory) &&
 		typeof value.cookiebotCategory === 'string' &&
+		isCookiebotCategory(value.cookiebotCategory) &&
 		typeof value.iubendaPurposeId === 'string' &&
 		typeof value.alignment === 'string' &&
 		isAlignment(value.alignment) &&
@@ -191,6 +208,11 @@ function AgentforceSettingsApp({ settings }: { settings: SettingsData }) {
 	const handleCookieYesCategoryChange = (value: string) => {
 		if (isCookieYesCategory(value)) {
 			setCookieYesCategory(value);
+		}
+	};
+	const handleCookiebotCategoryChange = (value: string) => {
+		if (isCookiebotCategory(value)) {
+			setCookiebotCategory(value);
 		}
 	};
 
@@ -291,32 +313,20 @@ function AgentforceSettingsApp({ settings }: { settings: SettingsData }) {
 
 						{shouldShowCookiebot && (
 							<div id="row_cookiebot">
-								<TextControl
+								<SelectControl
 									__next40pxDefaultSize
 									__nextHasNoMarginBottom
-									help={
-										<>
-											{__(
-												'Enter the Cookiebot category (e.g., necessary, preferences, statistics, marketing).',
-												'vip-agentforce'
-											)}
-											<br />
-											{__(
-												'To see all available categories for your site, open browser console and run:',
-												'vip-agentforce'
-											)}
-											<br />
-											<code>
-												window.Cookiebot.consent
-											</code>
-										</>
-									}
+									help={__(
+										'Choose the Cookiebot category that must be granted before Agentforce loads.',
+										'vip-agentforce'
+									)}
 									label={__(
 										'Cookiebot Category',
 										'vip-agentforce'
 									)}
+									options={COOKIEBOT_CATEGORY_OPTIONS}
 									value={cookiebotCategory}
-									onChange={setCookiebotCategory}
+									onChange={handleCookiebotCategoryChange}
 								/>
 								<HiddenField
 									name="vip_agentforce_cookiebot_category"
