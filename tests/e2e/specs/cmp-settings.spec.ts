@@ -110,7 +110,7 @@ test.describe('CMP Settings', () => {
 			await cmpSettings.cookiebotCategory.fill('preferences');
 
 			await cmpSettings.setConsentType('CookieYes');
-			await cmpSettings.cookieyesCategory.selectOption('functional');
+			await cmpSettings.cookieyesCategory.selectOption('performance');
 
 			await cmpSettings.setConsentType('Custom');
 			await cmpSettings.save();
@@ -124,7 +124,7 @@ test.describe('CMP Settings', () => {
 
 			await cmpSettings.setConsentType('CookieYes');
 			await expect(cmpSettings.cookieyesCategory).not.toHaveValue(
-				'functional'
+				'performance'
 			);
 		});
 	});
