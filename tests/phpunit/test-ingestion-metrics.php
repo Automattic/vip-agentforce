@@ -438,6 +438,44 @@ class Ingestion_Metrics_Test extends WP_UnitTestCase {
 		);
 	}
 
+	public function test_counter_collection_keeps_pending_samples_when_replay_throws(): void {
+		$pending_samples = [
+			'api_requests' => [
+				'["POST","202","success"]' => [
+					'labels' => [ 'POST', '202', 'success' ],
+					'count'  => 2,
+				],
+			],
+		];
+
+		$this->update_pending_counter_samples( $pending_samples );
+		$this->set_metric_property(
+			'api_requests_counter',
+			new class() extends Fake_Ingestion_Metric {
+				/**
+				 * @param array<int, string> $labels
+				 */
+				// phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Mirrors Prometheus counter API.
+				public function incBy( int|float $count, array $labels = [] ): void {
+					throw new RuntimeException( 'Counter replay failed.' );
+				}
+			}
+		);
+
+		try {
+			$this->collect_counter_metrics();
+			$this->fail( 'Expected counter replay to throw.' );
+		} catch ( RuntimeException $exception ) {
+			$this->assertSame( 'Counter replay failed.', $exception->getMessage() );
+		}
+
+		$this->assertSame(
+			$pending_samples,
+			$this->get_pending_counter_samples(),
+			'Pending samples should not be removed until replay completes successfully.'
+		);
+	}
+
 	public function test_counter_collection_ignores_unknown_and_malformed_pending_samples(): void {
 		$this->update_pending_counter_samples(
 			[

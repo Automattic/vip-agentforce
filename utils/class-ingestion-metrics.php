@@ -148,34 +148,33 @@ class Ingestion_Metrics {
 				return;
 			}
 
-			wp_cache_delete( self::COUNTER_SAMPLES_KEY, self::CACHE_GROUP );
+			$remaining_samples = [];
+			foreach ( self::get_counter_metrics() as $counter_type => $counter_metric ) {
+				$counter_samples = $samples[ $counter_type ] ?? [];
+				if ( ! is_array( $counter_samples ) ) {
+					continue;
+				}
+
+				if ( null === $counter_metric ) {
+					$remaining_samples[ $counter_type ] = self::filter_counter_samples( $counter_type, $counter_samples );
+					continue;
+				}
+
+				foreach ( self::filter_counter_samples( $counter_type, $counter_samples ) as $sample ) {
+					$counter_metric->incBy( $sample['count'], $sample['labels'] );
+				}
+			}
+
+			$remaining_samples = array_filter( $remaining_samples );
+			if ( [] === $remaining_samples ) {
+				wp_cache_delete( self::COUNTER_SAMPLES_KEY, self::CACHE_GROUP );
+				return;
+			}
+
+			self::replace_pending_counter_samples( $remaining_samples );
 		} finally {
 			wp_cache_delete( self::COUNTER_REPLAY_LOCK, self::CACHE_GROUP );
 		}
-
-		$remaining_samples = [];
-		foreach ( self::get_counter_metrics() as $counter_type => $counter_metric ) {
-			$counter_samples = $samples[ $counter_type ] ?? [];
-			if ( ! is_array( $counter_samples ) ) {
-				continue;
-			}
-
-			if ( null === $counter_metric ) {
-				$remaining_samples[ $counter_type ] = self::filter_counter_samples( $counter_type, $counter_samples );
-				continue;
-			}
-
-			foreach ( self::filter_counter_samples( $counter_type, $counter_samples ) as $sample ) {
-				$counter_metric->incBy( $sample['count'], $sample['labels'] );
-			}
-		}
-
-		$remaining_samples = array_filter( $remaining_samples );
-		if ( [] === $remaining_samples ) {
-			return;
-		}
-
-		self::merge_pending_counter_samples( $remaining_samples );
 	}
 
 	public static function record_api_error( string $error_class ): void {
@@ -288,32 +287,19 @@ class Ingestion_Metrics {
 	/**
 	 * @param array<string, array<int, array{labels: array<int, string>, count: int|float}>> $samples
 	 */
-	private static function merge_pending_counter_samples( array $samples ): void {
-		if ( ! self::claim_counter_samples_lock( true ) ) {
-			return;
-		}
-
-		try {
-			$pending_samples = self::get_pending_counter_samples();
-			foreach ( $samples as $counter_type => $counter_samples ) {
-				foreach ( $counter_samples as $sample ) {
-					$key            = (string) wp_json_encode( $sample['labels'] );
-					$existing_count = 0;
-					if ( isset( $pending_samples[ $counter_type ][ $key ] ) && is_array( $pending_samples[ $counter_type ][ $key ] ) && isset( $pending_samples[ $counter_type ][ $key ]['count'] ) && is_numeric( $pending_samples[ $counter_type ][ $key ]['count'] ) ) {
-						$existing_count = (float) $pending_samples[ $counter_type ][ $key ]['count'];
-					}
-
-					$pending_samples[ $counter_type ][ $key ] = [
-						'labels' => $sample['labels'],
-						'count'  => $existing_count + $sample['count'],
-					];
-				}
+	private static function replace_pending_counter_samples( array $samples ): void {
+		$pending_samples = [];
+		foreach ( $samples as $counter_type => $counter_samples ) {
+			foreach ( $counter_samples as $sample ) {
+				$key                                      = (string) wp_json_encode( $sample['labels'] );
+				$pending_samples[ $counter_type ][ $key ] = [
+					'labels' => $sample['labels'],
+					'count'  => $sample['count'],
+				];
 			}
-
-			wp_cache_set( self::COUNTER_SAMPLES_KEY, $pending_samples, self::CACHE_GROUP );
-		} finally {
-			wp_cache_delete( self::COUNTER_REPLAY_LOCK, self::CACHE_GROUP );
 		}
+
+		wp_cache_set( self::COUNTER_SAMPLES_KEY, $pending_samples, self::CACHE_GROUP );
 	}
 
 	/**
