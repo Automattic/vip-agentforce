@@ -1,44 +1,5 @@
 /**
  * iubenda CMP integration for Agentforce SDK
- *
- * REQUIRED CONFIGURATION:
- * For this plugin to work correctly with iubenda, you must add the following
- * callback to your existing iubenda configuration:
- *
- * Add this to your existing _iub.csConfiguration object:
- *
- * "callback": {
- *   "onPreferenceExpressed": function(preference) {
- *     document.dispatchEvent(new CustomEvent('iubendaPreferenceUpdate', { detail: preference }));
- *   }
- * }
- *
- * Example - if your existing config looks like this:
- * var _iub = _iub || [];
- * _iub.csConfiguration = {
- *   "siteId": 1234567,
- *   "cookiePolicyId": 7654321,
- *   "lang": "en",
- *   "storage": {"useSiteId": true}
- * };
- *
- * Update it to include the callback:
- * var _iub = _iub || [];
- * _iub.csConfiguration = {
- *   "siteId": 1234567,
- *   "cookiePolicyId": 7654321,
- *   "lang": "en",
- *   "storage": {"useSiteId": true},
- *   "callback": {
- *     "onPreferenceExpressed": function(preference) {
- *       document.dispatchEvent(new CustomEvent('iubendaPreferenceUpdate', { detail: preference }));
- *     }
- *   }
- * };
- *
- * The callback dispatches a custom event 'iubendaPreferenceUpdate' that this
- * plugin listens for to determine when to load/unload the Agentforce SDK
- * based on the configured purpose ID consent status.
  */
 
 /**
@@ -46,16 +7,46 @@
  */
 import { loadAgentforceSDK, unloadAgentforceSDK } from './cmp-manager';
 
-// Get the configured purpose ID from the localized data (default to 5 - Marketing)
+// Get the configured purpose ID from the localized data (default to 2 - Functionality)
 const PURPOSE_ID =
-	(window.vipAgentforceConsentData && window.vipAgentforceConsentData.iubendaPurposeId) || '5';
+	(window.vipAgentforceConsentData &&
+		window.vipAgentforceConsentData.iubendaPurposeId) ||
+	'2';
+
+const hasPurposeConsent = (preference) =>
+	preference?.purposes?.[PURPOSE_ID] === true;
+
+const getIubendaConsentFromApi = () => {
+	const api = window._iub?.cs?.api;
+	if (!api) {
+		return undefined;
+	}
+
+	if (typeof api.arePurposesAccepted === 'function') {
+		return (
+			api.arePurposesAccepted([PURPOSE_ID], { promptIfNot: false }) ===
+			true
+		);
+	}
+
+	if (typeof api.getPurposesState === 'function') {
+		const purposes = api.getPurposesState();
+		return purposes?.[PURPOSE_ID] === true;
+	}
+
+	if (typeof api.getPreferences === 'function') {
+		return hasPurposeConsent(api.getPreferences());
+	}
+
+	return undefined;
+};
 
 // Checks iubenda consent and loads/unloads SDK
-const checkIubendaConsent = preference => {
+const checkIubendaConsent = (preference) => {
 	// If preference is passed directly (from event), use it
 	if (preference?.purposes) {
 		// Check if the configured purpose ID has consent
-		if (preference.purposes[PURPOSE_ID] === true) {
+		if (hasPurposeConsent(preference)) {
 			loadAgentforceSDK();
 		} else {
 			unloadAgentforceSDK();
@@ -64,23 +55,50 @@ const checkIubendaConsent = preference => {
 	}
 
 	// Fallback: check global _iub object if available
-	if (window._iub?.cs?.api?.getPreferences) {
-		try {
-			const preferences = window._iub.cs.api.getPreferences();
-			if (preferences?.purposes?.[PURPOSE_ID] === true) {
-				loadAgentforceSDK();
-			} else {
-				unloadAgentforceSDK();
-			}
-		} catch (error) {
-			// Silent fail.
+	try {
+		const hasConsent = getIubendaConsentFromApi();
+		if (hasConsent === true) {
+			loadAgentforceSDK();
+		} else if (hasConsent === false) {
+			unloadAgentforceSDK();
 		}
+	} catch (error) {
+		// Silent fail.
 	}
 };
 
+const wrapIubendaCallback = (callbackName) => {
+	if (!window._iub?.csConfiguration) {
+		return;
+	}
+
+	window._iub.csConfiguration.callback =
+		window._iub.csConfiguration.callback || {};
+
+	const callbacks = window._iub.csConfiguration.callback;
+	const originalCallback = callbacks[callbackName];
+
+	callbacks[callbackName] = function (...args) {
+		if (typeof originalCallback === 'function') {
+			originalCallback.apply(this, args);
+		}
+
+		checkIubendaConsent(args[0]);
+	};
+};
+
+[
+	'onPreferenceExpressed',
+	'onPreferenceFirstExpressed',
+	'onPreferenceChange',
+	'onConsentRead',
+].forEach(wrapIubendaCallback);
+
 // Listen for iubenda custom preference update event
-document.addEventListener('iubendaPreferenceUpdate', event => {
+document.addEventListener('iubendaPreferenceUpdate', (event) => {
 	if (event.detail) {
 		checkIubendaConsent(event.detail);
 	}
 });
+
+document.addEventListener('DOMContentLoaded', () => checkIubendaConsent());
