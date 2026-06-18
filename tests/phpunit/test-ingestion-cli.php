@@ -51,6 +51,8 @@ class Ingestion_CLI_Test extends WP_UnitTestCase {
 		$this->captured_requests  = [];
 		$this->api_errors_counter = new Fake_Ingestion_Metric();
 		$this->set_metric_property( 'api_errors_counter', $this->api_errors_counter );
+		delete_option( 'vip_agentforce_ingestion_metric_counter_samples' );
+		delete_option( 'vip_agentforce_ingestion_metric_counter_replay_lock' );
 
 		// Initialize cron hooks (registers the custom schedule needed by schedule_processing).
 		Ingestion_Cron::init();
@@ -106,6 +108,8 @@ class Ingestion_CLI_Test extends WP_UnitTestCase {
 		remove_all_actions( Ingestion_Cron::CRON_HOOK );
 		$this->captured_requests = [];
 		$this->set_metric_property( 'api_errors_counter', null );
+		delete_option( 'vip_agentforce_ingestion_metric_counter_samples' );
+		delete_option( 'vip_agentforce_ingestion_metric_counter_replay_lock' );
 		Ingestion_Sync_Progress::reset();
 		Ingestion_Cron::unschedule_processing();
 		Ingestion_API_Client::clear_retry_status();
@@ -116,6 +120,10 @@ class Ingestion_CLI_Test extends WP_UnitTestCase {
 		$prop = $ref->getProperty( $property );
 		$prop->setAccessible( true );
 		$prop->setValue( null, $value );
+	}
+
+	private function collect_counter_metrics(): void {
+		Ingestion_Metrics::collect_counters();
 	}
 
 	/**
@@ -992,6 +1000,7 @@ class Ingestion_CLI_Test extends WP_UnitTestCase {
 		$this->assertSame( 'missing_api_config', $data['error_code'] );
 		$this->assertStringContainsString( 'Missing required API configuration', $data['detail'] );
 		$this->assertNotEmpty( $data['message'] );
+		$this->collect_counter_metrics();
 		$this->assertSame( 1, $this->api_errors_counter->get_sample( [ 'config' ] ) );
 		$this->assertNull( Ingestion_Sync_Progress::get(), 'Sync progress should not start when request preflight fails.' );
 		$this->assertFalse( Ingestion_Cron::is_scheduled(), 'Cron should not be scheduled when request preflight fails.' );
@@ -1021,6 +1030,7 @@ class Ingestion_CLI_Test extends WP_UnitTestCase {
 		$this->assertSame( 'token_expired', $data['error_code'] );
 		$this->assertSame( 'Ingestion API token has expired', $data['detail'] );
 		$this->assertNotEmpty( $data['message'] );
+		$this->collect_counter_metrics();
 		$this->assertSame( 1, $this->api_errors_counter->get_sample( [ 'auth' ] ) );
 		$this->assertNull( Ingestion_Sync_Progress::get(), 'Sync progress should not start when request preflight fails.' );
 		$this->assertFalse( Ingestion_Cron::is_scheduled(), 'Cron should not be scheduled when request preflight fails.' );
