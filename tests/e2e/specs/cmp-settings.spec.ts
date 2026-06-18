@@ -68,7 +68,7 @@ test.describe('CMP Settings', () => {
 			await expect(cmpSettings.cookiebotRow).toBeHidden();
 			await expect(cmpSettings.iubendaRow).toBeHidden();
 			await expect(cmpSettings.cookieyesCategory).toHaveValue(
-				'advertisement'
+				'functional'
 			);
 
 			await cmpSettings.cookieyesCategory.selectOption('analytics');

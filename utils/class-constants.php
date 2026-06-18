@@ -8,7 +8,7 @@ class Constants {
 	const DEFAULT_CMP     = 'Custom';
 
 	const COOKIEYES_CATEGORIES       = array( 'necessary', 'functional', 'analytics', 'performance', 'advertisement' );
-	const DEFAULT_COOKIEYES_CATEGORY = 'advertisement';
+	const DEFAULT_COOKIEYES_CATEGORY = 'functional';
 
 	/**
 	 * Default OneTrust consent group ID

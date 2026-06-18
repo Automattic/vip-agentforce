@@ -10,7 +10,26 @@ import { loadAgentforceSDK, unloadAgentforceSDK } from './cmp-manager';
 const CONSENT_CATEGORY =
 	(window.vipAgentforceConsentData &&
 		window.vipAgentforceConsentData.cookieyesCategory) ||
-	'advertisement';
+	'functional';
+
+let hasLoggedMissingCategoryWarning = false;
+
+const warnIfCategoryMissing = (categories) => {
+	if (
+		hasLoggedMissingCategoryWarning ||
+		!categories ||
+		Object.prototype.hasOwnProperty.call(categories, CONSENT_CATEGORY)
+	) {
+		return;
+	}
+
+	hasLoggedMissingCategoryWarning = true;
+	if (window.console && typeof window.console.warn === 'function') {
+		window.console.warn(
+			`Agentforce CookieYes consent category "${CONSENT_CATEGORY}" was not found.`
+		);
+	}
+};
 
 // Check CookieYes consent and load/unload SDK
 const checkCookieYesConsent = () => {
@@ -19,6 +38,7 @@ const checkCookieYesConsent = () => {
 			typeof window.getCkyConsent === 'function'
 				? window.getCkyConsent()
 				: null;
+		warnIfCategoryMissing(consent && consent.categories);
 		if (
 			consent &&
 			consent.categories &&
