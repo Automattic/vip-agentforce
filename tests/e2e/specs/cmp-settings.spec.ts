@@ -15,10 +15,31 @@ declare global {
 				bootstrapSrc?: string;
 			};
 			cookieyesCategory?: string;
+			iubendaPurposeId?: string;
 			prechatFields?: Record<string, unknown>;
 		};
 		getCkyConsent?: () => {
 			categories?: Record<string, boolean>;
+		};
+		_iub?: {
+			__agentforceLocalPurposes?: Record<string, boolean>;
+			cs?: {
+				api?: {
+					arePurposesAccepted?: (purposeIds: string[]) => boolean;
+					getPurposesState?: () => Record<string, boolean>;
+					getPreferences?: () => {
+						purposes?: Record<string, boolean>;
+					};
+				};
+			};
+			csConfiguration?: {
+				callback?: Record<
+					string,
+					(preference?: {
+						purposes?: Record<string, boolean>;
+					}) => void
+				>;
+			};
 		};
 		initEmbeddedMessaging?: () => void;
 		embeddedservice_bootstrap?: {
@@ -133,7 +154,8 @@ test.describe('CMP Settings', () => {
 		page,
 	}) => {
 		const cmpSettings = new CmpSettingsPage(page);
-		const bootstrapSrc = 'https://example.local/assets/js/bootstrap.min.js';
+		const bootstrapSrc =
+			'https://example.my.site.com/assets/js/bootstrap.min.js';
 
 		await page.addInitScript(() => {
 			window.getCkyConsent = () => ({
@@ -189,6 +211,124 @@ test.describe('CMP Settings', () => {
 			expect(state.hasScript).toBe(true);
 			expect(state.consent).toBe(true);
 			expect(state.sdkSrc).toContain(bootstrapSrc);
+		});
+	});
+
+	test('iubenda frontend gate wraps late callbacks and unloads on revoke', async ({
+		page,
+	}) => {
+		const cmpSettings = new CmpSettingsPage(page);
+		const bootstrapSrc =
+			'https://example.my.site.com/assets/js/bootstrap.min.js';
+
+		await test.step('Configure iubenda consent', async () => {
+			await cmpSettings.visit();
+			await cmpSettings.setConsentType('iubenda');
+			await cmpSettings.iubendaPurpose.fill('2');
+			await cmpSettings.save();
+		});
+
+		await test.step('Late iubenda callback setup loads and unloads Agentforce', async () => {
+			await page.goto('/', { waitUntil: 'domcontentloaded' });
+
+			const initialState = await page.evaluate(() => ({
+				configuredPurpose:
+					window.vipAgentforceConsentData?.iubendaPurposeId,
+				hasScript: Boolean(document.getElementById('agentforce-sdk')),
+				consent: window.AFConsentGranted === true,
+			}));
+
+			expect(initialState.configuredPurpose).toBe('2');
+			expect(initialState.hasScript).toBe(false);
+			expect(initialState.consent).toBe(false);
+
+			await page.evaluate(() => {
+				const getAcceptedPurposes = () =>
+					window._iub?.__agentforceLocalPurposes || {};
+
+				window._iub = {
+					__agentforceLocalPurposes: {
+						'2': false,
+					},
+					cs: {
+						api: {
+							arePurposesAccepted: (purposeIds) =>
+								purposeIds.every(
+									(purposeId) =>
+										getAcceptedPurposes()[purposeId] ===
+										true
+								),
+							getPurposesState: getAcceptedPurposes,
+							getPreferences: () => ({
+								purposes: getAcceptedPurposes(),
+							}),
+						},
+					},
+					csConfiguration: {
+						callback: {},
+					},
+				};
+			});
+
+			await expect
+				.poll(() =>
+					page.evaluate(
+						() =>
+							typeof window._iub?.csConfiguration?.callback
+								?.onPreferenceExpressed === 'function'
+					)
+				)
+				.toBe(true);
+
+			const afterAccept = await page.evaluate(() => {
+				if (!window._iub) {
+					return null;
+				}
+
+				window._iub.__agentforceLocalPurposes = { '2': true };
+				window._iub.csConfiguration?.callback?.onPreferenceExpressed?.({
+					purposes: {
+						'2': true,
+					},
+				});
+
+				const script = document.getElementById('agentforce-sdk');
+
+				return {
+					hasScript: Boolean(script),
+					sdkSrc: script?.getAttribute('src') || '',
+					consent: window.AFConsentGranted === true,
+				};
+			});
+
+			expect(afterAccept).not.toBeNull();
+			expect(afterAccept?.hasScript).toBe(true);
+			expect(afterAccept?.sdkSrc).toContain(bootstrapSrc);
+			expect(afterAccept?.consent).toBe(true);
+
+			const afterRevoke = await page.evaluate(() => {
+				if (!window._iub) {
+					return null;
+				}
+
+				window._iub.__agentforceLocalPurposes = { '2': false };
+				window._iub.csConfiguration?.callback?.onPreferenceChange?.({
+					purposes: {
+						'2': false,
+					},
+				});
+
+				return {
+					hasScript: Boolean(
+						document.getElementById('agentforce-sdk')
+					),
+					consent: window.AFConsentGranted === true,
+				};
+			});
+
+			expect(afterRevoke).not.toBeNull();
+			expect(afterRevoke?.hasScript).toBe(false);
+			expect(afterRevoke?.consent).toBe(false);
 		});
 	});
 

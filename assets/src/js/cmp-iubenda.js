@@ -67,8 +67,19 @@ const checkIubendaConsent = (preference) => {
 	}
 };
 
+const IUBENDA_CALLBACK_NAMES = [
+	'onPreferenceExpressed',
+	'onPreferenceFirstExpressed',
+	'onPreferenceChange',
+	'onConsentRead',
+];
+const wrappedIubendaCallbacks = new Set();
+
 const wrapIubendaCallback = (callbackName) => {
-	if (!window._iub?.csConfiguration) {
+	if (
+		!window._iub?.csConfiguration ||
+		wrappedIubendaCallbacks.has(callbackName)
+	) {
 		return;
 	}
 
@@ -85,14 +96,31 @@ const wrapIubendaCallback = (callbackName) => {
 
 		checkIubendaConsent(args[0]);
 	};
+
+	wrappedIubendaCallbacks.add(callbackName);
 };
 
-[
-	'onPreferenceExpressed',
-	'onPreferenceFirstExpressed',
-	'onPreferenceChange',
-	'onConsentRead',
-].forEach(wrapIubendaCallback);
+const wrapIubendaCallbacks = () => {
+	IUBENDA_CALLBACK_NAMES.forEach(wrapIubendaCallback);
+};
+
+const waitForIubendaCallbacks = (attemptsRemaining = 10) => {
+	wrapIubendaCallbacks();
+
+	if (
+		wrappedIubendaCallbacks.size === IUBENDA_CALLBACK_NAMES.length ||
+		attemptsRemaining <= 0
+	) {
+		return;
+	}
+
+	window.setTimeout(
+		() => waitForIubendaCallbacks(attemptsRemaining - 1),
+		250
+	);
+};
+
+waitForIubendaCallbacks();
 
 // Listen for iubenda custom preference update event
 document.addEventListener('iubendaPreferenceUpdate', (event) => {
@@ -101,4 +129,7 @@ document.addEventListener('iubendaPreferenceUpdate', (event) => {
 	}
 });
 
-document.addEventListener('DOMContentLoaded', () => checkIubendaConsent());
+document.addEventListener('DOMContentLoaded', () => {
+	waitForIubendaCallbacks();
+	checkIubendaConsent();
+});
