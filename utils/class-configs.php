@@ -60,6 +60,16 @@ class Configs {
 	}
 
 	/**
+	 * Returns the configured Salesforce instance (My Domain) URL from integration config.
+	 */
+	public static function get_salesforce_instance_url(): string {
+		$config = self::get_config();
+		$url    = $config['salesforce_instance_url'] ?? '';
+
+		return is_string( $url ) ? trim( $url ) : '';
+	}
+
+	/**
 	 * Returns the Agentforce embedding script snippet from integration config.
 	 */
 	public static function get_embedding_script(): string {
