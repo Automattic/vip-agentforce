@@ -248,15 +248,15 @@ test.describe('CMP Settings', () => {
 
 				window._iub = {
 					__agentforceLocalPurposes: {
-						'2': false,
+						2: false,
 					},
 					cs: {
 						api: {
 							arePurposesAccepted: (purposeIds) =>
 								purposeIds.every(
 									(purposeId) =>
-										getAcceptedPurposes()[purposeId] ===
-										true
+										purposeId === '2' &&
+										getAcceptedPurposes()[ '2' ] === true
 								),
 							getPurposesState: getAcceptedPurposes,
 							getPreferences: () => ({
@@ -281,14 +281,14 @@ test.describe('CMP Settings', () => {
 				.toBe(true);
 
 			const afterAccept = await page.evaluate(() => {
-				if (!window._iub) {
+				if ( ! window._iub ) {
 					return null;
 				}
 
-				window._iub.__agentforceLocalPurposes = { '2': true };
+				window._iub.__agentforceLocalPurposes = { 2: true };
 				window._iub.csConfiguration?.callback?.onPreferenceExpressed?.({
 					purposes: {
-						'2': true,
+						2: true,
 					},
 				});
 
@@ -307,14 +307,14 @@ test.describe('CMP Settings', () => {
 			expect(afterAccept?.consent).toBe(true);
 
 			const afterRevoke = await page.evaluate(() => {
-				if (!window._iub) {
+				if ( ! window._iub ) {
 					return null;
 				}
 
-				window._iub.__agentforceLocalPurposes = { '2': false };
+				window._iub.__agentforceLocalPurposes = { 2: false };
 				window._iub.csConfiguration?.callback?.onPreferenceChange?.({
 					purposes: {
-						'2': false,
+						2: false,
 					},
 				});
 
