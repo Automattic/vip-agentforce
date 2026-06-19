@@ -8,13 +8,25 @@ export interface AgentforceConfig {
 
 const DEFAULT_EMBEDDING_SCRIPT = `<script type="text/javascript">
 function initEmbeddedMessaging() {
-	window.__agentforceInitCalled = true;
+	try {
+		embeddedservice_bootstrap.settings.language = 'en_US';
+		embeddedservice_bootstrap.init(
+			'00Dxx0000001gPLEAY',
+			'agentforce_deployment',
+			'https://example.my.site.com/ESWdemo',
+			{
+				scrt2URL: 'https://example.my.salesforce-scrt.com'
+			}
+		);
+	} catch (err) {
+		console.error('Error loading Embedded Messaging: ', err);
+	}
 }
 </script>
-<script type="text/javascript" src="https://example.local/assets/js/bootstrap.min.js" onload="initEmbeddedMessaging()"></script>`;
+<script type="text/javascript" src="https://example.my.site.com/assets/js/bootstrap.min.js" onload="initEmbeddedMessaging()"></script>`;
 
 export const DEFAULT_CONFIG: AgentforceConfig = {
-	salesforce_instance_url: 'https://your-salesforce-instance-url.com',
+	salesforce_instance_url: 'https://example.my.salesforce.com',
 	agentforce_js_sdk_activated: true,
 	agentforce_embedding_script: DEFAULT_EMBEDDING_SCRIPT,
 };
