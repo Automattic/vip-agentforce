@@ -89,7 +89,7 @@ test.describe('CMP Settings', () => {
 			await expect(cmpSettings.cookiebotRow).toBeVisible();
 			await expect(cmpSettings.iubendaRow).toBeHidden();
 
-			await cmpSettings.cookiebotCategory.fill('marketing');
+			await cmpSettings.cookiebotCategory.selectOption('statistics');
 			await cmpSettings.save();
 
 			await expect(cmpSettings.consentType).toHaveValue('CookieBot');
@@ -97,7 +97,7 @@ test.describe('CMP Settings', () => {
 			await expect(cmpSettings.cookiebotRow).toBeVisible();
 			await expect(cmpSettings.iubendaRow).toBeHidden();
 			await expect(cmpSettings.cookiebotCategory).toHaveValue(
-				'marketing'
+				'statistics'
 			);
 
 			await cmpSettings.setConsentType('OneTrust');
@@ -107,7 +107,7 @@ test.describe('CMP Settings', () => {
 
 		await test.step('Ignore draft provider values when saving a different consent type', async () => {
 			await cmpSettings.setConsentType('CookieBot');
-			await cmpSettings.cookiebotCategory.fill('preferences');
+			await cmpSettings.cookiebotCategory.selectOption('preferences');
 
 			await cmpSettings.setConsentType('CookieYes');
 			await cmpSettings.cookieyesCategory.selectOption('performance');
@@ -133,7 +133,8 @@ test.describe('CMP Settings', () => {
 		page,
 	}) => {
 		const cmpSettings = new CmpSettingsPage(page);
-		const bootstrapSrc = 'https://example.local/assets/js/bootstrap.min.js';
+		const bootstrapSrc =
+			'https://example.my.site.com/assets/js/bootstrap.min.js';
 
 		await page.addInitScript(() => {
 			window.getCkyConsent = () => ({

@@ -202,7 +202,7 @@ class Assets {
 			$localize_data['groupId'] = $onetrust_group_id;
 		} elseif ( 'CookieBot' === $consent_type ) {
 			$cookiebot_category                 = get_option( 'vip_agentforce_cookiebot_category', Constants::DEFAULT_COOKIEBOT_CATEGORY );
-			$localize_data['cookiebotCategory'] = $cookiebot_category;
+			$localize_data['cookiebotCategory'] = Settings_Page::get_instance()->validate_cookiebot_category( $cookiebot_category );
 		} elseif ( 'iubenda' === $consent_type ) {
 			$iubenda_purpose_id                = get_option( 'vip_agentforce_iubenda_category', Constants::DEFAULT_IUBENDA_PURPOSE_ID );
 			$localize_data['iubendaPurposeId'] = $iubenda_purpose_id;
