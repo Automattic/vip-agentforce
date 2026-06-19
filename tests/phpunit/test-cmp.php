@@ -784,6 +784,25 @@ class Cmp_Tests extends WP_UnitTestCase {
 		$this->assertStringContainsString( '"cookiebotCategory":"' . Constants::DEFAULT_COOKIEBOT_CATEGORY . '"', $localized_data );
 	}
 
+	public function test_cookiebot_localization_falls_back_for_invalid_category(): void {
+		$this->prime_configs_cache(
+			[
+				'agentforce_js_sdk_activated' => true,
+				'agentforce_embedding_script' => $this->get_embedding_script_fixture(),
+			]
+		);
+
+		update_option( 'vip_agentforce_consent_type', 'CookieBot' );
+		update_option( 'vip_agentforce_cookiebot_category', 'custom-category' );
+
+		$this->reset_consent_script( 'vip-af-cookiebot-consent' );
+
+		Assets::get_instance()->enqueue_consent_scripts();
+
+		$localized_data = wp_scripts()->get_data( 'vip-af-cookiebot-consent', 'data' );
+		$this->assertStringContainsString( '"cookiebotCategory":"' . Constants::DEFAULT_COOKIEBOT_CATEGORY . '"', $localized_data );
+	}
+
 	public function test_cookieyes_localization_uses_default_category(): void {
 		$this->prime_configs_cache(
 			[
@@ -930,6 +949,13 @@ class Cmp_Tests extends WP_UnitTestCase {
 
 		$this->assertSame( Constants::DEFAULT_CMP, $settings->sanitize_consent_type( 'InvalidCMP' ) );
 		$this->assertSame( Constants::DEFAULT_CMP, $settings->sanitize_consent_type( 'onetrust' ) );
+	}
+
+	public function test_validate_cookiebot_category_normalizes_supported_values(): void {
+		$settings = Settings_Page::get_instance();
+
+		$this->assertSame( 'statistics', $settings->validate_cookiebot_category( ' Statistics ' ) );
+		$this->assertSame( Constants::DEFAULT_COOKIEBOT_CATEGORY, $settings->validate_cookiebot_category( 'custom-category' ) );
 	}
 
 	public function test_settings_page_renders_react_root_with_serialized_values(): void {
