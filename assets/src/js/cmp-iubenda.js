@@ -13,8 +13,21 @@ const PURPOSE_ID =
 		window.vipAgentforceConsentData.iubendaPurposeId) ||
 	'2';
 
+let lastKnownIubendaConsent;
+let iubendaConsentObserverId;
+
 const hasPurposeConsent = (preference) =>
 	preference?.purposes?.[PURPOSE_ID] === true;
+
+const applyIubendaConsent = (hasConsent) => {
+	lastKnownIubendaConsent = hasConsent;
+
+	if (hasConsent) {
+		loadAgentforceSDK();
+	} else {
+		unloadAgentforceSDK();
+	}
+};
 
 const getIubendaConsentFromApi = () => {
 	const api = window._iub?.cs?.api;
@@ -46,21 +59,15 @@ const checkIubendaConsent = (preference) => {
 	// If preference is passed directly (from event), use it
 	if (preference?.purposes) {
 		// Check if the configured purpose ID has consent
-		if (hasPurposeConsent(preference)) {
-			loadAgentforceSDK();
-		} else {
-			unloadAgentforceSDK();
-		}
+		applyIubendaConsent(hasPurposeConsent(preference));
 		return;
 	}
 
 	// Fallback: check global _iub object if available
 	try {
 		const hasConsent = getIubendaConsentFromApi();
-		if (hasConsent === true) {
-			loadAgentforceSDK();
-		} else if (hasConsent === false) {
-			unloadAgentforceSDK();
+		if (typeof hasConsent === 'boolean') {
+			applyIubendaConsent(hasConsent);
 		}
 	} catch (error) {
 		// Silent fail.
@@ -74,6 +81,36 @@ const IUBENDA_CALLBACK_NAMES = [
 	'onConsentRead',
 ];
 const wrappedIubendaCallbacks = new Set();
+
+const observeIubendaConsentChange = () => {
+	wrapIubendaCallbacks();
+
+	try {
+		const hasConsent = getIubendaConsentFromApi();
+		if (
+			typeof hasConsent !== 'boolean' ||
+			hasConsent === lastKnownIubendaConsent
+		) {
+			return;
+		}
+
+		applyIubendaConsent(hasConsent);
+	} catch (error) {
+		// Silent fail.
+	}
+};
+
+const startIubendaConsentObserver = () => {
+	if (iubendaConsentObserverId) {
+		return;
+	}
+
+	observeIubendaConsentChange();
+	iubendaConsentObserverId = window.setInterval(
+		observeIubendaConsentChange,
+		1000
+	);
+};
 
 const wrapIubendaCallback = (callbackName) => {
 	if (
@@ -121,6 +158,7 @@ const waitForIubendaCallbacks = (attemptsRemaining = 10) => {
 };
 
 waitForIubendaCallbacks();
+startIubendaConsentObserver();
 
 // Listen for iubenda custom preference update event
 document.addEventListener('iubendaPreferenceUpdate', (event) => {
@@ -131,5 +169,6 @@ document.addEventListener('iubendaPreferenceUpdate', (event) => {
 
 document.addEventListener('DOMContentLoaded', () => {
 	waitForIubendaCallbacks();
+	startIubendaConsentObserver();
 	checkIubendaConsent();
 });

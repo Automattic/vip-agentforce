@@ -218,8 +218,7 @@ test.describe('CMP Settings', () => {
 		page,
 	}) => {
 		const cmpSettings = new CmpSettingsPage(page);
-		const bootstrapSrc =
-			'https://example.my.site.com/assets/js/bootstrap.min.js';
+		let bootstrapSrc = '';
 
 		await test.step('Configure iubenda consent', async () => {
 			await cmpSettings.visit();
@@ -234,40 +233,44 @@ test.describe('CMP Settings', () => {
 			const initialState = await page.evaluate(() => ({
 				configuredPurpose:
 					window.vipAgentforceConsentData?.iubendaPurposeId,
+				bootstrapSrc:
+					window.vipAgentforceConsentData?.embedding
+						?.bootstrapSrc || '',
 				hasScript: Boolean(document.getElementById('agentforce-sdk')),
 				consent: window.AFConsentGranted === true,
 			}));
 
 			expect(initialState.configuredPurpose).toBe('2');
+			expect(initialState.bootstrapSrc).toContain('bootstrap.min.js');
 			expect(initialState.hasScript).toBe(false);
 			expect(initialState.consent).toBe(false);
+			bootstrapSrc = initialState.bootstrapSrc;
 
 			await page.evaluate(() => {
 				const getAcceptedPurposes = () =>
 					window._iub?.__agentforceLocalPurposes || {};
 
-				window._iub = {
-					__agentforceLocalPurposes: {
-						2: false,
-					},
-					cs: {
-						api: {
-							arePurposesAccepted: (purposeIds) =>
-								purposeIds.every(
-									(purposeId) =>
-										purposeId === '2' &&
-										getAcceptedPurposes()[ '2' ] === true
-								),
-							getPurposesState: getAcceptedPurposes,
-							getPreferences: () => ({
-								purposes: getAcceptedPurposes(),
-							}),
-						},
-					},
-					csConfiguration: {
-						callback: {},
-					},
+				window._iub = window._iub || {};
+				window._iub.__agentforceLocalPurposes = {
+					2: false,
 				};
+				window._iub.cs = window._iub.cs || {};
+				window._iub.cs.api = {
+					arePurposesAccepted: (purposeIds) =>
+						purposeIds.every(
+							(purposeId) =>
+								purposeId === '2' &&
+								getAcceptedPurposes()[ '2' ] === true
+						),
+					getPurposesState: getAcceptedPurposes,
+					getPreferences: () => ({
+						purposes: getAcceptedPurposes(),
+					}),
+				};
+				window._iub.csConfiguration =
+					window._iub.csConfiguration || {};
+				window._iub.csConfiguration.callback =
+					window._iub.csConfiguration.callback || {};
 			});
 
 			await expect
@@ -329,6 +332,55 @@ test.describe('CMP Settings', () => {
 			expect(afterRevoke).not.toBeNull();
 			expect(afterRevoke?.hasScript).toBe(false);
 			expect(afterRevoke?.consent).toBe(false);
+
+			await page.evaluate(() => {
+				if ( ! window._iub ) {
+					return;
+				}
+
+				window._iub.__agentforceLocalPurposes = { 2: true };
+			});
+
+			await expect
+				.poll(() =>
+					page.evaluate(() => {
+						const script =
+							document.getElementById('agentforce-sdk');
+
+						return {
+							hasScript: Boolean(script),
+							sdkSrc: script?.getAttribute('src') || '',
+							consent: window.AFConsentGranted === true,
+						};
+					})
+				)
+				.toMatchObject({
+					hasScript: true,
+					sdkSrc: expect.stringContaining(bootstrapSrc),
+					consent: true,
+				});
+
+			await page.evaluate(() => {
+				if ( ! window._iub ) {
+					return;
+				}
+
+				window._iub.__agentforceLocalPurposes = { 2: false };
+			});
+
+			await expect
+				.poll(() =>
+					page.evaluate(() => ({
+						hasScript: Boolean(
+							document.getElementById('agentforce-sdk')
+						),
+						consent: window.AFConsentGranted === true,
+					}))
+				)
+				.toMatchObject({
+					hasScript: false,
+					consent: false,
+				});
 		});
 	});
 
