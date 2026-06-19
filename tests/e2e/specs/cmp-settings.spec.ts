@@ -133,7 +133,6 @@ test.describe('CMP Settings', () => {
 		page,
 	}) => {
 		const cmpSettings = new CmpSettingsPage(page);
-		const bootstrapSrc = 'https://example.local/assets/js/bootstrap.min.js';
 
 		await page.addInitScript(() => {
 			window.getCkyConsent = () => ({
@@ -179,6 +178,9 @@ test.describe('CMP Settings', () => {
 				return {
 					configuredCategory:
 						window.vipAgentforceConsentData?.cookieyesCategory,
+					configuredBootstrapSrc:
+						window.vipAgentforceConsentData?.embedding
+							?.bootstrapSrc || '',
 					hasScript: Boolean(script),
 					sdkSrc: script?.getAttribute('src') || '',
 					consent: window.AFConsentGranted === true,
@@ -188,7 +190,8 @@ test.describe('CMP Settings', () => {
 			expect(state.configuredCategory).toBe('analytics');
 			expect(state.hasScript).toBe(true);
 			expect(state.consent).toBe(true);
-			expect(state.sdkSrc).toContain(bootstrapSrc);
+			expect(state.configuredBootstrapSrc).not.toBe('');
+			expect(state.sdkSrc).toBe(state.configuredBootstrapSrc);
 		});
 	});
 
@@ -196,7 +199,6 @@ test.describe('CMP Settings', () => {
 		page,
 	}) => {
 		const cmpSettings = new CmpSettingsPage(page);
-		const bootstrapSrc = 'https://example.local/assets/js/bootstrap.min.js';
 
 		await test.step('Configure Custom consent with embedding script', async () => {
 			await cmpSettings.visit();
@@ -223,13 +225,17 @@ test.describe('CMP Settings', () => {
 						document
 							.getElementById('agentforce-sdk')
 							?.getAttribute('src') || '',
+					configuredBootstrapSrc:
+						window.vipAgentforceConsentData?.embedding
+							?.bootstrapSrc || '',
 					consent: window.AFConsentGranted === true,
 				};
 			});
 
 			expect(afterLoad.hasScript).toBe(true);
 			expect(afterLoad.consent).toBe(true);
-			expect(afterLoad.sdkSrc).toContain(bootstrapSrc);
+			expect(afterLoad.configuredBootstrapSrc).not.toBe('');
+			expect(afterLoad.sdkSrc).toBe(afterLoad.configuredBootstrapSrc);
 
 			const afterUnload = await page.evaluate(() => {
 				window.AgentforceCMP.unloadSDK();
