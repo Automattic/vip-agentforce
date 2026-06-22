@@ -145,6 +145,7 @@ class Ingestion_CLI_Test extends WP_UnitTestCase {
 
 	private function clear_pending_counter_samples(): void {
 		wp_cache_delete( 'ingestion_metric_counter_samples', 'vip_agentforce' );
+		wp_cache_delete( 'ingestion_metric_counter_replay_lock', 'vip_agentforce' );
 	}
 
 	/**

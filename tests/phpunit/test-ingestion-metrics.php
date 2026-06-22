@@ -87,6 +87,7 @@ class Ingestion_Metrics_Test extends WP_UnitTestCase {
 
 	private function clear_pending_counter_samples(): void {
 		wp_cache_delete( 'ingestion_metric_counter_samples', 'vip_agentforce' );
+		wp_cache_delete( 'ingestion_metric_counter_replay_lock', 'vip_agentforce' );
 	}
 
 	/**
@@ -452,6 +453,29 @@ class Ingestion_Metrics_Test extends WP_UnitTestCase {
 			],
 			$this->get_pending_counter_samples(),
 			'Unavailable known counters should remain buffered for a later scrape.'
+		);
+	}
+
+	public function test_counter_collection_leaves_samples_pending_when_replay_lock_is_held(): void {
+		$pending_samples = [
+			'api_requests' => [
+				'["POST","202","success"]' => [
+					'labels' => [ 'POST', '202', 'success' ],
+					'count'  => 2,
+				],
+			],
+		];
+
+		$this->update_pending_counter_samples( $pending_samples );
+		wp_cache_add( 'ingestion_metric_counter_replay_lock', true, 'vip_agentforce', 300 );
+
+		$this->collect_counter_metrics();
+
+		$this->assertNull( $this->api_requests_counter->get_sample( [ 'POST', '202', 'success' ] ) );
+		$this->assertSame(
+			$pending_samples,
+			$this->get_pending_counter_samples(),
+			'A collector that cannot claim the replay lock should leave samples for a later scrape.'
 		);
 	}
 
