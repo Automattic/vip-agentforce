@@ -50,6 +50,7 @@ class Ingestion_Metrics_Test extends WP_UnitTestCase {
 		$this->set_metric_property( 'api_errors_counter', $this->api_errors_counter );
 		$this->set_metric_property( 'posts_counter', $this->posts_counter );
 		$this->set_metric_property( 'api_requests_counter', $this->api_requests_counter );
+		$this->clear_pending_counter_samples();
 
 		$this->prime_configs_cache(
 			[
@@ -68,6 +69,7 @@ class Ingestion_Metrics_Test extends WP_UnitTestCase {
 		remove_all_filters( 'vip_agentforce_api_auth_retry_count' );
 		Configs::flush_cache();
 		delete_option( Ingestion_Queue::OPTION_DELETE_QUEUE );
+		$this->clear_pending_counter_samples();
 		Ingestion_Sync_Progress::reset();
 		wp_cache_delete( 'vip_agentforce_rate_limit_blocked_until', 'vip_agentforce' );
 		Testable_Logger::clear_entries();
@@ -79,11 +81,71 @@ class Ingestion_Metrics_Test extends WP_UnitTestCase {
 		parent::tearDown();
 	}
 
+	private function collect_counter_metrics(): void {
+		Ingestion_Metrics::collect_counters();
+	}
+
+	private function clear_pending_counter_samples(): void {
+		wp_cache_delete( 'ingestion_metric_counter_samples', 'vip_agentforce' );
+		wp_cache_delete( 'ingestion_metric_counter_replay_lock', 'vip_agentforce' );
+	}
+
+	/**
+	 * @return mixed
+	 */
+	private function get_pending_counter_samples() {
+		$found   = false;
+		$samples = wp_cache_get( 'ingestion_metric_counter_samples', 'vip_agentforce', false, $found );
+
+		return $found ? $samples : false;
+	}
+
+	/**
+	 * @param mixed $samples
+	 */
+	private function update_pending_counter_samples( $samples ): void {
+		wp_cache_set( 'ingestion_metric_counter_samples', $samples, 'vip_agentforce' );
+	}
+
 	private function set_metric_property( string $property, ?Fake_Ingestion_Metric $value ): void {
+		$gauge_keys = [
+			'queue_pending_gauge'    => 'queue_pending',
+			'bulk_status_gauge'      => 'bulk_status',
+			'bulk_posts_gauge'       => 'bulk_posts',
+			'bulk_updated_age_gauge' => 'bulk_updated_age',
+		];
+		if ( array_key_exists( $property, $gauge_keys ) ) {
+			$this->set_metric_array_value( 'gauges', $gauge_keys[ $property ], $value );
+			return;
+		}
+
+		$counter_keys = [
+			'api_errors_counter'   => 'api_errors',
+			'posts_counter'        => 'posts',
+			'api_requests_counter' => 'api_requests',
+		];
+		if ( array_key_exists( $property, $counter_keys ) ) {
+			$this->set_metric_array_value( 'counters', $counter_keys[ $property ], $value );
+		}
+	}
+
+	private function set_metric_array_value( string $property, string $key, ?Fake_Ingestion_Metric $value ): void {
 		$ref  = new ReflectionClass( Ingestion_Metrics::class );
 		$prop = $ref->getProperty( $property );
 		$prop->setAccessible( true );
-		$prop->setValue( null, $value );
+
+		$metrics = $prop->getValue();
+		if ( ! is_array( $metrics ) ) {
+			$metrics = [];
+		}
+
+		if ( null === $value ) {
+			unset( $metrics[ $key ] );
+		} else {
+			$metrics[ $key ] = $value;
+		}
+
+		$prop->setValue( null, $metrics );
 	}
 
 	/**
@@ -154,11 +216,18 @@ class Ingestion_Metrics_Test extends WP_UnitTestCase {
 			$this->markTestSkipped( 'Prometheus runtime is not available in this test environment.' );
 		}
 
-		$registry  = new \Prometheus\CollectorRegistry( new \Prometheus\Storage\InMemory() );
+		$storage = new \Prometheus\Storage\InMemory();
+		if ( class_exists( 'Automattic\\VIP\\Prometheus\\SafeAdapter' ) ) {
+			$storage = new \Automattic\VIP\Prometheus\SafeAdapter( $storage );
+		}
+
+		$registry  = new \Prometheus\CollectorRegistry( $storage );
 		$collector = new \Automattic\VIP\Salesforce\Agentforce\Utils\Collector();
 
 		$collector->initialize( $registry );
 		Ingestion_Metrics::record_api_request( 'POST', '202', 'success' );
+
+		$collector->collect_metrics();
 
 		$metric_names = [];
 		foreach ( $registry->getMetricFamilySamples() as $family ) {
@@ -168,6 +237,7 @@ class Ingestion_Metrics_Test extends WP_UnitTestCase {
 		}
 
 		$this->assertContains( 'vip_agentforce_ingestion_api_requests_total', $metric_names );
+		$this->assertFalse( $this->get_pending_counter_samples(), 'Initialized counters should write directly without pending replay state.' );
 	}
 
 	public function test_api_request_metrics_track_auth_failures(): void {
@@ -186,6 +256,7 @@ class Ingestion_Metrics_Test extends WP_UnitTestCase {
 
 		$client = new Ingestion_API_Client();
 		$result = $client->send( $this->create_test_record() );
+		$this->collect_counter_metrics();
 
 		$this->assertFalse( $result->success );
 		$this->assertSame( 'auth', $result->get_error_class() );
@@ -214,6 +285,7 @@ class Ingestion_Metrics_Test extends WP_UnitTestCase {
 		$this->assertSame( 'auth', $result->get_error_class() );
 
 		$deferred_result = $client->send( $this->create_test_record() );
+		$this->collect_counter_metrics();
 
 		$this->assertFalse( $deferred_result->success );
 		$this->assertTrue( $deferred_result->is_retryable() );
@@ -236,6 +308,7 @@ class Ingestion_Metrics_Test extends WP_UnitTestCase {
 
 		$client = new Ingestion_API_Client();
 		$result = $client->send( $this->create_test_record() );
+		$this->collect_counter_metrics();
 
 		$this->assertFalse( $result->success );
 		$this->assertSame( 'rate_limit', $result->get_error_class() );
@@ -257,6 +330,7 @@ class Ingestion_Metrics_Test extends WP_UnitTestCase {
 
 		$client = new Ingestion_API_Client();
 		$result = $client->send( $this->create_test_record() );
+		$this->collect_counter_metrics();
 
 		$this->assertFalse( $result->success );
 		$this->assertSame( 'server', $result->get_error_class() );
@@ -281,6 +355,7 @@ class Ingestion_Metrics_Test extends WP_UnitTestCase {
 
 		$client = new Ingestion_API_Client();
 		$result = $client->send( $this->create_test_record() );
+		$this->collect_counter_metrics();
 
 		$this->assertFalse( $result->success );
 		$this->assertSame( 'network', $result->get_error_class() );
@@ -293,6 +368,7 @@ class Ingestion_Metrics_Test extends WP_UnitTestCase {
 
 		$client = new Ingestion_API_Client();
 		$result = $client->send( $this->create_test_record() );
+		$this->collect_counter_metrics();
 
 		$this->assertFalse( $result->success );
 		$this->assertSame( 'config', $result->get_error_class() );
@@ -305,10 +381,282 @@ class Ingestion_Metrics_Test extends WP_UnitTestCase {
 		Ingestion_Metrics::record_post_result( 'ingested', 'bulk' );
 		Ingestion_Metrics::record_post_result( 'failed', 'queue' );
 		Ingestion_Metrics::record_post_result( 'deleted', 'sync' );
+		$this->collect_counter_metrics();
 
 		$this->assertSame( 1, $this->posts_counter->get_sample( [ 'ingested', 'bulk' ] ) );
 		$this->assertSame( 1, $this->posts_counter->get_sample( [ 'failed', 'queue' ] ) );
 		$this->assertSame( 1, $this->posts_counter->get_sample( [ 'deleted', 'sync' ] ) );
+	}
+
+	public function test_counter_samples_recorded_before_initialization_are_replayed_once(): void {
+		$this->set_metric_property( 'api_errors_counter', null );
+		$this->set_metric_property( 'posts_counter', null );
+		$this->set_metric_property( 'api_requests_counter', null );
+
+		Ingestion_Metrics::record_api_request( 'POST', '202', 'success' );
+		Ingestion_Metrics::record_api_request( 'POST', '202', 'success' );
+		Ingestion_Metrics::record_api_error( 'server' );
+		Ingestion_Metrics::record_post_result( 'ingested', 'bulk' );
+
+		$this->assertNull( $this->api_requests_counter->get_sample( [ 'POST', '202', 'success' ] ) );
+		$this->assertNull( $this->api_errors_counter->get_sample( [ 'server' ] ) );
+		$this->assertNull( $this->posts_counter->get_sample( [ 'ingested', 'bulk' ] ) );
+
+		$this->set_metric_property( 'api_errors_counter', $this->api_errors_counter );
+		$this->set_metric_property( 'posts_counter', $this->posts_counter );
+		$this->set_metric_property( 'api_requests_counter', $this->api_requests_counter );
+
+		$this->collect_counter_metrics();
+
+		$this->assertSame( 2, $this->api_requests_counter->get_sample( [ 'POST', '202', 'success' ] ) );
+		$this->assertSame( 1, $this->api_errors_counter->get_sample( [ 'server' ] ) );
+		$this->assertSame( 1, $this->posts_counter->get_sample( [ 'ingested', 'bulk' ] ) );
+		$this->assertFalse( $this->get_pending_counter_samples() );
+
+		$this->collect_counter_metrics();
+
+		$this->assertSame( 2, $this->api_requests_counter->get_sample( [ 'POST', '202', 'success' ] ) );
+		$this->assertSame( 1, $this->api_errors_counter->get_sample( [ 'server' ] ) );
+		$this->assertSame( 1, $this->posts_counter->get_sample( [ 'ingested', 'bulk' ] ) );
+	}
+
+	public function test_counter_collection_preserves_known_samples_when_metric_is_unavailable(): void {
+		$this->set_metric_property( 'posts_counter', null );
+		$this->update_pending_counter_samples(
+			[
+				'api_requests' => [
+					'["POST","202","success"]' => [
+						'labels' => [ 'POST', '202', 'success' ],
+						'count'  => 2,
+					],
+				],
+				'posts'        => [
+					'["failed","queue"]' => [
+						'labels' => [ 'failed', 'queue' ],
+						'count'  => 3,
+					],
+				],
+			]
+		);
+
+		$this->collect_counter_metrics();
+
+		$this->assertSame( 2, $this->api_requests_counter->get_sample( [ 'POST', '202', 'success' ] ) );
+		$this->assertSame(
+			[
+				'posts' => [
+					'["failed","queue"]' => [
+						'labels' => [ 'failed', 'queue' ],
+						'count'  => 3,
+					],
+				],
+			],
+			$this->get_pending_counter_samples(),
+			'Unavailable known counters should remain buffered for a later scrape.'
+		);
+	}
+
+	public function test_counter_collection_leaves_samples_pending_when_replay_lock_is_held(): void {
+		$pending_samples = [
+			'api_requests' => [
+				'["POST","202","success"]' => [
+					'labels' => [ 'POST', '202', 'success' ],
+					'count'  => 2,
+				],
+			],
+		];
+
+		$this->update_pending_counter_samples( $pending_samples );
+		wp_cache_add( 'ingestion_metric_counter_replay_lock', true, 'vip_agentforce', 300 );
+
+		$this->collect_counter_metrics();
+
+		$this->assertNull( $this->api_requests_counter->get_sample( [ 'POST', '202', 'success' ] ) );
+		$this->assertSame(
+			$pending_samples,
+			$this->get_pending_counter_samples(),
+			'A collector that cannot claim the replay lock should leave samples for a later scrape.'
+		);
+	}
+
+	public function test_counter_collection_keeps_pending_samples_when_replay_throws(): void {
+		$pending_samples = [
+			'api_requests' => [
+				'["POST","202","success"]' => [
+					'labels' => [ 'POST', '202', 'success' ],
+					'count'  => 2,
+				],
+			],
+		];
+
+		$this->update_pending_counter_samples( $pending_samples );
+		$this->set_metric_property(
+			'api_requests_counter',
+			new class() extends Fake_Ingestion_Metric {
+				/**
+				 * @param array<int, string> $labels
+				 */
+				// phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Mirrors Prometheus counter API.
+				public function incBy( int|float $count, array $labels = [] ): void {
+					throw new RuntimeException( 'Counter replay failed.' );
+				}
+			}
+		);
+
+		try {
+			$this->collect_counter_metrics();
+			$this->fail( 'Expected counter replay to throw.' );
+		} catch ( RuntimeException $exception ) {
+			$this->assertSame( 'Counter replay failed.', $exception->getMessage() );
+		}
+
+		$this->assertSame(
+			$pending_samples,
+			$this->get_pending_counter_samples(),
+			'Pending samples should not be removed until replay completes successfully.'
+		);
+	}
+
+	public function test_counter_collection_does_not_replay_samples_that_succeeded_before_later_failure(): void {
+		$this->update_pending_counter_samples(
+			[
+				'api_errors'   => [
+					'["server"]' => [
+						'labels' => [ 'server' ],
+						'count'  => 1,
+					],
+				],
+				'posts'        => [
+					'["failed","queue"]' => [
+						'labels' => [ 'failed', 'queue' ],
+						'count'  => 2,
+					],
+				],
+				'api_requests' => [
+					'["POST","202","success"]' => [
+						'labels' => [ 'POST', '202', 'success' ],
+						'count'  => 1,
+					],
+				],
+			]
+		);
+
+		$this->posts_counter = new class() extends Fake_Ingestion_Metric {
+			private bool $has_thrown = false;
+
+			/**
+			 * @param array<int, string> $labels
+			 */
+			// phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Mirrors Prometheus counter API.
+			public function incBy( int|float $count, array $labels = [] ): void {
+				if ( [ 'failed', 'queue' ] === $labels && ! $this->has_thrown ) {
+					$this->has_thrown = true;
+					throw new RuntimeException( 'Counter replay failed mid-batch.' );
+				}
+
+				parent::incBy( $count, $labels );
+			}
+		};
+
+		$this->set_metric_property(
+			'posts_counter',
+			$this->posts_counter
+		);
+
+		try {
+			$this->collect_counter_metrics();
+			$this->fail( 'Expected counter replay to throw.' );
+		} catch ( RuntimeException $exception ) {
+			$this->assertSame( 'Counter replay failed mid-batch.', $exception->getMessage() );
+		}
+
+		$this->assertSame( 1, $this->api_errors_counter->get_sample( [ 'server' ] ) );
+		$this->assertNull( $this->posts_counter->get_sample( [ 'failed', 'queue' ] ) );
+		$this->assertNull( $this->api_requests_counter->get_sample( [ 'POST', '202', 'success' ] ) );
+		$this->assertSame(
+			[
+				'posts'        => [
+					'["failed","queue"]' => [
+						'labels' => [ 'failed', 'queue' ],
+						'count'  => 2,
+					],
+				],
+				'api_requests' => [
+					'["POST","202","success"]' => [
+						'labels' => [ 'POST', '202', 'success' ],
+						'count'  => 1,
+					],
+				],
+			],
+			$this->get_pending_counter_samples(),
+			'Samples already replayed before a later failure should not remain buffered, while unattempted known samples should stay pending.'
+		);
+
+		$this->collect_counter_metrics();
+
+		$this->assertSame( 1, $this->api_requests_counter->get_sample( [ 'POST', '202', 'success' ] ) );
+		$this->assertSame( 2, $this->posts_counter->get_sample( [ 'failed', 'queue' ] ) );
+		$this->assertFalse( $this->get_pending_counter_samples() );
+	}
+
+	public function test_counter_collection_ignores_unknown_and_malformed_pending_samples(): void {
+		$this->update_pending_counter_samples(
+			[
+				'unknown'      => [
+					'["unexpected"]' => [
+						'labels' => [ 'unexpected' ],
+						'count'  => 99,
+					],
+				],
+				'api_requests' => [
+					'["POST","202","success"]' => [
+						'labels' => [ 'POST', '202', 'success' ],
+						'count'  => 2,
+					],
+					'bad-labels'               => [
+						'labels' => [ 'POST', 202, 'success' ],
+						'count'  => 5,
+					],
+					'bad-count'                => [
+						'labels' => [ 'POST', '500', 'server_error' ],
+						'count'  => 'not numeric',
+					],
+					'zero-count'               => [
+						'labels' => [ 'POST', '401', 'auth_error' ],
+						'count'  => 0,
+					],
+					'wrong-arity'              => [
+						'labels' => [ 'POST', '202' ],
+						'count'  => 7,
+					],
+					'unknown-method'           => [
+						'labels' => [ 'PUT', '202', 'success' ],
+						'count'  => 8,
+					],
+					'unknown-status'           => [
+						'labels' => [ 'POST', 'garbage', 'success' ],
+						'count'  => 9,
+					],
+				],
+			]
+		);
+
+		$this->collect_counter_metrics();
+
+		$this->assertSame( 2, $this->api_requests_counter->get_sample( [ 'POST', '202', 'success' ] ) );
+		$this->assertNull( $this->api_requests_counter->get_sample( [ 'POST', '500', 'server_error' ] ) );
+		$this->assertNull( $this->api_requests_counter->get_sample( [ 'POST', '401', 'auth_error' ] ) );
+		$this->assertFalse( $this->get_pending_counter_samples() );
+	}
+
+	public function test_counter_samples_write_directly_when_counter_is_available(): void {
+		Ingestion_Metrics::record_api_request( 'POST', '202', 'success' );
+		Ingestion_Metrics::record_api_request( 'POST', 'garbage', 'success' );
+
+		$this->assertSame( 1, $this->api_requests_counter->get_sample( [ 'POST', '202', 'success' ] ) );
+		$this->assertSame( 1, $this->api_requests_counter->get_sample( [ 'POST', 'none', 'success' ] ) );
+		$this->assertNull( $this->api_requests_counter->get_sample( [ 'POST', 'garbage', 'success' ] ) );
+		$this->assertFalse( $this->get_pending_counter_samples() );
 	}
 
 	public function test_record_stats_logs_without_sending_pixel_in_test_environment(): void {

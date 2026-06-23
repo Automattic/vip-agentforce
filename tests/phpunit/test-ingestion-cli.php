@@ -51,6 +51,7 @@ class Ingestion_CLI_Test extends WP_UnitTestCase {
 		$this->captured_requests  = [];
 		$this->api_errors_counter = new Fake_Ingestion_Metric();
 		$this->set_metric_property( 'api_errors_counter', $this->api_errors_counter );
+		$this->clear_pending_counter_samples();
 
 		// Initialize cron hooks (registers the custom schedule needed by schedule_processing).
 		Ingestion_Cron::init();
@@ -106,16 +107,45 @@ class Ingestion_CLI_Test extends WP_UnitTestCase {
 		remove_all_actions( Ingestion_Cron::CRON_HOOK );
 		$this->captured_requests = [];
 		$this->set_metric_property( 'api_errors_counter', null );
+		$this->clear_pending_counter_samples();
 		Ingestion_Sync_Progress::reset();
 		Ingestion_Cron::unschedule_processing();
 		Ingestion_API_Client::clear_retry_status();
 	}
 
 	private function set_metric_property( string $property, ?Fake_Ingestion_Metric $value ): void {
+		$counter_keys = [
+			'api_errors_counter' => 'api_errors',
+		];
+		if ( ! array_key_exists( $property, $counter_keys ) ) {
+			return;
+		}
+
 		$ref  = new ReflectionClass( Ingestion_Metrics::class );
-		$prop = $ref->getProperty( $property );
+		$prop = $ref->getProperty( 'counters' );
 		$prop->setAccessible( true );
-		$prop->setValue( null, $value );
+
+		$metrics = $prop->getValue();
+		if ( ! is_array( $metrics ) ) {
+			$metrics = [];
+		}
+
+		if ( null === $value ) {
+			unset( $metrics[ $counter_keys[ $property ] ] );
+		} else {
+			$metrics[ $counter_keys[ $property ] ] = $value;
+		}
+
+		$prop->setValue( null, $metrics );
+	}
+
+	private function collect_counter_metrics(): void {
+		Ingestion_Metrics::collect_counters();
+	}
+
+	private function clear_pending_counter_samples(): void {
+		wp_cache_delete( 'ingestion_metric_counter_samples', 'vip_agentforce' );
+		wp_cache_delete( 'ingestion_metric_counter_replay_lock', 'vip_agentforce' );
 	}
 
 	/**
@@ -992,6 +1022,7 @@ class Ingestion_CLI_Test extends WP_UnitTestCase {
 		$this->assertSame( 'missing_api_config', $data['error_code'] );
 		$this->assertStringContainsString( 'Missing required API configuration', $data['detail'] );
 		$this->assertNotEmpty( $data['message'] );
+		$this->collect_counter_metrics();
 		$this->assertSame( 1, $this->api_errors_counter->get_sample( [ 'config' ] ) );
 		$this->assertNull( Ingestion_Sync_Progress::get(), 'Sync progress should not start when request preflight fails.' );
 		$this->assertFalse( Ingestion_Cron::is_scheduled(), 'Cron should not be scheduled when request preflight fails.' );
@@ -1021,6 +1052,7 @@ class Ingestion_CLI_Test extends WP_UnitTestCase {
 		$this->assertSame( 'token_expired', $data['error_code'] );
 		$this->assertSame( 'Ingestion API token has expired', $data['detail'] );
 		$this->assertNotEmpty( $data['message'] );
+		$this->collect_counter_metrics();
 		$this->assertSame( 1, $this->api_errors_counter->get_sample( [ 'auth' ] ) );
 		$this->assertNull( Ingestion_Sync_Progress::get(), 'Sync progress should not start when request preflight fails.' );
 		$this->assertFalse( Ingestion_Cron::is_scheduled(), 'Cron should not be scheduled when request preflight fails.' );
