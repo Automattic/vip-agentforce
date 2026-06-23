@@ -112,6 +112,15 @@ const startIubendaConsentObserver = () => {
 	);
 };
 
+const stopIubendaConsentObserver = () => {
+	if (!iubendaConsentObserverId) {
+		return;
+	}
+
+	window.clearInterval(iubendaConsentObserverId);
+	iubendaConsentObserverId = undefined;
+};
+
 const wrapIubendaCallback = (callbackName) => {
 	if (
 		!window._iub?.csConfiguration ||
@@ -172,3 +181,5 @@ document.addEventListener('DOMContentLoaded', () => {
 	startIubendaConsentObserver();
 	checkIubendaConsent();
 });
+
+window.addEventListener('pagehide', stopIubendaConsentObserver);
