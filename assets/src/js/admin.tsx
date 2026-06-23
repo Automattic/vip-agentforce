@@ -363,6 +363,47 @@ function AgentforceSettingsApp({ settings }: { settings: SettingsData }) {
 											)}
 											<br />
 											{__(
+												'Purpose IDs:',
+												'vip-agentforce'
+											)}
+											<ul>
+												<li>
+													{__(
+														'1 - Necessary',
+														'vip-agentforce'
+													)}
+												</li>
+												<li>
+													{__(
+														'2 - Functionality (live chat and support)',
+														'vip-agentforce'
+													)}
+												</li>
+												<li>
+													{__(
+														'3 - Experience (external or social content)',
+														'vip-agentforce'
+													)}
+												</li>
+												<li>
+													{__(
+														'4 - Measurement (analytics and testing)',
+														'vip-agentforce'
+													)}
+												</li>
+												<li>
+													{__(
+														'5 - Marketing (ads and remarketing)',
+														'vip-agentforce'
+													)}
+												</li>
+											</ul>
+											{__(
+												'Choose the category where your Agentforce widget is listed in iubenda.',
+												'vip-agentforce'
+											)}
+											<br />
+											{__(
 												'To see all available purpose IDs for your site, open browser console and run:',
 												'vip-agentforce'
 											)}

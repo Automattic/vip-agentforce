@@ -19,9 +19,11 @@ class Constants {
 	const DEFAULT_ONETRUST_GROUP_ID = 'C0004';
 
 	/**
-	 * Default iubenda Purpose ID
+	 * Default iubenda Purpose ID.
+	 *
+	 * Purpose 2 is Functionality, used for live chat and support widgets.
 	 */
-	const DEFAULT_IUBENDA_PURPOSE_ID = '5';
+	const DEFAULT_IUBENDA_PURPOSE_ID = '2';
 
 	/**
 	 * Salesforce-owned domain suffixes the Agentforce embed URLs may point at (bootstrap
