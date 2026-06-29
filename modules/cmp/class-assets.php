@@ -144,7 +144,9 @@ class Assets {
 		if ( ! $debug_preview && ! Configs::is_js_sdk_activated() ) {
 			return;
 		}
-		$parsed_embedding_script = $this->parse_embedding_script( Configs::get_embedding_script() );
+		// The custom launcher is the default experience, so always suppress Salesforce's
+		// default chat button and let our branded launcher drive the conversation.
+		$parsed_embedding_script = $this->parse_embedding_script( Configs::get_embedding_script(), true );
 		if ( null === $parsed_embedding_script ) {
 			return;
 		}
@@ -192,6 +194,11 @@ class Assets {
 		if ( ! empty( $prechat_fields ) ) {
 			$localize_data['prechatFields'] = $prechat_fields;
 		}
+
+		$localize_data['launcher'] = array(
+			'label'     => __( 'Chat with us', 'vip-agentforce' ),
+			'alignment' => Settings_Page::get_instance()->validate_alignment( get_option( 'vip_agentforce_alignment', 'bottom-right' ) ),
+		);
 
 		// we're late loading the options to make sure we load them only if needed.
 		if ( 'CookieYes' === $consent_type ) {
@@ -320,10 +327,11 @@ class Assets {
 	/**
 	 * Parse embedding script config and extract required runtime values.
 	 *
-	 * @param string $embedding_script Raw embedding script snippet.
+	 * @param string $embedding_script    Raw embedding script snippet.
+	 * @param bool   $hide_default_button Whether to suppress the default Salesforce chat button on load.
 	 * @return array{inline_init_js: string, bootstrap_src: string}|null
 	 */
-	private function parse_embedding_script( string $embedding_script ): ?array {
+	private function parse_embedding_script( string $embedding_script, bool $hide_default_button = false ): ?array {
 		$embedding_script = trim( $embedding_script );
 
 
@@ -379,7 +387,7 @@ class Assets {
 		}
 
 		return array(
-			'inline_init_js' => $this->build_inline_init_script( $params ),
+			'inline_init_js' => $this->build_inline_init_script( $params, $hide_default_button ),
 			'bootstrap_src'  => $bootstrap_src,
 		);
 	}
@@ -447,13 +455,20 @@ class Assets {
 	 * Values are embedded with wp_json_encode so they are emitted as safe JS string
 	 * literals and cannot break out of the template.
 	 *
-	 * @param array{org_id: string, deployment_name: string, site_url: string, scrt_url: string, language: string} $params Validated parameters.
+	 * @param array{org_id: string, deployment_name: string, site_url: string, scrt_url: string, language: string} $params              Validated parameters.
+	 * @param bool                                                                                                $hide_default_button Whether to suppress the default Salesforce chat button on load.
 	 * @return string
 	 */
-	private function build_inline_init_script( array $params ): string {
-		$language_line = '';
+	private function build_inline_init_script( array $params, bool $hide_default_button = false ): string {
+		$settings_lines = '';
+
+		if ( $hide_default_button ) {
+			// Suppress Salesforce's default floating chat button so our custom launcher can replace it.
+			$settings_lines .= "\t\t\tembeddedservice_bootstrap.settings.hideChatButtonOnLoad = true;\n";
+		}
+
 		if ( '' !== $params['language'] ) {
-			$language_line = sprintf(
+			$settings_lines .= sprintf(
 				"\t\t\tembeddedservice_bootstrap.settings.language = %s;\n",
 				wp_json_encode( $params['language'] )
 			);
@@ -475,7 +490,7 @@ class Assets {
 			"\t\tconsole.error('Error loading Embedded Messaging: ', err);\n" .
 			"\t}\n" .
 			'}',
-			$language_line,
+			$settings_lines,
 			wp_json_encode( $params['org_id'] ),
 			wp_json_encode( $params['deployment_name'] ),
 			wp_json_encode( $params['site_url'] ),
