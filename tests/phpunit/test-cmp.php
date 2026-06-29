@@ -540,6 +540,39 @@ class Cmp_Tests extends WP_UnitTestCase {
 		$this->assertStringContainsString( 'function initEmbeddedMessaging()', strval( $inline_data ) );
 	}
 
+	public function test_custom_launcher_hides_default_button_and_localizes_launcher(): void {
+		$this->prime_configs_cache(
+			[
+				'agentforce_js_sdk_activated' => true,
+				'agentforce_embedding_script' => $this->get_embedding_script_fixture(),
+			]
+		);
+
+		update_option( 'vip_agentforce_consent_type', 'CookieYes' );
+		update_option( 'vip_agentforce_alignment', 'bottom-left' );
+
+		$this->reset_consent_script( 'vip-af-cookieyes-consent' );
+
+		Assets::get_instance()->enqueue_consent_scripts();
+
+		$inline_data = wp_scripts()->get_data( 'vip-af-cookieyes-consent', 'before' );
+		if ( is_array( $inline_data ) ) {
+			$inline_data = implode( "\n", $inline_data );
+		}
+		// The flag must be set before embeddedservice_bootstrap.init() in the rebuilt script.
+		$inline_data    = strval( $inline_data );
+		$hide_button_at = strpos( $inline_data, 'hideChatButtonOnLoad = true;' );
+		$init_at        = strpos( $inline_data, 'embeddedservice_bootstrap.init(' );
+		$this->assertNotFalse( $hide_button_at, 'Init script should suppress the default chat button.' );
+		$this->assertNotFalse( $init_at, 'Init script should call embeddedservice_bootstrap.init().' );
+		$this->assertLessThan( $init_at, $hide_button_at, 'hideChatButtonOnLoad must be set before init().' );
+
+		$localized_data = wp_scripts()->get_data( 'vip-af-cookieyes-consent', 'data' );
+		$this->assertStringContainsString( '"launcher":{', $localized_data );
+		$this->assertStringContainsString( '"label":"Chat with us"', $localized_data );
+		$this->assertStringContainsString( '"alignment":"bottom-left"', $localized_data );
+	}
+
 	public function test_debug_preview_enqueues_custom_cmp_for_users_with_manage_options(): void {
 		$this->prime_configs_cache(
 			[
@@ -984,6 +1017,16 @@ class Cmp_Tests extends WP_UnitTestCase {
 
 		$this->assertStringContainsString( '.embedded-messaging > .embeddedMessagingFrame { left: 10px }', $inline_css );
 		$this->assertStringContainsString( '.embedded-messaging > .launcher { color: red; }', $inline_css );
+	}
+
+	public function test_render_custom_css_hides_minimized_frame(): void {
+		Assets::get_instance()->enqueue_scripts();
+		Agentforce::get_instance()->render_custom_css();
+		$inline_styles = wp_styles()->get_data( 'vip-agentforce-style', 'after' );
+		$inline_css    = is_array( $inline_styles ) ? implode( "\n", $inline_styles ) : '';
+
+		$this->assertStringContainsString( '.embeddedMessagingFrame.isMinimized', $inline_css );
+		$this->assertStringContainsString( 'display: none !important', $inline_css );
 	}
 
 	public function test_render_custom_css_decodes_legacy_entities(): void {
