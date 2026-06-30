@@ -304,6 +304,13 @@ class Ingestion_Cron {
 		array $preflight_failure,
 		string $message = 'Ingestion API token expired, skipping queue processing'
 	): void {
+		$retry_status     = Ingestion_API_Client::get_retry_status();
+		$already_recorded = $preflight_failure['error_code'] === $retry_status['reason'];
+
+		if ( $already_recorded ) {
+			return;
+		}
+
 		Ingestion_API_Client::record_preflight_failure_status( $preflight_failure );
 		Logger::warning(
 			'ingestion-cron',

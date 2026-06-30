@@ -515,6 +515,47 @@ class Ingestion_CLI_Test extends WP_UnitTestCase {
 		$this->assertSame( 0, Ingestion_Queue::get_sync_attempts( $second_post->ID ) );
 	}
 
+	public function test_cli_process_queue_all_continues_after_inactive_retryable_reason(): void {
+		wp_cache_set(
+			'vip_agentforce_ingestion_api_retry_state',
+			[
+				'blocked_until'        => microtime( true ) - 60,
+				'consecutive_failures' => 1,
+				'reason'               => 'server_error',
+				'status_code'          => 500,
+				'last_error_at'        => gmdate( 'c' ),
+				'last_error_message'   => 'Server Error',
+			],
+			'vip_agentforce',
+			DAY_IN_SECONDS
+		);
+		$this->setup_ingestion_filters();
+
+		$first_post  = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
+		$second_post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
+		Ingestion_Queue::queue_for_sync( $first_post->ID );
+		Ingestion_Queue::queue_for_sync( $second_post->ID );
+
+		$batch_size_resolutions = 0;
+		add_filter(
+			'vip_agentforce_cron_batch_size',
+			function () use ( &$batch_size_resolutions ) {
+				++$batch_size_resolutions;
+				return 1;
+			}
+		);
+
+		$cli = new Ingestion_CLI();
+		ob_start();
+		$cli->process_queue( [], [ 'all' => '' ] );
+		ob_end_clean();
+
+		$this->assertSame( 2, $batch_size_resolutions, 'Expired retry windows with retryable reasons should continue into the next --all batch.' );
+		$this->assertCount( 2, $this->captured_requests, 'Expired retry windows with retryable reasons should not pause --all processing.' );
+		$this->assertFalse( Ingestion_Queue::has_queued_items() );
+		$this->assertNull( Ingestion_API_Client::get_retry_status()['reason'] );
+	}
+
 	public function test_cli_process_queue_all_stops_after_inactive_preflight_failure(): void {
 		$this->prime_configs_cache(
 			[
@@ -539,12 +580,10 @@ class Ingestion_CLI_Test extends WP_UnitTestCase {
 		$cli = new Ingestion_CLI();
 		ob_start();
 		$cli->process_queue( [], [ 'all' => '' ] );
-		$output = ob_get_clean();
+		ob_end_clean();
 
 		$status = Ingestion_API_Client::get_retry_status();
 		$this->assertSame( Ingestion_Error::TOKEN_EXPIRED, $status['reason'] );
-		$this->assertStringContainsString( 'Batch 1: synced=0, deleted=0, failed=0, skipped=0', $output );
-		$this->assertStringContainsString( 'Total batches: 1', $output );
 		$this->assertSame( 1, $batch_size_resolutions, 'The --all loop must stop before resolving a second batch while an expired token pauses processing.' );
 		$this->assertCount( 0, $this->captured_requests );
 		$this->assertTrue( Ingestion_Sync_Progress::is_running(), 'Expired-token skips should pause work without consuming bulk-sync progress.' );

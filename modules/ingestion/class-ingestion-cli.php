@@ -602,7 +602,7 @@ class Ingestion_CLI extends WP_CLI_Command {
 				break;
 			}
 
-			if ( null !== $retry_status['reason'] ) {
+			if ( null !== $retry_status['reason'] && 0 === $retry_status['consecutive_failures'] ) {
 				// Non-retryable preflight failures, like an expired token, do not
 				// activate backoff but still pause useful processing.
 				WP_CLI::warning(
