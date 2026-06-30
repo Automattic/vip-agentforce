@@ -3,6 +3,7 @@
 use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion;
 use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_API_Client;
 use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_CLI;
+use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_Error;
 use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_Post_Record;
 use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_Queue;
 use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_Sync_Progress;
@@ -417,6 +418,25 @@ class Ingestion_CLI_Test extends WP_UnitTestCase {
 		$this->assertSame( 500, $status['status_code'] );
 	}
 
+	public function test_cli_retry_status_details_include_inactive_preflight_reason(): void {
+		$cli = new Ingestion_CLI();
+		$ref = new ReflectionMethod( $cli, 'has_retry_status_details' );
+		$ref->setAccessible( true );
+
+		$this->assertTrue(
+			$ref->invoke(
+				$cli,
+				[
+					'active'               => false,
+					'consecutive_failures' => 0,
+					'reason'               => Ingestion_Error::TOKEN_EXPIRED,
+					'last_error_message'   => 'Ingestion API token has expired',
+				]
+			),
+			'Inactive preflight diagnostics should stay visible for Support.'
+		);
+	}
+
 	public function test_cli_clear_retry_backoff_resets_retry_status(): void {
 		wp_cache_set( 'vip_agentforce_rate_limit_blocked_until', microtime( true ) + 60, 'vip_agentforce', 300 );
 		wp_cache_set(
@@ -493,6 +513,41 @@ class Ingestion_CLI_Test extends WP_UnitTestCase {
 		$this->assertCount( 1, $this->captured_requests );
 		$this->assertSame( 1, Ingestion_Queue::get_sync_attempts( $first_post->ID ) );
 		$this->assertSame( 0, Ingestion_Queue::get_sync_attempts( $second_post->ID ) );
+	}
+
+	public function test_cli_process_queue_all_stops_after_inactive_preflight_failure(): void {
+		$this->prime_configs_cache(
+			[
+				'ingestion_api_instance_url'     => 'https://test.salesforce.com',
+				'ingestion_api_token'            => 'expired-token',
+				'ingestion_api_token_expires_at' => time() - HOUR_IN_SECONDS,
+				'ingestion_api_source_name'      => 'test-source',
+				'ingestion_api_object_name'      => 'test-object',
+			]
+		);
+		Ingestion_Sync_Progress::start( 2, [ 'post' ] );
+
+		$batch_size_resolutions = 0;
+		add_filter(
+			'vip_agentforce_cron_batch_size',
+			function () use ( &$batch_size_resolutions ) {
+				++$batch_size_resolutions;
+				return 1;
+			}
+		);
+
+		$cli = new Ingestion_CLI();
+		ob_start();
+		$cli->process_queue( [], [ 'all' => '' ] );
+		$output = ob_get_clean();
+
+		$status = Ingestion_API_Client::get_retry_status();
+		$this->assertSame( Ingestion_Error::TOKEN_EXPIRED, $status['reason'] );
+		$this->assertStringContainsString( 'Batch 1: synced=0, deleted=0, failed=0, skipped=0', $output );
+		$this->assertStringContainsString( 'Total batches: 1', $output );
+		$this->assertSame( 1, $batch_size_resolutions, 'The --all loop must stop before resolving a second batch while an expired token pauses processing.' );
+		$this->assertCount( 0, $this->captured_requests );
+		$this->assertTrue( Ingestion_Sync_Progress::is_running(), 'Expired-token skips should pause work without consuming bulk-sync progress.' );
 	}
 
 	public function test_cli_sync_starts_bulk_sync_progress(): void {

@@ -127,6 +127,32 @@ class Ingestion_API_Client {
 	}
 
 	/**
+	 * Record deterministic config/auth failures in the shared retry diagnostics.
+	 *
+	 * These failures do not get an active backoff window because waiting will
+	 * not fix them, but the reason still belongs in the same status surface
+	 * that Support and Dashboard already inspect for skipped ingestion work.
+	 *
+	 * @param array{message: string, error_class: string, error_code: string} $preflight_failure Failure details.
+	 */
+	public static function record_preflight_failure_status( array $preflight_failure ): void {
+		wp_cache_delete( self::CACHE_KEY_RATE_LIMIT_BLOCK, self::CACHE_GROUP );
+		wp_cache_set(
+			self::CACHE_KEY_RETRY_STATE,
+			[
+				'blocked_until'        => null,
+				'consecutive_failures' => 0,
+				'reason'               => $preflight_failure['error_code'],
+				'status_code'          => null,
+				'last_error_at'        => gmdate( 'c' ),
+				'last_error_message'   => $preflight_failure['message'],
+			],
+			self::CACHE_GROUP,
+			DAY_IN_SECONDS
+		);
+	}
+
+	/**
 	 * Send a record to the Salesforce Data Cloud Ingestion API.
 	 *
 	 * @param Ingestion_Post_Record $record The record to send.
@@ -170,6 +196,7 @@ class Ingestion_API_Client {
 		if ( null !== $preflight_failure ) {
 			// Config/token failures are deterministic. Retrying would only
 			// hide the real setup problem behind the shared backoff flow.
+			self::record_preflight_failure_status( $preflight_failure );
 			return $this->create_preflight_failure_result( $preflight_failure, $record_id );
 		}
 
@@ -263,6 +290,7 @@ class Ingestion_API_Client {
 
 				$preflight_failure = self::get_request_preflight_failure();
 				if ( null !== $preflight_failure ) {
+					self::record_preflight_failure_status( $preflight_failure );
 					return $this->create_preflight_failure_result( $preflight_failure, $record_id );
 				}
 
