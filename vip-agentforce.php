@@ -1,6 +1,6 @@
 <?php
 /**
- * Plugin Name: VIP Agentforce
+ * Plugin Name: Answers Agent
  * Plugin URI: https://github.com/Automattic/vip-agentforce
  * Description: WordPress integration for Salesforce Agentforce on VIP
  * Author: WordPress VIP

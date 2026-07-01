@@ -1,4 +1,4 @@
-# WordPress VIP - Agentforce Integration
+# WordPress VIP - Answers Agent
 
 Welcome to WordPress VIP! This repository is a starting point for building your WordPress VIP application, including all the base directories.
 
