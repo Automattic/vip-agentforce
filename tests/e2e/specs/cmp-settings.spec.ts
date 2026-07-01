@@ -66,7 +66,7 @@ test.describe('CMP Settings', () => {
 
 		await test.step('Visit CMP settings page', async () => {
 			await cmpSettings.visit();
-			await expect(cmpSettings.heading).toHaveText('Agentforce Settings');
+			await expect(cmpSettings.heading).toHaveText('Answers Agent Settings');
 		});
 
 		await test.step('Save a OneTrust value', async () => {

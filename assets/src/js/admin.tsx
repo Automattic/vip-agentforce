@@ -223,7 +223,7 @@ function AgentforceSettingsApp({ settings }: { settings: SettingsData }) {
 					<SettingsSection
 						title={__('General Settings', 'vip-agentforce')}
 						description={__(
-							'Choose how Agentforce loads based on your consent provider.',
+							'Choose how Answers Agent loads based on your consent provider.',
 							'vip-agentforce'
 						)}
 					>
@@ -293,7 +293,7 @@ function AgentforceSettingsApp({ settings }: { settings: SettingsData }) {
 									__next40pxDefaultSize
 									__nextHasNoMarginBottom
 									help={__(
-										'Choose the CookieYes category that must be granted before Agentforce loads.',
+										'Choose the CookieYes category that must be granted before Answers Agent loads.',
 										'vip-agentforce'
 									)}
 									label={__(
@@ -317,7 +317,7 @@ function AgentforceSettingsApp({ settings }: { settings: SettingsData }) {
 									__next40pxDefaultSize
 									__nextHasNoMarginBottom
 									help={__(
-										'Choose the Cookiebot category that must be granted before Agentforce loads.',
+										'Choose the Cookiebot category that must be granted before Answers Agent loads.',
 										'vip-agentforce'
 									)}
 									label={__(
@@ -399,7 +399,7 @@ function AgentforceSettingsApp({ settings }: { settings: SettingsData }) {
 												</li>
 											</ul>
 											{__(
-												'Choose the category where your Agentforce widget is listed in iubenda.',
+												'Choose the category where your Answers Agent widget is listed in iubenda.',
 												'vip-agentforce'
 											)}
 											<br />
@@ -502,7 +502,7 @@ function AgentforceSettingsError() {
 		<div className="notice notice-error inline">
 			<p>
 				{__(
-					'Agentforce settings could not be loaded. Refresh the page and try again.',
+					'Answers Agent settings could not be loaded. Refresh the page and try again.',
 					'vip-agentforce'
 				)}
 			</p>
