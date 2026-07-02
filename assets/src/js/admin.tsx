@@ -235,13 +235,13 @@ function AgentforceSettingsApp({ settings }: { settings: SettingsData }) {
 									shouldShowCustom ? (
 										<>
 											{__(
-												'This lets you control when the Agentforce SDK loads after consent is granted.',
+												'This lets you control when Answers Agent loads after consent is granted.',
 												'vip-agentforce'
 											)}
 											<br />
 											{createInterpolateElement(
 												__(
-													'Activate Agentforce after consent: <code>window.AgentforceCMP.loadSDK()</code>',
+													'Activate Answers Agent after consent: <code>window.AgentforceCMP.loadSDK()</code>',
 													'vip-agentforce'
 												),
 												{

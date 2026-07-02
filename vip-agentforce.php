@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Answers Agent
  * Plugin URI: https://github.com/Automattic/vip-agentforce
- * Description: WordPress integration for Salesforce Agentforce on VIP
+ * Description: Deploy a Salesforce Agentforce agent on your WordPress application to bring AI to your visitor experience, powered by your content.
  * Author: WordPress VIP
  * Text Domain: vip-agentforce
  * Version: 0.2.1
