@@ -602,7 +602,19 @@ class Ingestion_CLI extends WP_CLI_Command {
 				break;
 			}
 
-			if ( null !== $retry_status['reason'] && 0 === $retry_status['consecutive_failures'] ) {
+			// Stop `--all` only for config or token problems. Old retry warnings
+			// should not block the next batch.
+			$is_api_setup_blocker = in_array(
+				$retry_status['reason'],
+				[
+					Ingestion_Error::MISSING_API_CONFIG,
+					Ingestion_Error::TOKEN_EXPIRED,
+					Ingestion_Error::TOKEN_INVALID,
+				],
+				true
+			);
+
+			if ( $is_api_setup_blocker ) {
 				// Non-retryable preflight failures, like an expired token, do not
 				// activate backoff but still pause useful processing.
 				WP_CLI::warning(

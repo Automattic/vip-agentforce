@@ -556,6 +556,46 @@ class Ingestion_CLI_Test extends WP_UnitTestCase {
 		$this->assertNull( Ingestion_API_Client::get_retry_status()['reason'] );
 	}
 
+	public function test_cli_process_queue_all_continues_after_inactive_rate_limit_budget_reason(): void {
+		wp_cache_set(
+			'vip_agentforce_ingestion_api_retry_state',
+			[
+				'blocked_until'        => microtime( true ) - 60,
+				'consecutive_failures' => 0,
+				'reason'               => 'rate_limit_budget_low',
+				'status_code'          => null,
+				'last_error_at'        => gmdate( 'c' ),
+				'last_error_message'   => 'Rate limit budget is low',
+			],
+			'vip_agentforce',
+			DAY_IN_SECONDS
+		);
+
+		add_filter( 'vip_agentforce_should_ingest_post', '__return_false' );
+		$this->factory()->post->create_many( 3, [ 'post_status' => 'publish' ] );
+		Ingestion_Sync_Progress::start( 3, [ 'post' ] );
+
+		$batch_size_resolutions = 0;
+		add_filter(
+			'vip_agentforce_cron_batch_size',
+			function () use ( &$batch_size_resolutions ) {
+				++$batch_size_resolutions;
+				return 1;
+			}
+		);
+
+		$cli = new Ingestion_CLI();
+		ob_start();
+		$cli->process_queue( [], [ 'all' => '' ] );
+		ob_end_clean();
+
+		$progress = Ingestion_Sync_Progress::get();
+
+		$this->assertGreaterThan( 1, $batch_size_resolutions, 'Expired rate limit budget diagnostics should not pause --all processing.' );
+		$this->assertSame( Ingestion_Sync_Progress::STATUS_COMPLETED, $progress['status'] );
+		$this->assertSame( 3, $progress['skipped'] );
+	}
+
 	public function test_cli_process_queue_all_stops_after_inactive_preflight_failure(): void {
 		$this->prime_configs_cache(
 			[
