@@ -469,7 +469,7 @@ function AgentforceSettingsApp({ settings }: { settings: SettingsData }) {
 									'vip-agentforce'
 								)}
 								placeholder={__(
-									'/* Paste CSS to override agentforce styles */',
+									'/* Paste CSS to override Answers Agent styles */',
 									'vip-agentforce'
 								)}
 								rows={5}
