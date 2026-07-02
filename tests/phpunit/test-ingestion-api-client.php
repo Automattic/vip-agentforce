@@ -6,6 +6,7 @@
  */
 
 use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_API_Client;
+use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_Error;
 use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_Post_Record;
 use Automattic\VIP\Salesforce\Agentforce\Utils\Configs;
 use Automattic\VIP\Salesforce\Agentforce\Utils\Logger;
@@ -950,6 +951,11 @@ class Ingestion_API_Client_Test extends WP_UnitTestCase {
 		$this->assertSame( 'config', $result->get_error_class() );
 		$this->assertStringContainsString( 'Missing required API configuration', $result->error_message );
 		$this->assertCount( 1, $this->captured_requests, 'Refreshed missing config should stop before another HTTP attempt.' );
+		$this->assertSame(
+			Ingestion_Error::MISSING_API_CONFIG,
+			Ingestion_API_Client::get_retry_status()['reason'],
+			'Refreshed missing config should replace stale auth retry diagnostics.'
+		);
 	}
 
 	public function test_401_stops_after_refresh_when_token_expiry_is_invalid(): void {
@@ -982,6 +988,11 @@ class Ingestion_API_Client_Test extends WP_UnitTestCase {
 		$this->assertSame( 'auth', $result->get_error_class() );
 		$this->assertSame( 'Ingestion API token expiry is invalid', $result->error_message );
 		$this->assertCount( 1, $this->captured_requests, 'Refreshed invalid token metadata should stop before another HTTP attempt.' );
+		$this->assertSame(
+			Ingestion_Error::TOKEN_INVALID,
+			Ingestion_API_Client::get_retry_status()['reason'],
+			'Refreshed invalid token metadata should replace stale auth retry diagnostics.'
+		);
 	}
 
 	public function test_does_not_retry_on_403(): void {
