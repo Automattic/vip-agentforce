@@ -21,8 +21,8 @@ use Automattic\VIP\Salesforce\Agentforce\Utils\Logger;
  *
  * Responsibilities are deliberately narrow:
  *
- * - Make one logical API call. A stale-token 401 may refresh config and defer
- *   a bounded retry to the next round; all other retry decisions stay with cron via
+ * - Make one logical API call. A stale-token 401 defers a bounded retry to
+ *   a future worker; all other retry decisions stay with cron via
  *   `Ingestion_API_Result::is_retryable()`.
  * - Maintain a shared retry cache block:
  *   - Reactive: a 429 response stores the Retry-After window so other workers
@@ -50,9 +50,9 @@ class Ingestion_API_Client {
 	private const CACHE_GROUP = 'vip_agentforce';
 
 	/**
-	 * Retry-state reason used when a refreshed token should be retried later.
+	 * Retry-state reason used when auth should be retried by a future worker.
 	 */
-	private const RETRY_REASON_AUTH_TOKEN_REFRESHED = 'auth_token_refreshed';
+	private const RETRY_REASON_AUTH_RETRY_DEFERRED = 'auth_retry_deferred';
 
 	/**
 	 * Default exponential retry backoff floor, in seconds.
@@ -211,11 +211,11 @@ class Ingestion_API_Client {
 				'rate_limited', 'rate_limit_budget_low' => 'rate_limit',
 				'transient_server_error' => 'server',
 				'http_error' => 'network',
-				self::RETRY_REASON_AUTH_TOKEN_REFRESHED => 'auth',
+				self::RETRY_REASON_AUTH_RETRY_DEFERRED => 'auth',
 				default => 'unexpected',
 			};
 
-			if ( self::RETRY_REASON_AUTH_TOKEN_REFRESHED !== $retry_reason ) {
+			if ( self::RETRY_REASON_AUTH_RETRY_DEFERRED !== $retry_reason ) {
 				Ingestion_Metrics::record_api_error( $error_class );
 			}
 
@@ -231,8 +231,6 @@ class Ingestion_API_Client {
 		}
 
 		$request_config = Configs::get_config();
-		$request_token  = $request_config['ingestion_api_token'] ?? '';
-		$request_token  = is_string( $request_token ) ? $request_token : '';
 		$response       = $this->execute_request( $method, $body, $request_config );
 
 		if ( is_wp_error( $response ) ) {
@@ -268,40 +266,30 @@ class Ingestion_API_Client {
 		}
 
 		if ( 401 === $status_code ) {
-			$auth_failures = $this->get_consecutive_failures_for_reason( self::RETRY_REASON_AUTH_TOKEN_REFRESHED );
+			$auth_failures = $this->get_consecutive_failures_for_reason( self::RETRY_REASON_AUTH_RETRY_DEFERRED );
 
 			if ( $auth_failures < $this->get_auth_retry_count() ) {
-				$refreshed_config = Configs::refresh_config();
-				$refreshed_token  = $refreshed_config['ingestion_api_token'] ?? '';
-				$refreshed_token  = is_string( $refreshed_token ) ? $refreshed_token : '';
-				$retry_attempt    = $auth_failures + 1;
+				$retry_attempt = $auth_failures + 1;
 
 				if ( Logger::is_verbose_ingestion_logging() ) {
 					Logger::warning(
 						'ingestion-api',
-						'Received 401 from Salesforce; refreshed ingestion config and deferred retry',
+						'Received 401 from Salesforce; deferred auth retry for a future worker',
 						[
-							'attempt'       => $retry_attempt,
-							'max_retries'   => $this->get_auth_retry_count(),
-							'token_changed' => '' !== $refreshed_token && ! hash_equals( $request_token, $refreshed_token ),
+							'attempt'     => $retry_attempt,
+							'max_retries' => $this->get_auth_retry_count(),
 						]
 					);
 				}
 
-				$preflight_failure = self::get_request_preflight_failure();
-				if ( null !== $preflight_failure ) {
-					self::record_preflight_failure_status( $preflight_failure );
-					return $this->create_preflight_failure_result( $preflight_failure, $record_id );
-				}
-
 				$this->set_exponential_backoff(
-					self::RETRY_REASON_AUTH_TOKEN_REFRESHED,
+					self::RETRY_REASON_AUTH_RETRY_DEFERRED,
 					$status_code,
-					'Auth failed; refreshed ingestion config and deferred retry'
+					'Auth failed; deferred retry for a future worker'
 				);
 
 				return Ingestion_API_Result::deferred(
-					'Ingestion API auth retry deferred after refreshed config',
+					'Ingestion API auth retry deferred for a future worker',
 					$record_id,
 					'auth'
 				);

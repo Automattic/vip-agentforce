@@ -766,7 +766,7 @@ class Ingestion_Cron_Test extends WP_UnitTestCase {
 		$results = Ingestion_Cron::process_queue( 10 );
 
 		$this->assertSame( 0, $results['failed'] );
-		$this->assertCount( 1, $this->captured_requests, 'First 401 should refresh config and defer via shared backoff.' );
+		$this->assertCount( 1, $this->captured_requests, 'First 401 should defer via shared backoff.' );
 		$this->assertTrue( Ingestion_API_Client::get_retry_status()['active'] );
 
 		wp_cache_set( 'vip_agentforce_rate_limit_blocked_until', microtime( true ) - 1, 'vip_agentforce', 300 );
@@ -822,7 +822,7 @@ class Ingestion_Cron_Test extends WP_UnitTestCase {
 		$this->assertSame( 1, $progress['processed'] );
 	}
 
-	public function test_bulk_sync_recovers_when_401_refreshes_to_rotated_token(): void {
+	public function test_bulk_sync_recovers_on_next_cron_run_with_rotated_token(): void {
 		$this->setup_ingestion_filters();
 
 		add_filter(
@@ -887,6 +887,7 @@ class Ingestion_Cron_Test extends WP_UnitTestCase {
 		$this->assertSame( 0, $progress['processed'] );
 		$this->assertTrue( Ingestion_API_Client::get_retry_status()['active'] );
 
+		Configs::flush_cache();
 		wp_cache_set( 'vip_agentforce_rate_limit_blocked_until', microtime( true ) - 1, 'vip_agentforce', 300 );
 
 		$results  = Ingestion_Cron::process_queue( 10 );
