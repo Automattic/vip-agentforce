@@ -58,7 +58,7 @@ class Ingestion_Cron {
 	public static function add_cron_schedule( array $schedules ): array {
 		$schedules['vip_agentforce_ingestion'] = [
 			'interval' => self::get_cron_interval(),
-			'display'  => __( 'VIP Agentforce Ingestion', 'vip-agentforce' ),
+			'display'  => __( 'Answers Agent Content Sync', 'vip-agentforce' ),
 		];
 
 		return $schedules;

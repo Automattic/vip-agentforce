@@ -69,7 +69,7 @@ msgid "Saved changes will be applied on the next page load."
 msgstr ""
 
 #: modules/ingestion/class-ingestion-cron.php:61
-msgid "VIP Agentforce Ingestion"
+msgid "Answers Agent Content Sync"
 msgstr ""
 
 #: modules/ingestion/class-ingestion-rest.php:54
