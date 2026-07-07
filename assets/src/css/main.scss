@@ -10,7 +10,7 @@
  * Colors, spacing, radius and type follow the WPVIP design system primary
  * button (vip-design-system / valet-core "wpvip-product-core" tokens). Token
  * values are inlined and exposed as custom properties so a site can
- * override them from the plugin's Custom CSS setting.
+ * override them from its own stylesheet.
  *
  *   --vip-agentforce-launcher-bg        button.primary.background.default  color.black   #13191e
  *   --vip-agentforce-launcher-bg-hover  button.primary.background.hover    color.gold.30 #d8a45f

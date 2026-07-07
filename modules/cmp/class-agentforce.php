@@ -27,16 +27,16 @@ class Agentforce {
 	 * @return void
 	 */
 	protected function setup_hooks() {
-		add_action( 'wp_enqueue_scripts', array( $this, 'render_custom_css' ), 20 );
+		add_action( 'wp_enqueue_scripts', array( $this, 'render_inline_styles' ), 20 );
 	}
 
 	/**
-	 * Add custom CSS to the frontend stylesheet.
+	 * Add inline styles to the frontend stylesheet.
 	 *
 	 * @return void
 	 */
-	public function render_custom_css(): void {
-		$css = $this->get_custom_css();
+	public function render_inline_styles(): void {
+		$css = $this->get_inline_styles();
 
 		if ( '' === $css ) {
 			return;
@@ -46,14 +46,13 @@ class Agentforce {
 	}
 
 	/**
-	 * Build the custom CSS that should be appended to the frontend stylesheet.
+	 * Build the inline styles that should be appended to the frontend stylesheet.
 	 *
 	 * @return string
 	 */
-	private function get_custom_css(): string {
-		$custom_css = get_option( 'vip_agentforce_custom_css', '' );
-		$alignment  = get_option( 'vip_agentforce_alignment', 'bottom-right' );
-		$styles     = array();
+	private function get_inline_styles(): string {
+		$alignment = get_option( 'vip_agentforce_alignment', 'bottom-right' );
+		$styles    = array();
 
 		// Our custom launcher is the only entry point. Hide Salesforce's minimized chat
 		// bubble (the round frame shown when an active conversation is collapsed or
@@ -71,11 +70,6 @@ class Agentforce {
 					'button#embeddedMessagingConversationButton { right: unset; left: 10px; }',
 				)
 			);
-		}
-
-		if ( is_string( $custom_css ) && '' !== trim( $custom_css ) ) {
-			$custom_css = Settings_Page::sanitize_custom_css( $custom_css );
-			$styles[]   = $custom_css;
 		}
 
 		return implode( "\n", $styles );

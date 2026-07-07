@@ -98,7 +98,6 @@ class Cmp_Tests extends WP_UnitTestCase {
 		delete_option( 'vip_agentforce_cookiebot_category' );
 		delete_option( 'vip_agentforce_iubenda_category' );
 		delete_option( 'vip_agentforce_alignment' );
-		delete_option( 'vip_agentforce_custom_css' );
 
 		$this->reset_consent_script( 'vip-af-cookieyes-consent' );
 		$this->reset_consent_script( 'vip-af-cookiebot-consent' );
@@ -1006,71 +1005,25 @@ class Cmp_Tests extends WP_UnitTestCase {
 		$this->assertStringNotContainsString( 'Salesforce SDK URL', $output );
 	}
 
-	public function test_render_custom_css_adds_alignment_and_custom_css_inline(): void {
+	public function test_render_inline_styles_adds_alignment_styles(): void {
 		update_option( 'vip_agentforce_alignment', 'bottom-left' );
-		update_option( 'vip_agentforce_custom_css', '.embedded-messaging > .launcher { color: red; }' );
 
 		Assets::get_instance()->enqueue_scripts();
-		Agentforce::get_instance()->render_custom_css();
+		Agentforce::get_instance()->render_inline_styles();
 		$inline_styles = wp_styles()->get_data( 'vip-agentforce-style', 'after' );
 		$inline_css    = is_array( $inline_styles ) ? implode( "\n", $inline_styles ) : '';
 
 		$this->assertStringContainsString( '.embedded-messaging > .embeddedMessagingFrame { left: 10px }', $inline_css );
-		$this->assertStringContainsString( '.embedded-messaging > .launcher { color: red; }', $inline_css );
 	}
 
-	public function test_render_custom_css_hides_minimized_frame(): void {
+	public function test_render_inline_styles_hides_minimized_frame(): void {
 		Assets::get_instance()->enqueue_scripts();
-		Agentforce::get_instance()->render_custom_css();
+		Agentforce::get_instance()->render_inline_styles();
 		$inline_styles = wp_styles()->get_data( 'vip-agentforce-style', 'after' );
 		$inline_css    = is_array( $inline_styles ) ? implode( "\n", $inline_styles ) : '';
 
 		$this->assertStringContainsString( '.embeddedMessagingFrame.isMinimized', $inline_css );
 		$this->assertStringContainsString( 'display: none !important', $inline_css );
-	}
-
-	public function test_render_custom_css_decodes_legacy_entities(): void {
-		update_option( 'vip_agentforce_custom_css', '.embedded-messaging &gt; .launcher { color: red; }' );
-
-		Assets::get_instance()->enqueue_scripts();
-		Agentforce::get_instance()->render_custom_css();
-		$inline_styles = wp_styles()->get_data( 'vip-agentforce-style', 'after' );
-		$inline_css    = is_array( $inline_styles ) ? implode( "\n", $inline_styles ) : '';
-
-		$this->assertStringContainsString( '.embedded-messaging > .launcher { color: red; }', $inline_css );
-		$this->assertStringNotContainsString( '&gt;', $inline_css );
-	}
-
-	public function test_sanitize_custom_css_preserves_css_combinators(): void {
-		$settings = Settings_Page::get_instance();
-
-		$this->assertSame(
-			'.embedded-messaging > .launcher { color: red; }',
-			$settings->sanitize_custom_css( '.embedded-messaging > .launcher { color: red; }' )
-		);
-	}
-
-	public function test_sanitize_custom_css_strips_html_breakout_payloads(): void {
-		$settings = Settings_Page::get_instance();
-
-		$this->assertSame(
-			'.embedded-messaging > .launcher { color: red; }',
-			$settings->sanitize_custom_css( '&lt;/style&gt;<script>alert(1)</script>.embedded-messaging &gt; .launcher { color: red; }' )
-		);
-	}
-
-	public function test_render_custom_css_strips_breakout_payloads(): void {
-		update_option( 'vip_agentforce_custom_css', '&lt;/style&gt;<script>alert(1)</script>.embedded-messaging &gt; .launcher { color: red; }' );
-
-		Assets::get_instance()->enqueue_scripts();
-		Agentforce::get_instance()->render_custom_css();
-		$inline_styles = wp_styles()->get_data( 'vip-agentforce-style', 'after' );
-		$inline_css    = is_array( $inline_styles ) ? implode( "\n", $inline_styles ) : '';
-
-		$this->assertStringContainsString( '.embedded-messaging > .launcher { color: red; }', $inline_css );
-		$this->assertStringNotContainsString( '</style>', $inline_css );
-		$this->assertStringNotContainsString( '<script>', $inline_css );
-		$this->assertStringNotContainsString( 'alert(1)', $inline_css );
 	}
 
 	public function test_validation_returns_old_values_on_invalid_input(): void {
