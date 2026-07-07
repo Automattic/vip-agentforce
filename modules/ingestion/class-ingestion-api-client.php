@@ -76,6 +76,10 @@ class Ingestion_API_Client {
 
 	/**
 	 * Default number of deferred retries after a 401 response.
+	 *
+	 * A newly rotated token can take several minutes to propagate into the
+	 * Kubernetes-backed VIP_AGENTFORCE_CONFIGS constant, so allow multiple fresh
+	 * workers to pick it up before treating auth as terminally broken.
 	 */
 	private const DEFAULT_AUTH_RETRY_COUNT = 10;
 
