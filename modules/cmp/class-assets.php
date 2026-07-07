@@ -196,7 +196,7 @@ class Assets {
 		}
 
 		$localize_data['launcher'] = array(
-			'label'     => __( 'Chat with us', 'vip-agentforce' ),
+			'label'     => __( 'Ask', 'vip-agentforce' ),
 			'alignment' => Settings_Page::get_instance()->validate_alignment( get_option( 'vip_agentforce_alignment', 'bottom-right' ) ),
 		);
 

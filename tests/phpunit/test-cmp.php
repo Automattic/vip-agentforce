@@ -569,7 +569,7 @@ class Cmp_Tests extends WP_UnitTestCase {
 
 		$localized_data = wp_scripts()->get_data( 'vip-af-cookieyes-consent', 'data' );
 		$this->assertStringContainsString( '"launcher":{', $localized_data );
-		$this->assertStringContainsString( '"label":"Chat with us"', $localized_data );
+		$this->assertStringContainsString( '"label":"Ask"', $localized_data );
 		$this->assertStringContainsString( '"alignment":"bottom-left"', $localized_data );
 	}
 
