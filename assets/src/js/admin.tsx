@@ -8,7 +8,6 @@ import {
 	RadioControl,
 	SelectControl,
 	TextControl,
-	TextareaControl,
 } from '@wordpress/components';
 import domReady from '@wordpress/dom-ready';
 import {
@@ -44,7 +43,6 @@ interface SettingsValues {
 	cookiebotCategory: CookiebotCategory;
 	iubendaPurposeId: string;
 	alignment: Alignment;
-	customCss: string;
 }
 
 interface SettingsData {
@@ -120,8 +118,7 @@ function isSettingsValues(value: unknown): value is SettingsValues {
 		isCookiebotCategory(value.cookiebotCategory) &&
 		typeof value.iubendaPurposeId === 'string' &&
 		typeof value.alignment === 'string' &&
-		isAlignment(value.alignment) &&
-		typeof value.customCss === 'string'
+		isAlignment(value.alignment)
 	);
 }
 
@@ -182,7 +179,6 @@ function AgentforceSettingsApp({ settings }: { settings: SettingsData }) {
 		values.iubendaPurposeId
 	);
 	const [alignment, setAlignment] = useState(values.alignment);
-	const [customCss, setCustomCss] = useState(values.customCss);
 	const shouldShowOneTrust = consentType === 'OneTrust';
 	const shouldShowCookieYes = consentType === 'CookieYes';
 	const shouldShowCookiebot = consentType === 'CookieBot';
@@ -433,7 +429,7 @@ function AgentforceSettingsApp({ settings }: { settings: SettingsData }) {
 					<SettingsSection
 						title={__('Agent UI', 'vip-agentforce')}
 						description={__(
-							'Alignment and custom styles for the launcher/widget.',
+							'Alignment for the launcher/widget.',
 							'vip-agentforce'
 						)}
 					>
@@ -486,7 +482,6 @@ function AgentforceSettingsApp({ settings }: { settings: SettingsData }) {
 				value={consentType}
 			/>
 			<HiddenField name="vip_agentforce_alignment" value={alignment} />
-			<HiddenField name="vip_agentforce_custom_css" value={customCss} />
 
 			<p className="submit">
 				<Button type="submit" variant="primary">

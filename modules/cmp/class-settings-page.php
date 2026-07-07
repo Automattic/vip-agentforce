@@ -146,20 +146,6 @@ class Settings_Page {
 	}
 
 	/**
-	 * Sanitize custom CSS so valid selectors are preserved while HTML payloads are stripped.
-	 *
-	 * @param mixed $css The CSS to sanitize.
-	 *
-	 * @return string Sanitized CSS.
-	 */
-	public static function sanitize_custom_css( $css ): string {
-		$css = is_string( $css ) ? $css : '';
-		$css = html_entity_decode( $css, ENT_QUOTES | ENT_HTML5, 'UTF-8' );
-
-		return wp_strip_all_tags( $css );
-	}
-
-	/**
 	 * Add settings page to the admin menu.
 	 */
 	public function add_settings_page(): void {
@@ -216,16 +202,6 @@ class Settings_Page {
 				),
 			)
 		);
-		register_setting(
-			'agentforce_settings_group',
-			'vip_agentforce_custom_css',
-			array(
-				'sanitize_callback' => array(
-					self::class,
-					'sanitize_custom_css',
-				),
-			)
-		);
 	}
 
 	/**
@@ -252,7 +228,6 @@ class Settings_Page {
 				'cookiebotCategory' => $this->validate_cookiebot_category( get_option( 'vip_agentforce_cookiebot_category', Constants::DEFAULT_COOKIEBOT_CATEGORY ) ),
 				'iubendaPurposeId'  => get_option( 'vip_agentforce_iubenda_category', Constants::DEFAULT_IUBENDA_PURPOSE_ID ),
 				'alignment'         => get_option( 'vip_agentforce_alignment', 'bottom-right' ),
-				'customCss'         => self::sanitize_custom_css( get_option( 'vip_agentforce_custom_css', '' ) ),
 			),
 		);
 		?>
