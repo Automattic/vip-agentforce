@@ -77,7 +77,7 @@ class Ingestion_API_Client {
 	/**
 	 * Default number of deferred retries after a 401 response.
 	 */
-	private const DEFAULT_AUTH_RETRY_COUNT = 2;
+	private const DEFAULT_AUTH_RETRY_COUNT = 10;
 
 	/**
 	 * Get current shared retry status for diagnostics and CLI output.

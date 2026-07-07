@@ -54,6 +54,7 @@ class Ingestion_Cron_Test extends WP_UnitTestCase {
 		remove_all_filters( 'vip_agentforce_transform_post' );
 		remove_all_filters( 'vip_agentforce_ingestion_log_verbosity' );
 		remove_all_filters( 'vip_agentforce_config' );
+		remove_all_filters( 'vip_agentforce_api_auth_retry_count' );
 		remove_all_filters( 'pre_http_request' );
 		remove_all_filters( 'cron_schedules' );
 		remove_all_actions( Ingestion_Cron::CRON_HOOK );
@@ -722,6 +723,7 @@ class Ingestion_Cron_Test extends WP_UnitTestCase {
 		Testable_Logger::clear_entries();
 		update_option( 'vip_agentforce_ingestion_log_verbosity', 'normal', false );
 		$this->setup_ingestion_filters();
+		add_filter( 'vip_agentforce_api_auth_retry_count', static fn() => 2 );
 		add_filter(
 			'vip_agentforce_config',
 			function () {

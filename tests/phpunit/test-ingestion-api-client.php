@@ -926,33 +926,29 @@ class Ingestion_API_Client_Test extends WP_UnitTestCase {
 			}
 		);
 
-		$this->mock_http_responses(
-			[
-				$this->error_response( 401, 'Unauthorized' ),
-				$this->error_response( 401, 'Unauthorized' ),
-				$this->error_response( 401, 'Unauthorized' ),
-				$this->success_response(),
-			]
-		);
+		$responses = [];
+		for ( $i = 0; $i < 11; ++$i ) {
+			$responses[] = $this->error_response( 401, 'Unauthorized' );
+		}
+		$responses[] = $this->success_response();
+		$this->mock_http_responses( $responses );
 
 		$client = new Ingestion_API_Client();
 		$record = $this->create_test_record();
 
-		$result = $client->send( $record );
+		for ( $attempt = 1; $attempt <= 10; ++$attempt ) {
+			if ( $attempt > 1 ) {
+				wp_cache_set( 'vip_agentforce_rate_limit_blocked_until', microtime( true ) - 1, 'vip_agentforce', 300 );
+			}
 
-		$this->assertFalse( $result->success );
-		$this->assertTrue( $result->is_retryable() );
-		$this->assertCount( 1, $this->captured_requests );
-		$this->assertSame( 1, Ingestion_API_Client::get_retry_status()['consecutive_failures'] );
+			$result = $client->send( $record );
 
-		wp_cache_set( 'vip_agentforce_rate_limit_blocked_until', microtime( true ) - 1, 'vip_agentforce', 300 );
-
-		$result = $client->send( $record );
-
-		$this->assertFalse( $result->success );
-		$this->assertTrue( $result->is_retryable() );
-		$this->assertCount( 2, $this->captured_requests );
-		$this->assertSame( 2, Ingestion_API_Client::get_retry_status()['consecutive_failures'] );
+			$this->assertFalse( $result->success );
+			$this->assertTrue( $result->is_retryable(), 'Auth failures within the retry budget should stay deferred.' );
+			$this->assertCount( $attempt, $this->captured_requests );
+			$this->assertSame( $attempt, Ingestion_API_Client::get_retry_status()['consecutive_failures'] );
+			$this->assertSame( 'Bearer test-token', $this->captured_requests[ $attempt - 1 ]['headers']['Authorization'] );
+		}
 
 		wp_cache_set( 'vip_agentforce_rate_limit_blocked_until', microtime( true ) - 1, 'vip_agentforce', 300 );
 
@@ -961,10 +957,8 @@ class Ingestion_API_Client_Test extends WP_UnitTestCase {
 		$this->assertFalse( $result->success );
 		$this->assertSame( 'auth', $result->get_error_class() );
 		$this->assertFalse( $result->is_retryable() );
-		$this->assertCount( 3, $this->captured_requests, 'Initial 401 plus two deferred auth retries should be attempted.' );
-		$this->assertSame( 'Bearer test-token', $this->captured_requests[0]['headers']['Authorization'] );
-		$this->assertSame( 'Bearer test-token', $this->captured_requests[1]['headers']['Authorization'] );
-		$this->assertSame( 'Bearer test-token', $this->captured_requests[2]['headers']['Authorization'] );
+		$this->assertCount( 11, $this->captured_requests, 'Initial 401 plus ten deferred auth retries should be attempted.' );
+		$this->assertSame( 'Bearer test-token', $this->captured_requests[10]['headers']['Authorization'] );
 	}
 
 	public function test_401_hands_missing_config_off_to_next_worker(): void {
