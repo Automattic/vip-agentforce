@@ -8,6 +8,7 @@
 use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion;
 use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_API_Client;
 use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_Cron;
+use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_Error;
 use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_Post_Record;
 use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_Queue;
 use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_Sync_Progress;
@@ -53,6 +54,7 @@ class Ingestion_Cron_Test extends WP_UnitTestCase {
 		remove_all_filters( 'vip_agentforce_transform_post' );
 		remove_all_filters( 'vip_agentforce_ingestion_log_verbosity' );
 		remove_all_filters( 'vip_agentforce_config' );
+		remove_all_filters( 'vip_agentforce_api_auth_retry_count' );
 		remove_all_filters( 'pre_http_request' );
 		remove_all_filters( 'cron_schedules' );
 		remove_all_actions( Ingestion_Cron::CRON_HOOK );
@@ -170,6 +172,46 @@ class Ingestion_Cron_Test extends WP_UnitTestCase {
 		$this->assertTrue( Ingestion_Cron::is_scheduled() );
 	}
 
+	public function test_schedule_processing_skips_expired_token_and_records_retry_reason(): void {
+		$this->prime_configs_cache(
+			[
+				'ingestion_api_instance_url'     => 'https://test.salesforce.com',
+				'ingestion_api_token'            => 'test-token',
+				'ingestion_api_token_expires_at' => gmdate( 'c', time() - HOUR_IN_SECONDS ),
+				'ingestion_api_source_name'      => 'test-source',
+				'ingestion_api_object_name'      => 'test-object',
+			]
+		);
+
+		Ingestion_Cron::schedule_processing();
+
+		$retry_status = Ingestion_API_Client::get_retry_status();
+		$this->assertFalse( Ingestion_Cron::is_scheduled(), 'Expired tokens should not schedule cron work that cannot succeed.' );
+		$this->assertFalse( $retry_status['active'], 'Expired tokens are deterministic and should not create a fake retry window.' );
+		$this->assertSame( Ingestion_Error::TOKEN_EXPIRED, $retry_status['reason'] );
+		$this->assertSame( 'Ingestion API token has expired', $retry_status['last_error_message'] );
+	}
+
+	public function test_schedule_processing_logs_expired_token_once(): void {
+		Logger::enable();
+		Testable_Logger::clear_entries();
+		$this->prime_configs_cache(
+			[
+				'ingestion_api_instance_url'     => 'https://test.salesforce.com',
+				'ingestion_api_token'            => 'test-token',
+				'ingestion_api_token_expires_at' => gmdate( 'c', time() - HOUR_IN_SECONDS ),
+				'ingestion_api_source_name'      => 'test-source',
+				'ingestion_api_object_name'      => 'test-object',
+			]
+		);
+
+		Ingestion_Cron::schedule_processing();
+		Ingestion_Cron::schedule_processing();
+
+		$messages = array_column( Testable_Logger::get_entries(), 'message' );
+		$this->assertSame( 1, count( array_keys( $messages, 'Ingestion API token expired, skipping cron scheduling', true ) ) );
+	}
+
 	public function test_schedule_processing_does_not_duplicate(): void {
 		Ingestion_Cron::schedule_processing();
 		Ingestion_Cron::schedule_processing();
@@ -211,6 +253,66 @@ class Ingestion_Cron_Test extends WP_UnitTestCase {
 
 		// Should be dequeued.
 		$this->assertEmpty( Ingestion_Queue::get_queued_for_sync() );
+	}
+
+	public function test_process_queue_skips_expired_token_before_processing_work(): void {
+		$this->mock_http_success();
+		$this->setup_ingestion_filters();
+		$this->prime_configs_cache(
+			[
+				'ingestion_api_instance_url'     => 'https://test.salesforce.com',
+				'ingestion_api_token'            => 'test-token',
+				'ingestion_api_token_expires_at' => gmdate( 'c', time() - HOUR_IN_SECONDS ),
+				'ingestion_api_source_name'      => 'test-source',
+				'ingestion_api_object_name'      => 'test-object',
+			]
+		);
+
+		$post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
+		Ingestion_Queue::queue_for_sync( $post->ID );
+
+		$results      = Ingestion_Cron::process_queue();
+		$retry_status = Ingestion_API_Client::get_retry_status();
+
+		$this->assertSame(
+			[
+				'synced'  => 0,
+				'deleted' => 0,
+				'failed'  => 0,
+				'skipped' => 0,
+			],
+			$results
+		);
+		$this->assertSame( [ $post->ID ], Ingestion_Queue::get_queued_for_sync(), 'Skipped cron ticks must leave queued work in place for a later valid token.' );
+		$this->assertSame( 0, Ingestion_Queue::get_sync_attempts( $post->ID ), 'Expired-token skips must not burn retry attempts.' );
+		$this->assertCount( 0, $this->captured_requests, 'Expired tokens must skip Salesforce requests entirely.' );
+		$this->assertSame( Ingestion_Error::TOKEN_EXPIRED, $retry_status['reason'] );
+		$this->assertSame( 'Ingestion API token has expired', $retry_status['last_error_message'] );
+	}
+
+	public function test_process_queue_records_invalid_token_expiry_reason(): void {
+		$this->mock_http_success();
+		$this->setup_ingestion_filters();
+		$this->prime_configs_cache(
+			[
+				'ingestion_api_instance_url'     => 'https://test.salesforce.com',
+				'ingestion_api_token'            => 'test-token',
+				'ingestion_api_token_expires_at' => 'not-a-date',
+				'ingestion_api_source_name'      => 'test-source',
+				'ingestion_api_object_name'      => 'test-object',
+			]
+		);
+
+		$post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
+		Ingestion_Queue::queue_for_sync( $post->ID );
+
+		$results      = Ingestion_Cron::process_queue();
+		$retry_status = Ingestion_API_Client::get_retry_status();
+
+		$this->assertSame( 1, $results['failed'] );
+		$this->assertCount( 0, $this->captured_requests, 'Invalid token expiry metadata must not attempt a Salesforce request.' );
+		$this->assertSame( Ingestion_Error::TOKEN_INVALID, $retry_status['reason'] );
+		$this->assertSame( 'Ingestion API token expiry is invalid', $retry_status['last_error_message'] );
 	}
 
 	public function test_process_queue_processes_deletions(): void {
@@ -621,6 +723,7 @@ class Ingestion_Cron_Test extends WP_UnitTestCase {
 		Testable_Logger::clear_entries();
 		update_option( 'vip_agentforce_ingestion_log_verbosity', 'normal', false );
 		$this->setup_ingestion_filters();
+		add_filter( 'vip_agentforce_api_auth_retry_count', static fn() => 2 );
 		add_filter(
 			'vip_agentforce_config',
 			function () {
@@ -665,7 +768,7 @@ class Ingestion_Cron_Test extends WP_UnitTestCase {
 		$results = Ingestion_Cron::process_queue( 10 );
 
 		$this->assertSame( 0, $results['failed'] );
-		$this->assertCount( 1, $this->captured_requests, 'First 401 should refresh config and defer via shared backoff.' );
+		$this->assertCount( 1, $this->captured_requests, 'First 401 should defer via shared backoff.' );
 		$this->assertTrue( Ingestion_API_Client::get_retry_status()['active'] );
 
 		wp_cache_set( 'vip_agentforce_rate_limit_blocked_until', microtime( true ) - 1, 'vip_agentforce', 300 );
@@ -721,7 +824,7 @@ class Ingestion_Cron_Test extends WP_UnitTestCase {
 		$this->assertSame( 1, $progress['processed'] );
 	}
 
-	public function test_bulk_sync_recovers_when_401_refreshes_to_rotated_token(): void {
+	public function test_bulk_sync_recovers_on_next_cron_run_with_rotated_token(): void {
 		$this->setup_ingestion_filters();
 
 		add_filter(
@@ -786,6 +889,7 @@ class Ingestion_Cron_Test extends WP_UnitTestCase {
 		$this->assertSame( 0, $progress['processed'] );
 		$this->assertTrue( Ingestion_API_Client::get_retry_status()['active'] );
 
+		Configs::flush_cache();
 		wp_cache_set( 'vip_agentforce_rate_limit_blocked_until', microtime( true ) - 1, 'vip_agentforce', 300 );
 
 		$results  = Ingestion_Cron::process_queue( 10 );
@@ -807,10 +911,11 @@ class Ingestion_Cron_Test extends WP_UnitTestCase {
 		$this->factory()->post->create_many( 3, [ 'post_status' => 'publish' ] );
 		Ingestion_Sync_Progress::start( 3, [ 'post' ] );
 
-		$results  = Ingestion_Cron::process_queue( 10 );
-		$entries  = Testable_Logger::get_entries();
-		$messages = array_column( $entries, 'message' );
-		$progress = Ingestion_Sync_Progress::get();
+		$results      = Ingestion_Cron::process_queue( 10 );
+		$entries      = Testable_Logger::get_entries();
+		$messages     = array_column( $entries, 'message' );
+		$progress     = Ingestion_Sync_Progress::get();
+		$retry_status = Ingestion_API_Client::get_retry_status();
 
 		$this->assertSame( 1, $results['failed'] );
 		$this->assertCount( 0, $this->captured_requests, 'Missing config must not attempt a Salesforce request.' );
@@ -819,9 +924,10 @@ class Ingestion_Cron_Test extends WP_UnitTestCase {
 		$this->assertSame( Ingestion_Sync_Progress::STATUS_FAILED, $progress['status'] );
 		$this->assertStringContainsString( 'Missing required API configuration', $progress['error'] );
 		$this->assertSame( 1, $progress['processed'] );
+		$this->assertSame( Ingestion_Error::MISSING_API_CONFIG, $retry_status['reason'] );
 	}
 
-	public function test_bulk_sync_fast_fails_expired_token_without_api_requests(): void {
+	public function test_bulk_sync_skips_expired_token_without_api_requests(): void {
 		Logger::enable();
 		Testable_Logger::clear_entries();
 		$this->setup_ingestion_filters();
@@ -838,18 +944,27 @@ class Ingestion_Cron_Test extends WP_UnitTestCase {
 		$this->factory()->post->create_many( 3, [ 'post_status' => 'publish' ] );
 		Ingestion_Sync_Progress::start( 3, [ 'post' ] );
 
-		$results  = Ingestion_Cron::process_queue( 10 );
-		$entries  = Testable_Logger::get_entries();
-		$messages = array_column( $entries, 'message' );
-		$progress = Ingestion_Sync_Progress::get();
+		$results      = Ingestion_Cron::process_queue( 10 );
+		$entries      = Testable_Logger::get_entries();
+		$messages     = array_column( $entries, 'message' );
+		$progress     = Ingestion_Sync_Progress::get();
+		$retry_status = Ingestion_API_Client::get_retry_status();
 
-		$this->assertSame( 1, $results['failed'] );
+		$this->assertSame(
+			[
+				'synced'  => 0,
+				'deleted' => 0,
+				'failed'  => 0,
+				'skipped' => 0,
+			],
+			$results
+		);
 		$this->assertCount( 0, $this->captured_requests, 'Expired token must not attempt a Salesforce request.' );
-		$this->assertSame( 1, count( array_keys( $messages, 'Bulk sync encountered first failure', true ) ) );
-		$this->assertSame( 1, count( array_keys( $messages, 'Bulk sync batch completed with failures', true ) ) );
-		$this->assertSame( Ingestion_Sync_Progress::STATUS_FAILED, $progress['status'] );
-		$this->assertStringContainsString( 'global auth error', $progress['error'] );
-		$this->assertSame( 1, $progress['processed'] );
+		$this->assertSame( 1, count( array_keys( $messages, 'Ingestion API token expired, skipping queue processing', true ) ) );
+		$this->assertSame( 0, count( array_keys( $messages, 'Bulk sync encountered first failure', true ) ) );
+		$this->assertSame( Ingestion_Sync_Progress::STATUS_RUNNING, $progress['status'] );
+		$this->assertSame( 0, $progress['processed'] );
+		$this->assertSame( Ingestion_Error::TOKEN_EXPIRED, $retry_status['reason'] );
 	}
 
 	/**

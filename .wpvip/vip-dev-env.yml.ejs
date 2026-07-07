@@ -20,8 +20,8 @@ overrides: |
           WP_TESTS_DIR: /wp/wp-content/wordpress-tests-lib
         volumes:
           - <%= configDir %>/..:/wp/wp-content/plugins/vip-agentforce
-          <%# Uncomment this to add an additional plugin into the WordPress environment %>
-          <%# - /path/to/additional/plugin:/wp/wp-content/plugins/additional-plugin %>
+          # Uncomment this to add an additional plugin into the WordPress environment.
+          # - /path/to/additional/plugin:/wp/wp-content/plugins/additional-plugin
           - <%= configDir %>/plugin-loader.php:/wp/wp-content/client-mu-plugins/plugin-loader.php
           - <%= configDir %>/empty:/wp/wp-content/empty
     nginx:

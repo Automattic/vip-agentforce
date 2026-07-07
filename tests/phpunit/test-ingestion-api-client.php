@@ -6,6 +6,7 @@
  */
 
 use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_API_Client;
+use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_Error;
 use Automattic\VIP\Salesforce\Agentforce\Ingestion\Ingestion_Post_Record;
 use Automattic\VIP\Salesforce\Agentforce\Utils\Configs;
 use Automattic\VIP\Salesforce\Agentforce\Utils\Logger;
@@ -828,7 +829,7 @@ class Ingestion_API_Client_Test extends WP_UnitTestCase {
 		$this->assertCount( 1, $this->captured_requests, 'Should NOT retry on 400' );
 	}
 
-	public function test_401_refreshes_config_and_defers_retry_until_next_round(): void {
+	public function test_401_defers_until_next_worker_reloads_config(): void {
 		add_filter(
 			'vip_agentforce_config',
 			function () {
@@ -860,6 +861,7 @@ class Ingestion_API_Client_Test extends WP_UnitTestCase {
 		$this->assertSame( 'Bearer test-token', $this->captured_requests[0]['headers']['Authorization'] );
 		$this->assertTrue( Ingestion_API_Client::get_retry_status()['active'] );
 
+		Configs::flush_cache();
 		wp_cache_set( 'vip_agentforce_rate_limit_blocked_until', microtime( true ) - 1, 'vip_agentforce', 300 );
 
 		$result = $client->send( $record );
@@ -868,6 +870,47 @@ class Ingestion_API_Client_Test extends WP_UnitTestCase {
 		$this->assertCount( 2, $this->captured_requests, 'Next round should retry after the backoff expires.' );
 		$this->assertSame( 'Bearer rotated-token', $this->captured_requests[1]['headers']['Authorization'] );
 		$this->assertFalse( Ingestion_API_Client::get_retry_status()['active'] );
+	}
+
+	public function test_401_does_not_reload_config_in_current_worker(): void {
+		add_filter(
+			'vip_agentforce_config',
+			function () {
+				return [
+					'ingestion_api_instance_url' => 'https://test.salesforce.com',
+					'ingestion_api_token'        => 'rotated-token',
+					'ingestion_api_source_name'  => 'test-source',
+					'ingestion_api_object_name'  => 'test-object',
+				];
+			}
+		);
+
+		$this->mock_http_responses(
+			[
+				$this->error_response( 401, 'Unauthorized' ),
+				$this->success_response(),
+			]
+		);
+
+		$client = new Ingestion_API_Client();
+		$record = $this->create_test_record();
+
+		$result = $client->send( $record );
+
+		$this->assertFalse( $result->success );
+		$this->assertTrue( $result->is_retryable() );
+		$this->assertSame( 'Bearer test-token', $this->captured_requests[0]['headers']['Authorization'] );
+
+		wp_cache_set( 'vip_agentforce_rate_limit_blocked_until', microtime( true ) - 1, 'vip_agentforce', 300 );
+
+		$result = $client->send( $record );
+
+		$this->assertTrue( $result->success );
+		$this->assertSame(
+			'Bearer test-token',
+			$this->captured_requests[1]['headers']['Authorization'],
+			'Current worker should keep using its cached config; the next worker reloads the rotated token.'
+		);
 	}
 
 	public function test_401_exhausts_auth_retries_across_deferred_rounds_when_token_stays_broken(): void {
@@ -883,33 +926,29 @@ class Ingestion_API_Client_Test extends WP_UnitTestCase {
 			}
 		);
 
-		$this->mock_http_responses(
-			[
-				$this->error_response( 401, 'Unauthorized' ),
-				$this->error_response( 401, 'Unauthorized' ),
-				$this->error_response( 401, 'Unauthorized' ),
-				$this->success_response(),
-			]
-		);
+		$responses = [];
+		for ( $i = 0; $i < 6; ++$i ) {
+			$responses[] = $this->error_response( 401, 'Unauthorized' );
+		}
+		$responses[] = $this->success_response();
+		$this->mock_http_responses( $responses );
 
 		$client = new Ingestion_API_Client();
 		$record = $this->create_test_record();
 
-		$result = $client->send( $record );
+		for ( $attempt = 1; $attempt <= 5; ++$attempt ) {
+			if ( $attempt > 1 ) {
+				wp_cache_set( 'vip_agentforce_rate_limit_blocked_until', microtime( true ) - 1, 'vip_agentforce', 300 );
+			}
 
-		$this->assertFalse( $result->success );
-		$this->assertTrue( $result->is_retryable() );
-		$this->assertCount( 1, $this->captured_requests );
-		$this->assertSame( 1, Ingestion_API_Client::get_retry_status()['consecutive_failures'] );
+			$result = $client->send( $record );
 
-		wp_cache_set( 'vip_agentforce_rate_limit_blocked_until', microtime( true ) - 1, 'vip_agentforce', 300 );
-
-		$result = $client->send( $record );
-
-		$this->assertFalse( $result->success );
-		$this->assertTrue( $result->is_retryable() );
-		$this->assertCount( 2, $this->captured_requests );
-		$this->assertSame( 2, Ingestion_API_Client::get_retry_status()['consecutive_failures'] );
+			$this->assertFalse( $result->success );
+			$this->assertTrue( $result->is_retryable(), 'Auth failures within the retry budget should stay deferred.' );
+			$this->assertCount( $attempt, $this->captured_requests );
+			$this->assertSame( $attempt, Ingestion_API_Client::get_retry_status()['consecutive_failures'] );
+			$this->assertSame( 'Bearer test-token', $this->captured_requests[ $attempt - 1 ]['headers']['Authorization'] );
+		}
 
 		wp_cache_set( 'vip_agentforce_rate_limit_blocked_until', microtime( true ) - 1, 'vip_agentforce', 300 );
 
@@ -918,13 +957,11 @@ class Ingestion_API_Client_Test extends WP_UnitTestCase {
 		$this->assertFalse( $result->success );
 		$this->assertSame( 'auth', $result->get_error_class() );
 		$this->assertFalse( $result->is_retryable() );
-		$this->assertCount( 3, $this->captured_requests, 'Initial 401 plus two deferred auth retries should be attempted.' );
-		$this->assertSame( 'Bearer test-token', $this->captured_requests[0]['headers']['Authorization'] );
-		$this->assertSame( 'Bearer test-token', $this->captured_requests[1]['headers']['Authorization'] );
-		$this->assertSame( 'Bearer test-token', $this->captured_requests[2]['headers']['Authorization'] );
+		$this->assertCount( 6, $this->captured_requests, 'Initial 401 plus five deferred auth retries should be attempted.' );
+		$this->assertSame( 'Bearer test-token', $this->captured_requests[5]['headers']['Authorization'] );
 	}
 
-	public function test_401_stops_after_refresh_when_config_becomes_missing(): void {
+	public function test_401_hands_missing_config_off_to_next_worker(): void {
 		add_filter(
 			'vip_agentforce_config',
 			function () {
@@ -947,12 +984,27 @@ class Ingestion_API_Client_Test extends WP_UnitTestCase {
 		$result = $client->send( $record );
 
 		$this->assertFalse( $result->success );
+		$this->assertSame( 'auth', $result->get_error_class() );
+		$this->assertTrue( $result->is_retryable() );
+		$this->assertCount( 1, $this->captured_requests, 'Current worker should defer 401 without reloading config.' );
+
+		Configs::flush_cache();
+		wp_cache_set( 'vip_agentforce_rate_limit_blocked_until', microtime( true ) - 1, 'vip_agentforce', 300 );
+
+		$result = $client->send( $record );
+
+		$this->assertFalse( $result->success );
 		$this->assertSame( 'config', $result->get_error_class() );
 		$this->assertStringContainsString( 'Missing required API configuration', $result->error_message );
-		$this->assertCount( 1, $this->captured_requests, 'Refreshed missing config should stop before another HTTP attempt.' );
+		$this->assertCount( 1, $this->captured_requests, 'Next worker should fail preflight before another HTTP attempt.' );
+		$this->assertSame(
+			Ingestion_Error::MISSING_API_CONFIG,
+			Ingestion_API_Client::get_retry_status()['reason'],
+			'Reloaded missing config should replace stale auth retry diagnostics.'
+		);
 	}
 
-	public function test_401_stops_after_refresh_when_token_expiry_is_invalid(): void {
+	public function test_401_hands_invalid_token_expiry_off_to_next_worker(): void {
 		add_filter(
 			'vip_agentforce_config',
 			function () {
@@ -980,8 +1032,23 @@ class Ingestion_API_Client_Test extends WP_UnitTestCase {
 
 		$this->assertFalse( $result->success );
 		$this->assertSame( 'auth', $result->get_error_class() );
+		$this->assertTrue( $result->is_retryable() );
+		$this->assertCount( 1, $this->captured_requests, 'Current worker should defer 401 without reloading config.' );
+
+		Configs::flush_cache();
+		wp_cache_set( 'vip_agentforce_rate_limit_blocked_until', microtime( true ) - 1, 'vip_agentforce', 300 );
+
+		$result = $client->send( $record );
+
+		$this->assertFalse( $result->success );
+		$this->assertSame( 'auth', $result->get_error_class() );
 		$this->assertSame( 'Ingestion API token expiry is invalid', $result->error_message );
-		$this->assertCount( 1, $this->captured_requests, 'Refreshed invalid token metadata should stop before another HTTP attempt.' );
+		$this->assertCount( 1, $this->captured_requests, 'Next worker should fail preflight before another HTTP attempt.' );
+		$this->assertSame(
+			Ingestion_Error::TOKEN_INVALID,
+			Ingestion_API_Client::get_retry_status()['reason'],
+			'Reloaded invalid token metadata should replace stale auth retry diagnostics.'
+		);
 	}
 
 	public function test_does_not_retry_on_403(): void {
