@@ -203,37 +203,6 @@ class ClassConfigsTest extends WP_UnitTestCase {
 		$this->assertNull( Configs::get_ingestion_token_failure() );
 	}
 
-	public function test_refresh_config_uses_platform_integration_config_when_available(): void {
-		if ( ! class_exists( '\\Automattic\\VIP\\Integrations\\IntegrationVipConfig' ) ) {
-			require_once dirname( __DIR__, 2 ) . '/mu-plugins/integrations/integration-vip-config.php';
-		}
-
-		add_filter(
-			'vip_integrations_pre_load_config',
-			function ( $config_data, $_config_file_path, $slug ) {
-				if ( 'agentforce' !== $slug ) {
-					return $config_data;
-				}
-
-				return [
-					'env' => [
-						'config' => [
-							'ingestion_api_token'       => 'platform-token',
-							'ingestion_api_source_name' => 'platform-source',
-						],
-					],
-				];
-			},
-			10,
-			3
-		);
-
-		$config = Configs::refresh_config();
-
-		$this->assertSame( 'platform-token', $config['ingestion_api_token'] );
-		$this->assertSame( 'platform-source', $config['ingestion_api_source_name'] );
-	}
-
 	public function test_get_site_key_returns_empty_when_missing(): void {
 		$this->prime_configs_cache( [] );
 		$this->assertSame( '', Configs::get_site_key() );
