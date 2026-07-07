@@ -927,7 +927,7 @@ class Ingestion_API_Client_Test extends WP_UnitTestCase {
 		);
 
 		$responses = [];
-		for ( $i = 0; $i < 11; ++$i ) {
+		for ( $i = 0; $i < 6; ++$i ) {
 			$responses[] = $this->error_response( 401, 'Unauthorized' );
 		}
 		$responses[] = $this->success_response();
@@ -936,7 +936,7 @@ class Ingestion_API_Client_Test extends WP_UnitTestCase {
 		$client = new Ingestion_API_Client();
 		$record = $this->create_test_record();
 
-		for ( $attempt = 1; $attempt <= 10; ++$attempt ) {
+		for ( $attempt = 1; $attempt <= 5; ++$attempt ) {
 			if ( $attempt > 1 ) {
 				wp_cache_set( 'vip_agentforce_rate_limit_blocked_until', microtime( true ) - 1, 'vip_agentforce', 300 );
 			}
@@ -957,8 +957,8 @@ class Ingestion_API_Client_Test extends WP_UnitTestCase {
 		$this->assertFalse( $result->success );
 		$this->assertSame( 'auth', $result->get_error_class() );
 		$this->assertFalse( $result->is_retryable() );
-		$this->assertCount( 11, $this->captured_requests, 'Initial 401 plus ten deferred auth retries should be attempted.' );
-		$this->assertSame( 'Bearer test-token', $this->captured_requests[10]['headers']['Authorization'] );
+		$this->assertCount( 6, $this->captured_requests, 'Initial 401 plus five deferred auth retries should be attempted.' );
+		$this->assertSame( 'Bearer test-token', $this->captured_requests[5]['headers']['Authorization'] );
 	}
 
 	public function test_401_hands_missing_config_off_to_next_worker(): void {
