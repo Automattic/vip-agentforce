@@ -564,7 +564,7 @@ class Cmp_Tests extends WP_UnitTestCase {
 		$init_at        = strpos( $inline_data, 'embeddedservice_bootstrap.init(' );
 		$this->assertNotFalse( $hide_button_at, 'Init script should suppress the default chat button.' );
 		$this->assertNotFalse( $init_at, 'Init script should call embeddedservice_bootstrap.init().' );
-		$this->assertLessThan( $init_at, $hide_button_at, 'hideChatButtonOnLoad must be set before init().' );
+		$this->assertTrue( $hide_button_at < $init_at, 'hideChatButtonOnLoad must be set before init().' );
 
 		$localized_data = wp_scripts()->get_data( 'vip-af-cookieyes-consent', 'data' );
 		$this->assertStringContainsString( '"launcher":{', $localized_data );
@@ -1022,7 +1022,7 @@ class Cmp_Tests extends WP_UnitTestCase {
 		$inline_styles = wp_styles()->get_data( 'vip-agentforce-style', 'after' );
 		$inline_css    = is_array( $inline_styles ) ? implode( "\n", $inline_styles ) : '';
 
-		$this->assertStringContainsString( '.embeddedMessagingFrame.isMinimized', $inline_css );
+		$this->assertStringContainsString( '.embedded-messaging > .embeddedMessagingFrame.isMinimized', $inline_css );
 		$this->assertStringContainsString( 'display: none !important', $inline_css );
 	}
 
