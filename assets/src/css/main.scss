@@ -35,7 +35,7 @@
 	border-radius: 0.5rem; // borderRadius.static.2
 	background-color: var(--vip-agentforce-launcher-bg);
 	color: var(--vip-agentforce-launcher-fg);
-	font-family: aktiv-grotesk, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; // fontFamily.default
+	font-family: aktiv-grotesk, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; // fontFamily.default
 	font-size: 1rem;
 	font-weight: 600;
 	line-height: 1.2;
@@ -61,6 +61,24 @@
 		color: var(--vip-agentforce-launcher-fg-hover);
 	}
 
+	// Launch in progress: launchChat() has been called but the window
+	// has not opened yet. A spinner replaces the icon in its flex slot.
+	&:disabled {
+		background-color: var(--vip-agentforce-launcher-bg);
+		color: var(--vip-agentforce-launcher-fg);
+
+		&::before {
+			content: "";
+			flex: none;
+			width: 1rem;
+			height: 1rem;
+			border: 2px solid currentcolor;
+			border-top-color: transparent;
+			border-radius: 50%;
+			animation: vip-agentforce-launcher-spin 0.6s linear infinite;
+		}
+	}
+
 	&:focus-visible {
 		outline: 2px solid var(--vip-agentforce-launcher-bg);
 		outline-offset: 2px;
@@ -72,7 +90,18 @@
 		fill: currentcolor;
 	}
 
+	&:disabled &__icon {
+		display: none;
+	}
+
 	&__label {
 		white-space: nowrap;
+	}
+}
+
+@keyframes vip-agentforce-launcher-spin {
+
+	to {
+		transform: rotate(360deg);
 	}
 }

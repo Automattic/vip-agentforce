@@ -56,11 +56,17 @@ const handleClick = () => {
 		return;
 	}
 
-	// Hide our launcher while the chat opens; bring it back only if launch fails.
-	hideLauncher();
-	Promise.resolve(utilAPI.launchChat()).catch(() => {
-		showLauncher();
-	});
+	// Keep the launcher visible while the chat window boots - the maximized
+	// event hides it once the window is actually on screen. Disable it in the
+	// meantime so a second click cannot double-launch.
+	launcherButton.disabled = true;
+	Promise.resolve(utilAPI.launchChat())
+		.catch(() => {})
+		.finally(() => {
+			if (launcherButton) {
+				launcherButton.disabled = false;
+			}
+		});
 };
 
 const createLauncherButton = (config) => {
