@@ -456,23 +456,6 @@ function AgentforceSettingsApp({ settings }: { settings: SettingsData }) {
 								onChange={handleAlignmentChange}
 							/>
 						</div>
-
-						<div id="row_custom_css">
-							<TextareaControl
-								__nextHasNoMarginBottom
-								label={__(
-									'Custom CSS (optional)',
-									'vip-agentforce'
-								)}
-								placeholder={__(
-									'/* Paste CSS to override Answers Agent styles */',
-									'vip-agentforce'
-								)}
-								rows={5}
-								value={customCss}
-								onChange={setCustomCss}
-							/>
-						</div>
 					</SettingsSection>
 				</CardBody>
 			</Card>
