@@ -1,6 +1,12 @@
 /**
  * CMP Manager for Agentforce.
  */
+
+/**
+ * Internal dependencies
+ */
+import { setupCustomLauncher, teardownCustomLauncher } from './launcher';
+
 const getEmbeddingConfig = () => window.vipAgentforceConsentData?.embedding;
 const getPrechatFields = () => window.vipAgentforceConsentData?.prechatFields;
 let onEmbeddedMessagingReadyHandler;
@@ -70,6 +76,7 @@ export const loadAgentforceSDK = () => {
 	}
 
 	setupEmbeddedMessagingReadyHandler();
+	setupCustomLauncher();
 
 	const script = document.createElement('script');
 	script.id = 'agentforce-sdk';
@@ -92,5 +99,6 @@ export const unloadAgentforceSDK = () => {
 		window.embeddedservice_bootstrap.utilAPI.removeAllComponents();
 	}
 	teardownEmbeddedMessagingReadyHandler();
+	teardownCustomLauncher();
 	window.AFConsentGranted = false;
 };

@@ -1,0 +1,107 @@
+/**
+ * Frontend styles for the VIP Agentforce integration.
+ */
+
+/**
+ * Custom chat launcher.
+ *
+ * A host-owned, branded button that replaces Salesforce's default round FAB.
+ *
+ * Colors, spacing, radius and type follow the WPVIP design system primary
+ * button (vip-design-system / valet-core "wpvip-product-core" tokens). Token
+ * values are inlined and exposed as custom properties so a site can
+ * override them from its own stylesheet.
+ *
+ *   --vip-agentforce-launcher-bg        button.primary.background.default  color.black   #13191e
+ *   --vip-agentforce-launcher-bg-hover  button.primary.background.hover    color.gold.30 #d8a45f
+ *   --vip-agentforce-launcher-fg        button.primary.label.default       text.inverse  #fbfbfb
+ *   --vip-agentforce-launcher-fg-hover  button.primary.label.hover         text.primary  #13191e
+ */
+.vip-agentforce-launcher {
+	--vip-agentforce-launcher-bg: #13191e;
+	--vip-agentforce-launcher-bg-hover: #d8a45f;
+	--vip-agentforce-launcher-fg: #fbfbfb;
+	--vip-agentforce-launcher-fg-hover: #13191e;
+
+	position: fixed;
+	bottom: 1.5rem; // space.static.5
+	z-index: 9999;
+	display: inline-flex;
+	align-items: center;
+	gap: 0.5rem; // space.static.2
+	margin: 0;
+	padding: 0.75rem 1.25rem; // space.static.3 / space.static.4
+	border: 0;
+	border-radius: 0.5rem; // borderRadius.static.2
+	background-color: var(--vip-agentforce-launcher-bg);
+	color: var(--vip-agentforce-launcher-fg);
+	font-family: aktiv-grotesk, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; // fontFamily.default
+	font-size: 1rem;
+	font-weight: 600;
+	line-height: 1.2;
+	cursor: pointer;
+	box-shadow: 0 2px 8px rgba(19, 25, 30, 0.24);
+	transition: background-color 0.15s ease, color 0.15s ease;
+
+	&[hidden] {
+		display: none;
+	}
+
+	&--bottom-right {
+		right: 1.5rem; // space.static.5
+	}
+
+	&--bottom-left {
+		left: 1.5rem; // space.static.5
+	}
+
+	&:hover,
+	&:focus-visible {
+		background-color: var(--vip-agentforce-launcher-bg-hover);
+		color: var(--vip-agentforce-launcher-fg-hover);
+	}
+
+	// Launch in progress: launchChat() has been called but the window
+	// has not opened yet. A spinner replaces the icon in its flex slot.
+	&:disabled {
+		background-color: var(--vip-agentforce-launcher-bg);
+		color: var(--vip-agentforce-launcher-fg);
+
+		&::before {
+			content: "";
+			flex: none;
+			width: 1rem;
+			height: 1rem;
+			border: 2px solid currentcolor;
+			border-top-color: transparent;
+			border-radius: 50%;
+			animation: vip-agentforce-launcher-spin 0.6s linear infinite;
+		}
+	}
+
+	&:focus-visible {
+		outline: 2px solid var(--vip-agentforce-launcher-bg);
+		outline-offset: 2px;
+	}
+
+	&__icon {
+		width: 1.25rem;
+		height: 1.25rem;
+		fill: currentcolor;
+	}
+
+	&:disabled &__icon {
+		display: none;
+	}
+
+	&__label {
+		white-space: nowrap;
+	}
+}
+
+@keyframes vip-agentforce-launcher-spin {
+
+	to {
+		transform: rotate(360deg);
+	}
+}
