@@ -214,4 +214,39 @@ class Default_Transformer_Test extends WP_UnitTestCase {
 		$this->assertFalse( $record->published );
 		$this->assertSame( 'draft', $record->post_status );
 	}
+
+	public function test_content_is_stripped_to_plain_text(): void {
+		$post = $this->factory()->post->create_and_get(
+			[
+				'post_content' => "<!-- wp:paragraph -->\n<p>Hello <strong>world</strong> &amp; friends</p>\n<!-- /wp:paragraph -->",
+				'post_status'  => 'publish',
+			]
+		);
+
+		$record = Default_Transformer::transform( null, $post );
+
+		// Gutenberg delimiters and HTML tags removed, entities decoded.
+		$this->assertSame( 'Hello world & friends', $record->content );
+	}
+
+	public function test_oversized_content_is_capped_under_the_limit(): void {
+		$ref = new ReflectionClass( Default_Transformer::class );
+		$max = (int) $ref->getConstant( 'MAX_CONTENT_BYTES' );
+
+		// ~480 KB of plain text — well over the cap.
+		$post = $this->factory()->post->create_and_get(
+			[
+				'post_content' => str_repeat( 'lorem ipsum ', 40000 ),
+				'post_status'  => 'publish',
+			]
+		);
+
+		$record = Default_Transformer::transform( null, $post );
+
+		$this->assertLessThanOrEqual(
+			$max,
+			strlen( $record->content ),
+			'Content must be capped under the Data Cloud 200 KB request limit.'
+		);
+	}
 }

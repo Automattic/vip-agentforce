@@ -104,16 +104,26 @@ class Default_Transformer {
 	 */
 	private static function prepare_content( string $raw ): string {
 		// Drop Gutenberg block delimiters, then strip remaining HTML/SVG to text.
-		$text = (string) preg_replace( '/<!--\s*\/?wp:.*?-->/s', '', $raw );
+		// preg_replace returns null on a PCRE error (e.g. backtrack/recursion
+		// limits on a very large input); fall back to the prior value rather than
+		// silently blanking the content.
+		$stripped = preg_replace( '/<!--\s*\/?wp:.*?-->/s', '', $raw );
+		$text     = is_string( $stripped ) ? $stripped : $raw;
+
 		$text = wp_strip_all_tags( $text );
 		$text = html_entity_decode( $text, ENT_QUOTES | ENT_HTML5, 'UTF-8' );
-		$text = trim( (string) preg_replace( '/\s+/u', ' ', $text ) );
+
+		$collapsed = preg_replace( '/\s+/u', ' ', $text );
+		$text      = trim( is_string( $collapsed ) ? $collapsed : $text );
 
 		// Hard guarantee: never emit content large enough to push the record over
 		// the 200 KB API limit. mb_strcut trims on a byte boundary without
-		// splitting a multibyte character.
+		// splitting a multibyte character; fall back to substr if mbstring is
+		// unavailable (byte-exact, may split a trailing multibyte char).
 		if ( strlen( $text ) > self::MAX_CONTENT_BYTES ) {
-			$text = (string) mb_strcut( $text, 0, self::MAX_CONTENT_BYTES );
+			$text = function_exists( 'mb_strcut' )
+				? mb_strcut( $text, 0, self::MAX_CONTENT_BYTES, 'UTF-8' )
+				: substr( $text, 0, self::MAX_CONTENT_BYTES );
 		}
 
 		return $text;
