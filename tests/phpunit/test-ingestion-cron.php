@@ -1468,12 +1468,18 @@ class Ingestion_Cron_Test extends WP_UnitTestCase {
 				$body = $args['body'] ?? '';
 				if ( is_string( $body ) && strpos( $body, $fail_marker ) !== false ) {
 					return [
-						'response' => [ 'code' => 403, 'message' => 'Forbidden' ],
+						'response' => [
+							'code'    => 403,
+							'message' => 'Forbidden',
+						],
 						'body'     => '<html><body>403 Forbidden</body></html>',
 					];
 				}
 				return [
-					'response' => [ 'code' => 202, 'message' => 'Accepted' ],
+					'response' => [
+						'code'    => 202,
+						'message' => 'Accepted',
+					],
 					'body'     => '',
 				];
 			},
@@ -1488,9 +1494,18 @@ class Ingestion_Cron_Test extends WP_UnitTestCase {
 
 		// Bulk sync processes by ascending ID: a success, then the failing post,
 		// then another success.
-		$this->factory()->post->create_and_get( [ 'post_status' => 'publish', 'post_content' => 'ok one' ] );
-		$this->factory()->post->create_and_get( [ 'post_status' => 'publish', 'post_content' => 'FAILME payload' ] );
-		$this->factory()->post->create_and_get( [ 'post_status' => 'publish', 'post_content' => 'ok two' ] );
+		$this->factory()->post->create_and_get( [
+			'post_status'  => 'publish',
+			'post_content' => 'ok one',
+		] );
+		$this->factory()->post->create_and_get( [
+			'post_status'  => 'publish',
+			'post_content' => 'FAILME payload',
+		] );
+		$this->factory()->post->create_and_get( [
+			'post_status'  => 'publish',
+			'post_content' => 'ok two',
+		] );
 
 		Ingestion_Sync_Progress::start( 3, [ 'post' ] );
 		$results = Ingestion_Cron::process_queue( 10 );
@@ -1511,9 +1526,15 @@ class Ingestion_Cron_Test extends WP_UnitTestCase {
 
 		// One success first (past the "no prior success" fast-fail), then 5
 		// consecutive failing posts to cross the consecutive-failure threshold.
-		$this->factory()->post->create_and_get( [ 'post_status' => 'publish', 'post_content' => 'ok' ] );
+		$this->factory()->post->create_and_get( [
+			'post_status'  => 'publish',
+			'post_content' => 'ok',
+		] );
 		for ( $i = 0; $i < 5; $i++ ) {
-			$this->factory()->post->create_and_get( [ 'post_status' => 'publish', 'post_content' => 'FAILME ' . $i ] );
+			$this->factory()->post->create_and_get( [
+				'post_status'  => 'publish',
+				'post_content' => 'FAILME ' . $i,
+			] );
 		}
 
 		Ingestion_Sync_Progress::start( 6, [ 'post' ] );
