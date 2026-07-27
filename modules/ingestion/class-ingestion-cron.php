@@ -729,12 +729,14 @@ class Ingestion_Cron {
 						++$results['deleted'];
 						++$batch_results['deleted'];
 						Ingestion_Metrics::record_post_result( 'deleted', 'bulk' );
+						$consecutive_api_failures = 0;
 						break;
 
 					case Sync_Result::SKIPPED:
 						++$results['skipped'];
 						++$batch_results['skipped'];
 						Ingestion_Metrics::record_post_result( 'skipped', 'bulk' );
+						$consecutive_api_failures = 0;
 						break;
 
 					case Sync_Result::FAILED_TRANSFORM:
@@ -754,18 +756,30 @@ class Ingestion_Cron {
 						++$results['failed'];
 						++$batch_results['failed'];
 						Ingestion_Metrics::record_post_result( 'failed', 'bulk' );
-						++$consecutive_api_failures;
+
+						// Only API failures count toward the consecutive-failure streak.
+						// A transform failure isn't an API/auth problem, so it interrupts
+						// the streak rather than pushing it toward the fast-fail threshold.
+						if ( Sync_Result::FAILED_API === $sync_result->status ) {
+							++$consecutive_api_failures;
+						} else {
+							$consecutive_api_failures = 0;
+						}
 
 						$failure_summary = self::record_bulk_failure( $failure_summary, $post, $sync_result, $last_post_id, $limit );
 
 						// An auth-class failure (401/403) normally fast-fails the run as a
-						// site-wide setup/auth problem. But once other posts have synced this
-						// run, auth demonstrably works — so a lone 403 is a per-post rejection
-						// (an edge/proxy/WAF block on one post's payload), not global breakage.
-						// Record it and keep going so a single post can't kill the whole bulk.
-						// Still fast-fail when nothing has synced yet (a real auth/setup
-						// failure) or when too many posts fail back-to-back (a real outage).
-						$has_prior_success             = $batch_results['synced'] > 0 || (int) ( $progress['synced'] ?? 0 ) > 0;
+						// site-wide setup/auth problem. But once other posts have synced or
+						// deleted this run, auth demonstrably works — so a lone 403 is a
+						// per-post rejection (an edge/proxy/WAF block on one post's payload),
+						// not global breakage. Record it and keep going so a single post
+						// can't kill the whole bulk. Still fast-fail when nothing has
+						// succeeded yet (a real auth/setup failure) or when too many posts
+						// fail back-to-back (a real outage).
+						$has_prior_success             = $batch_results['synced'] > 0
+							|| $batch_results['deleted'] > 0
+							|| (int) ( $progress['synced'] ?? 0 ) > 0
+							|| (int) ( $progress['deleted'] ?? 0 ) > 0;
 						$recoverable_post_auth_failure = 'auth' === $sync_result->error_class
 							&& $has_prior_success
 							&& $consecutive_api_failures < $max_consecutive_api_failures;

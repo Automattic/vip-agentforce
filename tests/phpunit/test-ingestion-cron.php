@@ -1454,4 +1454,75 @@ class Ingestion_Cron_Test extends WP_UnitTestCase {
 		$this->assertSame( 0, Ingestion_Queue::get_delete_attempts( $first_post->ID ) );
 		$this->assertSame( 0, Ingestion_Queue::get_delete_attempts( $second_post->ID ) );
 	}
+
+	/**
+	 * Mock HTTP: return 403 for requests whose body contains $fail_marker, 202 otherwise.
+	 */
+	private function mock_http_fail_for( string $fail_marker ): void {
+		add_filter(
+			'pre_http_request',
+			function ( $preempt, $args, $url ) use ( $fail_marker ) {
+				if ( strpos( $url, 'test.salesforce.com' ) === false ) {
+					return $preempt;
+				}
+				$body = $args['body'] ?? '';
+				if ( is_string( $body ) && strpos( $body, $fail_marker ) !== false ) {
+					return [
+						'response' => [ 'code' => 403, 'message' => 'Forbidden' ],
+						'body'     => '<html><body>403 Forbidden</body></html>',
+					];
+				}
+				return [
+					'response' => [ 'code' => 202, 'message' => 'Accepted' ],
+					'body'     => '',
+				];
+			},
+			10,
+			3
+		);
+	}
+
+	public function test_bulk_sync_continues_after_single_auth_403_with_prior_success(): void {
+		$this->setup_ingestion_filters();
+		$this->mock_http_fail_for( 'FAILME' );
+
+		// Bulk sync processes by ascending ID: a success, then the failing post,
+		// then another success.
+		$this->factory()->post->create_and_get( [ 'post_status' => 'publish', 'post_content' => 'ok one' ] );
+		$this->factory()->post->create_and_get( [ 'post_status' => 'publish', 'post_content' => 'FAILME payload' ] );
+		$this->factory()->post->create_and_get( [ 'post_status' => 'publish', 'post_content' => 'ok two' ] );
+
+		Ingestion_Sync_Progress::start( 3, [ 'post' ] );
+		$results = Ingestion_Cron::process_queue( 10 );
+
+		// The single 403 did not abort the run: the post after it still synced.
+		$this->assertSame( 2, $results['synced'], 'Posts after the failing one should still sync.' );
+		$this->assertSame( 1, $results['failed'] );
+		$this->assertNotSame(
+			Ingestion_Sync_Progress::STATUS_FAILED,
+			Ingestion_Sync_Progress::get()['status'],
+			'One post 403 should not fast-fail the whole bulk run.'
+		);
+	}
+
+	public function test_bulk_sync_fast_fails_after_consecutive_auth_403s(): void {
+		$this->setup_ingestion_filters();
+		$this->mock_http_fail_for( 'FAILME' );
+
+		// One success first (past the "no prior success" fast-fail), then 5
+		// consecutive failing posts to cross the consecutive-failure threshold.
+		$this->factory()->post->create_and_get( [ 'post_status' => 'publish', 'post_content' => 'ok' ] );
+		for ( $i = 0; $i < 5; $i++ ) {
+			$this->factory()->post->create_and_get( [ 'post_status' => 'publish', 'post_content' => 'FAILME ' . $i ] );
+		}
+
+		Ingestion_Sync_Progress::start( 6, [ 'post' ] );
+		Ingestion_Cron::process_queue( 10 );
+
+		$this->assertSame(
+			Ingestion_Sync_Progress::STATUS_FAILED,
+			Ingestion_Sync_Progress::get()['status'],
+			'A sustained streak of auth failures should still fast-fail the run.'
+		);
+	}
 }
