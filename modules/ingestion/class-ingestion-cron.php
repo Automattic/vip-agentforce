@@ -666,6 +666,13 @@ class Ingestion_Cron {
 		$fast_fail_code        = null;
 		$retry_backoff_started = false;
 
+		// Consecutive per-post API failures in this batch. A single blocked post
+		// (e.g. an edge/proxy/WAF 403 on one post's payload) should not kill a
+		// 900-post sync once other posts have already synced, but a long run of
+		// back-to-back failures is a genuine outage and should still fast-fail.
+		$consecutive_api_failures     = 0;
+		$max_consecutive_api_failures = 5;
+
 		$preflight_failure = Ingestion_API_Client::get_request_preflight_failure();
 		if ( null !== $preflight_failure ) {
 			// Preflight failures are site-wide setup/auth problems. Fail the
@@ -715,6 +722,7 @@ class Ingestion_Cron {
 						++$results['synced'];
 						++$batch_results['synced'];
 						Ingestion_Metrics::record_post_result( 'ingested', 'bulk' );
+						$consecutive_api_failures = 0;
 						break;
 
 					case Sync_Result::DELETED:
@@ -746,9 +754,23 @@ class Ingestion_Cron {
 						++$results['failed'];
 						++$batch_results['failed'];
 						Ingestion_Metrics::record_post_result( 'failed', 'bulk' );
+						++$consecutive_api_failures;
 
 						$failure_summary = self::record_bulk_failure( $failure_summary, $post, $sync_result, $last_post_id, $limit );
-						if ( self::is_global_bulk_failure( $sync_result ) ) {
+
+						// An auth-class failure (401/403) normally fast-fails the run as a
+						// site-wide setup/auth problem. But once other posts have synced this
+						// run, auth demonstrably works — so a lone 403 is a per-post rejection
+						// (an edge/proxy/WAF block on one post's payload), not global breakage.
+						// Record it and keep going so a single post can't kill the whole bulk.
+						// Still fast-fail when nothing has synced yet (a real auth/setup
+						// failure) or when too many posts fail back-to-back (a real outage).
+						$has_prior_success             = $batch_results['synced'] > 0 || (int) ( $progress['synced'] ?? 0 ) > 0;
+						$recoverable_post_auth_failure = 'auth' === $sync_result->error_class
+							&& $has_prior_success
+							&& $consecutive_api_failures < $max_consecutive_api_failures;
+
+						if ( self::is_global_bulk_failure( $sync_result ) && ! $recoverable_post_auth_failure ) {
 							// These classes are not post-specific. Stop the batch
 							// so progress records one clear global failure.
 							$fast_fail_reason = self::get_bulk_fast_fail_reason( $sync_result );
