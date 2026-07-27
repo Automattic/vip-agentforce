@@ -20,6 +20,18 @@ use Automattic\VIP\Salesforce\Agentforce\Utils\Configs;
  */
 class Default_Transformer {
 	/**
+	 * Maximum byte length of the ingested `content` field.
+	 *
+	 * Data 360's (Data Cloud) streaming Ingestion API rejects any request whose
+	 * payload exceeds ~200 KB — the gateway returns a plain 403 before the
+	 * request ever reaches Data Cloud. Raw post_content on large pages (e.g. a
+	 * Gutenberg page packed with block markup and inline SVG) can run 250–400 KB,
+	 * and JSON-escaping that HTML inflates it further. We reduce content to plain
+	 * text and cap it well under the limit so a single record can never exceed it.
+	 */
+	private const MAX_CONTENT_BYTES = 150000;
+
+	/**
 	 * Initialize the transformer.
 	 */
 	public static function init(): void {
@@ -62,7 +74,7 @@ class Default_Transformer {
 				'last_published_at'       => self::format_date( $post->post_date_gmt ),
 				'last_modified_at'        => self::format_date( $post->post_modified_gmt ),
 				'title'                   => $post->post_title,
-				'content'                 => $post->post_content,
+				'content'                 => self::prepare_content( $post->post_content ),
 				'excerpt'                 => $post->post_excerpt,
 				'categories'              => self::get_categories( $post->ID ),
 				'tags'                    => self::get_tags( $post->ID ),
@@ -72,6 +84,39 @@ class Default_Transformer {
 				'post_status'             => $post->post_status,
 			]
 		);
+	}
+
+	/**
+	 * Reduce post content to plain text and cap its size for ingestion.
+	 *
+	 * Salesforce's streaming Ingestion API rejects any request whose JSON body
+	 * exceeds 200 KB per request. Raw post_content on large pages can exceed
+	 * that on its own, and JSON-escaping the HTML inflates it further, so the
+	 * gateway returns a plain 403 before Data Cloud ever sees the record.
+	 *
+	 * Stripping Gutenberg block markup and HTML/SVG both keeps records under the
+	 * limit and improves semantic search, which indexes readable text rather
+	 * than markup. A hard byte cap guarantees a single record can never exceed
+	 * the API limit even for an unusually long article.
+	 *
+	 * @param string $raw Raw post_content.
+	 * @return string Plain-text content, byte-capped to MAX_CONTENT_BYTES.
+	 */
+	private static function prepare_content( string $raw ): string {
+		// Drop Gutenberg block delimiters, then strip remaining HTML/SVG to text.
+		$text = (string) preg_replace( '/<!--\s*\/?wp:.*?-->/s', '', $raw );
+		$text = wp_strip_all_tags( $text );
+		$text = html_entity_decode( $text, ENT_QUOTES | ENT_HTML5, 'UTF-8' );
+		$text = trim( (string) preg_replace( '/\s+/u', ' ', $text ) );
+
+		// Hard guarantee: never emit content large enough to push the record over
+		// the 200 KB API limit. mb_strcut trims on a byte boundary without
+		// splitting a multibyte character.
+		if ( strlen( $text ) > self::MAX_CONTENT_BYTES ) {
+			$text = (string) mb_strcut( $text, 0, self::MAX_CONTENT_BYTES );
+		}
+
+		return $text;
 	}
 
 	/**
