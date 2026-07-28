@@ -30,7 +30,17 @@ require_once __DIR__ . '/../mu-plugins/000-pre-vip-config/requires.php';
 
 function _manually_load_plugin(): void {
 	require_once __DIR__ . '/../mu-plugins/000-pre-vip-config/requires.php';
-	require_once __DIR__ . '/../mu-plugins/lib/helpers/php-compat.php';
+
+	// vip-go-mu-plugins no longer ships this legacy PHP-compat shim (removed
+	// upstream; unnecessary on the supported PHP 8.2+ matrix). A fresh
+	// mu-plugins download therefore lacks the file, which fataled bootstrap for
+	// every PR. Require it only when present so the suite can boot either way.
+	$php_compat = __DIR__ . '/../mu-plugins/lib/helpers/php-compat.php';
+	if ( file_exists( $php_compat ) ) {
+		// phpcs:ignore WordPressVIPMinimum.Files.IncludingFile.UsingVariable
+		require_once $php_compat;
+	}
+
 	require_once __DIR__ . '/../mu-plugins/000-vip-init.php';
 	require_once __DIR__ . '/../mu-plugins/001-core.php';
 	require_once __DIR__ . '/../mu-plugins/a8c-files.php';
