@@ -55,15 +55,57 @@ class Settings_Page {
 	}
 
 	/**
-	 * Validate iubenda Purpose ID.
+	 * Validate OneTrust Group ID.
 	 *
-	 * @param string $purpose_id The Purpose ID to validate.
+	 * OneTrust group IDs are renameable per customer and custom groups are common, so
+	 * there is no allowlist to check against - this only rejects values that cannot be
+	 * a group ID at all. A well-formed but wrong ID is caught at runtime by the console
+	 * warning in cmp-onetrust.js.
 	 *
-	 * @return string|mixed The validated Purpose ID or old value if invalid.
+	 * @param mixed $group_id The Group ID to validate.
+	 *
+	 * @return string|mixed The validated Group ID or old value if invalid.
 	 */
-	public function validate_iubenda_category( $purpose_id ) {
-		$purpose_id            = trim( (string) $purpose_id );
-		$old_value             = get_option( 'vip_agentforce_iubenda_category' );
+	public function validate_onetrust_group_id( $group_id ) {
+		$group_id              = sanitize_text_field( trim( (string) $group_id ) );
+		$old_value             = get_option( 'vip_agentforce_onetrust_group_id' );
+		$selected_consent_type = $this->get_submitted_consent_type();
+
+		if ( '' === $group_id ) {
+			if ( 'OneTrust' === $selected_consent_type ) {
+				add_settings_error(
+					'vip_agentforce_messages',
+					'vip_agentforce_onetrust_group_id_error',
+					__( 'OneTrust Group ID cannot be empty.', 'vip-agentforce' ),
+					'error'
+				);
+
+				return $old_value;
+			}
+
+			return Constants::DEFAULT_ONETRUST_GROUP_ID;
+		}
+
+		if ( ! preg_match( '/^[A-Za-z0-9_-]+$/', $group_id ) ) {
+			add_settings_error(
+				'vip_agentforce_messages',
+				'vip_agentforce_onetrust_group_id_error',
+				__( 'OneTrust Group ID may only contain letters, numbers, hyphens, and underscores.', 'vip-agentforce' ),
+				'error'
+			);
+
+			return $old_value;
+		}
+
+		return $group_id;
+	}
+
+	/**
+	 * Resolve the consent type being saved, falling back to the stored value.
+	 *
+	 * @return string The sanitized consent type.
+	 */
+	private function get_submitted_consent_type(): string {
 		$selected_consent_type = $this->sanitize_consent_type( (string) get_option( 'vip_agentforce_consent_type', Constants::DEFAULT_CMP ) );
 
 		if ( isset( $_POST['vip_agentforce_consent_type'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Missing
@@ -74,6 +116,21 @@ class Settings_Page {
 				$selected_consent_type = $this->sanitize_consent_type( sanitize_text_field( $submitted_consent_type ) );
 			}
 		}
+
+		return $selected_consent_type;
+	}
+
+	/**
+	 * Validate iubenda Purpose ID.
+	 *
+	 * @param string $purpose_id The Purpose ID to validate.
+	 *
+	 * @return string|mixed The validated Purpose ID or old value if invalid.
+	 */
+	public function validate_iubenda_category( $purpose_id ) {
+		$purpose_id            = trim( (string) $purpose_id );
+		$old_value             = get_option( 'vip_agentforce_iubenda_category' );
+		$selected_consent_type = $this->get_submitted_consent_type();
 
 		if ( empty( $purpose_id ) ) {
 			if ( 'iubenda' === $selected_consent_type ) {
@@ -170,7 +227,13 @@ class Settings_Page {
 				'sanitize_callback' => array( $this, 'sanitize_consent_type' ),
 			)
 		);
-		register_setting( 'agentforce_settings_group', 'vip_agentforce_onetrust_group_id' );
+		register_setting(
+			'agentforce_settings_group',
+			'vip_agentforce_onetrust_group_id',
+			array(
+				'sanitize_callback' => array( $this, 'validate_onetrust_group_id' ),
+			)
+		);
 		register_setting(
 			'agentforce_settings_group',
 			'vip_agentforce_cookieyes_category',

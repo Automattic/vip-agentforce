@@ -269,6 +269,10 @@ function AgentforceSettingsApp({ settings }: { settings: SettingsData }) {
 								<TextControl
 									__next40pxDefaultSize
 									__nextHasNoMarginBottom
+									help={__(
+										"Enter the OneTrust group that must be granted before Answers Agent loads. Group IDs are specific to your OneTrust configuration - C0003 is Functional Cookies in the stock template, but check your own groups first. Also list the agent's cookies under this group in OneTrust so your cookie notice stays accurate.",
+										'vip-agentforce'
+									)}
 									label={__(
 										'OneTrust Group ID',
 										'vip-agentforce'
@@ -289,7 +293,7 @@ function AgentforceSettingsApp({ settings }: { settings: SettingsData }) {
 									__next40pxDefaultSize
 									__nextHasNoMarginBottom
 									help={__(
-										'Choose the CookieYes category that must be granted before Answers Agent loads.',
+										"Choose the CookieYes category that must be granted before Answers Agent loads. Also list the agent's cookies under this category in CookieYes so your cookie notice stays accurate.",
 										'vip-agentforce'
 									)}
 									label={__(
@@ -313,7 +317,7 @@ function AgentforceSettingsApp({ settings }: { settings: SettingsData }) {
 									__next40pxDefaultSize
 									__nextHasNoMarginBottom
 									help={__(
-										'Choose the Cookiebot category that must be granted before Answers Agent loads.',
+										"Choose the Cookiebot category that must be granted before Answers Agent loads. Also list the agent's cookies under this category in Cookiebot so your cookie notice stays accurate.",
 										'vip-agentforce'
 									)}
 									label={__(
@@ -395,7 +399,7 @@ function AgentforceSettingsApp({ settings }: { settings: SettingsData }) {
 												</li>
 											</ul>
 											{__(
-												'Choose the category where your Answers Agent widget is listed in iubenda.',
+												"Choose the purpose that must be granted before Answers Agent loads. Also list the agent's cookies under this purpose in iubenda so your cookie notice stays accurate.",
 												'vip-agentforce'
 											)}
 											<br />

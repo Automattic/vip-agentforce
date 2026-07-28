@@ -1053,5 +1053,59 @@ class Cmp_Tests extends WP_UnitTestCase {
 			'3',
 			$settings->validate_iubenda_category( '0' )
 		);
+
+		unset( $_POST['vip_agentforce_consent_type'] );
+	}
+
+	public function test_validate_onetrust_group_id_accepts_well_formed_ids(): void {
+		$settings = Settings_Page::get_instance();
+
+		$this->assertSame( 'C0003', $settings->validate_onetrust_group_id( ' C0003 ' ) );
+		$this->assertSame( 'custom_group-1', $settings->validate_onetrust_group_id( 'custom_group-1' ) );
+	}
+
+	public function test_validate_onetrust_group_id_rejects_malformed_ids(): void {
+		$settings = Settings_Page::get_instance();
+		global $wp_settings_errors;
+
+		update_option( 'vip_agentforce_onetrust_group_id', 'C0003' );
+		$wp_settings_errors = [];
+
+		$this->assertSame(
+			'C0003',
+			$settings->validate_onetrust_group_id( 'C0003, C0004' )
+		);
+		$this->assertSame(
+			'vip_agentforce_onetrust_group_id_error',
+			get_settings_errors( 'vip_agentforce_messages' )[0]['code']
+		);
+	}
+
+	public function test_validate_onetrust_group_id_handles_empty_value(): void {
+		$settings = Settings_Page::get_instance();
+		global $wp_settings_errors;
+
+		update_option( 'vip_agentforce_onetrust_group_id', 'C0003' );
+		$wp_settings_errors = [];
+
+		// Not the selected CMP, so an empty value just falls back to the default.
+		$this->assertSame(
+			Constants::DEFAULT_ONETRUST_GROUP_ID,
+			$settings->validate_onetrust_group_id( '' )
+		);
+
+		$wp_settings_errors                   = [];
+		$_POST['vip_agentforce_consent_type'] = 'OneTrust'; // phpcs:ignore WordPress.Security.NonceVerification.Missing
+
+		$this->assertSame(
+			'C0003',
+			$settings->validate_onetrust_group_id( '' )
+		);
+		$this->assertSame(
+			'vip_agentforce_onetrust_group_id_error',
+			get_settings_errors( 'vip_agentforce_messages' )[0]['code']
+		);
+
+		unset( $_POST['vip_agentforce_consent_type'] );
 	}
 }

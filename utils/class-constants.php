@@ -10,13 +10,24 @@ class Constants {
 	const COOKIEYES_CATEGORIES       = array( 'necessary', 'functional', 'analytics', 'performance', 'advertisement' );
 	const DEFAULT_COOKIEYES_CATEGORY = 'functional';
 
-	const COOKIEBOT_CATEGORIES       = array( 'necessary', 'preferences', 'statistics', 'marketing' );
-	const DEFAULT_COOKIEBOT_CATEGORY = 'marketing';
+	const COOKIEBOT_CATEGORIES = array( 'necessary', 'preferences', 'statistics', 'marketing' );
 
 	/**
-	 * Default OneTrust consent group ID
+	 * Default Cookiebot category.
+	 *
+	 * "preferences" is Cookiebot's equivalent of the functional bucket the other CMP
+	 * defaults target. The agent is a support widget, not an advertising integration.
 	 */
-	const DEFAULT_ONETRUST_GROUP_ID = 'C0004';
+	const DEFAULT_COOKIEBOT_CATEGORY = 'preferences';
+
+	/**
+	 * Default OneTrust consent group ID.
+	 *
+	 * C0003 is "Functional Cookies" in OneTrust's stock template. Group IDs are
+	 * renameable per customer, so this is a starting point rather than a safe
+	 * assumption - confirm the site's own group IDs before relying on it.
+	 */
+	const DEFAULT_ONETRUST_GROUP_ID = 'C0003';
 
 	/**
 	 * Default iubenda Purpose ID.
