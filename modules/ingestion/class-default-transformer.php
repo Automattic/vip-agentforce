@@ -99,22 +99,31 @@ class Default_Transformer {
 	 * than markup. A hard byte cap guarantees a single record can never exceed
 	 * the API limit even for an unusually long article.
 	 *
+	 * Block boundaries survive as line breaks: tags are removed edge to edge, so
+	 * `<p>Alpha</p><p>Beta</p>` would otherwise collapse to `AlphaBeta`. Keeping
+	 * one newline per block preserves the document's structure for chunking at a
+	 * cost of a single byte per block.
+	 *
 	 * @param string $raw Raw post_content.
 	 * @return string Plain-text content, byte-capped to MAX_CONTENT_BYTES.
 	 */
 	private static function prepare_content( string $raw ): string {
-		// Drop Gutenberg block delimiters, then strip remaining HTML/SVG to text.
-		// preg_replace returns null on a PCRE error (e.g. backtrack/recursion
-		// limits on a very large input); fall back to the prior value rather than
-		// silently blanking the content.
-		$stripped = preg_replace( '/<!--\s*\/?wp:.*?-->/s', '', $raw );
-		$text     = is_string( $stripped ) ? $stripped : $raw;
+		// Gutenberg delimiters become line breaks, so blocks whose markup is
+		// self-closing (separators, images, embeds) still separate their neighbours.
+		$text = self::replace_or_keep( '/<!--\s*\/?wp:.*?-->/s', "\n", $raw );
 
+		// Same for block-level HTML, which covers classic content and any markup
+		// authored inside a block.
+		$text = self::replace_or_keep( '#<br\s*/?>|</(?:p|div|li|h[1-6]|tr|td|th|dt|dd|pre|section|article|aside|header|footer|blockquote|figcaption)>#i', "\n", $text );
+
+		// Removes the remaining tags plus the contents of script/style and any
+		// inline SVG's markup.
 		$text = wp_strip_all_tags( $text );
 		$text = html_entity_decode( $text, ENT_QUOTES | ENT_HTML5, 'UTF-8' );
 
-		$collapsed = preg_replace( '/\s+/u', ' ', $text );
-		$text      = trim( is_string( $collapsed ) ? $collapsed : $text );
+		// Collapse spacing runs, but keep the line breaks added above.
+		$text = self::replace_or_keep( '/[^\S\n]+/u', ' ', $text );
+		$text = trim( self::replace_or_keep( '/\s*\n\s*/u', "\n", $text ) );
 
 		// Hard guarantee: never emit content large enough to push the record over
 		// the 200 KB API limit. mb_strcut trims on a byte boundary without
@@ -127,6 +136,24 @@ class Default_Transformer {
 		}
 
 		return $text;
+	}
+
+	/**
+	 * Run preg_replace, keeping the subject when the pattern fails.
+	 *
+	 * preg_replace returns null on a PCRE error — a backtrack or recursion limit
+	 * on a very large input, or invalid UTF-8 under the /u modifier. Casting that
+	 * to a string would silently ingest blank content, so keep what we had.
+	 *
+	 * @param string $pattern     Pattern to match.
+	 * @param string $replacement Replacement string.
+	 * @param string $subject     Subject to search.
+	 * @return string Replaced subject, or the original subject on a PCRE error.
+	 */
+	private static function replace_or_keep( string $pattern, string $replacement, string $subject ): string {
+		$result = preg_replace( $pattern, $replacement, $subject );
+
+		return is_string( $result ) ? $result : $subject;
 	}
 
 	/**

@@ -229,6 +229,57 @@ class Default_Transformer_Test extends WP_UnitTestCase {
 		$this->assertSame( 'Hello world & friends', $record->content );
 	}
 
+	public function test_adjacent_blocks_do_not_fuse_into_one_word(): void {
+		$post = $this->factory()->post->create_and_get(
+			[
+				'post_content' => '<p>Alpha</p><p>Beta</p><ul><li>one</li><li>two</li></ul>',
+				'post_status'  => 'publish',
+			]
+		);
+
+		$record = Default_Transformer::transform( null, $post );
+
+		$this->assertSame( "Alpha\nBeta\none\ntwo", $record->content );
+	}
+
+	public function test_inline_markup_does_not_split_words(): void {
+		$post = $this->factory()->post->create_and_get(
+			[
+				'post_content' => '<p>Word<em>Press</em> is <strong>great</strong></p>',
+				'post_status'  => 'publish',
+			]
+		);
+
+		$record = Default_Transformer::transform( null, $post );
+
+		$this->assertSame( 'WordPress is great', $record->content );
+	}
+
+	public function test_self_closing_blocks_separate_their_neighbours(): void {
+		$post = $this->factory()->post->create_and_get(
+			[
+				'post_content' => '<!-- wp:heading --><h2>Alpha</h2><!-- /wp:heading --><!-- wp:separator --><hr class="wp-block-separator"/><!-- /wp:separator --><!-- wp:paragraph --><p>Beta</p><!-- /wp:paragraph -->',
+				'post_status'  => 'publish',
+			]
+		);
+
+		$record = Default_Transformer::transform( null, $post );
+
+		$this->assertSame( "Alpha\nBeta", $record->content );
+	}
+
+	public function test_script_style_and_svg_markup_are_removed(): void {
+		$post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
+		// Set on the object rather than in the DB: kses strips script/style on save
+		// for users without unfiltered_html, and we want the transformer's own
+		// handling under test.
+		$post->post_content = '<p>Visible</p><script>var hidden = 1;</script><style>.x{color:red}</style><svg viewBox="0 0 10 10"><path d="M0 0 L10 10"/></svg>';
+
+		$record = Default_Transformer::transform( null, $post );
+
+		$this->assertSame( 'Visible', $record->content );
+	}
+
 	public function test_oversized_content_is_capped_under_the_limit(): void {
 		$ref = new ReflectionClass( Default_Transformer::class );
 		$max = (int) $ref->getConstant( 'MAX_CONTENT_BYTES' );
