@@ -68,7 +68,7 @@ class Settings_Page {
 	 */
 	public function validate_onetrust_group_id( $group_id ) {
 		$group_id              = sanitize_text_field( trim( (string) $group_id ) );
-		$old_value             = get_option( 'vip_agentforce_onetrust_group_id' );
+		$old_value             = sanitize_text_field( (string) get_option( 'vip_agentforce_onetrust_group_id', Constants::DEFAULT_ONETRUST_GROUP_ID ) );
 		$selected_consent_type = $this->get_submitted_consent_type();
 
 		if ( '' === $group_id ) {
