@@ -307,6 +307,24 @@ class Ingestion_API_Client_Test extends WP_UnitTestCase {
 		$this->assertCount( 0, $this->captured_requests, 'No HTTP request should be made with invalid config' );
 	}
 
+	public function test_oversized_body_fails_permanently_without_sending(): void {
+		$this->mock_http_responses( [ $this->success_response() ] );
+
+		$client = new Ingestion_API_Client();
+		$record = $this->create_test_record();
+		// The default transformer bounds `content`, but a custom transformer or an
+		// unusually large field can still build a body the gateway will 403.
+		$record->content = str_repeat( 'a', 250000 );
+
+		$result = $client->send( $record );
+
+		$this->assertFalse( $result->success );
+		$this->assertFalse( $result->is_retryable(), 'An oversized body fails the same way every time.' );
+		$this->assertSame( 'client', $result->get_error_class() );
+		$this->assertStringContainsString( 'over the Ingestion API limit', $result->error_message );
+		$this->assertCount( 0, $this->captured_requests, 'An oversized body should never reach the network' );
+	}
+
 	public function test_returns_failure_when_partial_config(): void {
 		$this->prime_configs_cache(
 			[

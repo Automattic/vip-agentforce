@@ -300,4 +300,43 @@ class Default_Transformer_Test extends WP_UnitTestCase {
 			'Content must be capped under the Data Cloud 200 KB request limit.'
 		);
 	}
+
+	/**
+	 * The API sizes the encoded body, where wp_json_encode turns each non-ASCII
+	 * character into a \uXXXX escape. A raw-byte cap passes while the request
+	 * that gets sent is still twice the limit, so assert on the encoded body.
+	 *
+	 * @dataProvider multibyte_content_provider
+	 *
+	 * @param string $unit  Repeated to build the post content.
+	 * @param int    $times Repeat count.
+	 */
+	public function test_multibyte_content_stays_under_the_limit_once_encoded( string $unit, int $times ): void {
+		$post               = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
+		$post->post_content = str_repeat( $unit, $times );
+
+		$record = Default_Transformer::transform( null, $post );
+		$body   = wp_json_encode( [ 'data' => [ $record->to_array() ] ] );
+
+		$this->assertLessThan(
+			200000,
+			strlen( $body ),
+			'The encoded request body must stay under the Data Cloud 200 KB limit.'
+		);
+		$this->assertNotSame( '', $record->content, 'Content must survive the cap, not be emptied.' );
+	}
+
+	/**
+	 * @return array<string, array{0: string, 1: int}>
+	 */
+	public function multibyte_content_provider(): array {
+		return [
+			// 3 bytes raw, 6 encoded.
+			'japanese' => [ '日本語のテキストです。', 30000 ],
+			// 4 bytes raw, 12 encoded.
+			'emoji'    => [ '🎉', 100000 ],
+			// Mixed, so the inflation ratio isn't uniform across the string.
+			'mixed'    => [ 'Latin text 日本語 🎉 more latin ', 20000 ],
+		];
+	}
 }

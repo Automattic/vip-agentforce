@@ -20,7 +20,7 @@ use Automattic\VIP\Salesforce\Agentforce\Utils\Configs;
  */
 class Default_Transformer {
 	/**
-	 * Maximum byte length of the ingested `content` field.
+	 * Maximum JSON-encoded byte length of the ingested `content` field.
 	 *
 	 * Data 360's (Data Cloud) streaming Ingestion API rejects any request whose
 	 * payload exceeds ~200 KB — the gateway returns a plain 403 before the
@@ -28,6 +28,13 @@ class Default_Transformer {
 	 * Gutenberg page packed with block markup and inline SVG) can run 250–400 KB,
 	 * and JSON-escaping that HTML inflates it further. We reduce content to plain
 	 * text and cap it well under the limit so a single record can never exceed it.
+	 *
+	 * Measured against the encoded length, not the raw one: the API sizes the
+	 * body that Ingestion_API_Client::send() builds, and wp_json_encode escapes
+	 * every non-ASCII character to \uXXXX. A 3-byte CJK character encodes to 6
+	 * bytes and a 4-byte emoji to 12, so a raw-byte cap of this size would let
+	 * 150 KB of Japanese text serialize to 300 KB and hit the same 403. The
+	 * remaining headroom covers the record's other fields and JSON structure.
 	 */
 	private const MAX_CONTENT_BYTES = 150000;
 
@@ -105,7 +112,7 @@ class Default_Transformer {
 	 * cost of a single byte per block.
 	 *
 	 * @param string $raw Raw post_content.
-	 * @return string Plain-text content, byte-capped to MAX_CONTENT_BYTES.
+	 * @return string Plain-text content, capped to MAX_CONTENT_BYTES once encoded.
 	 */
 	private static function prepare_content( string $raw ): string {
 		// Gutenberg delimiters become line breaks, so blocks whose markup is
@@ -125,17 +132,66 @@ class Default_Transformer {
 		$text = self::replace_or_keep( '/[^\S\n]+/u', ' ', $text );
 		$text = trim( self::replace_or_keep( '/\s*\n\s*/u', "\n", $text ) );
 
-		// Hard guarantee: never emit content large enough to push the record over
-		// the 200 KB API limit. mb_strcut trims on a byte boundary without
-		// splitting a multibyte character; fall back to substr if mbstring is
-		// unavailable (byte-exact, may split a trailing multibyte char).
-		if ( strlen( $text ) > self::MAX_CONTENT_BYTES ) {
-			$text = function_exists( 'mb_strcut' )
-				? mb_strcut( $text, 0, self::MAX_CONTENT_BYTES, 'UTF-8' )
-				: substr( $text, 0, self::MAX_CONTENT_BYTES );
+		return self::cap_encoded_size( $text );
+	}
+
+	/**
+	 * Trim text until its JSON-encoded form fits MAX_CONTENT_BYTES.
+	 *
+	 * Escaping is uneven — an ASCII byte encodes to one byte, a CJK character to
+	 * six, an emoji to twelve — so there's no fixed ratio to divide by. Scale the
+	 * cut by the inflation we actually measured and re-check. Every pass strictly
+	 * shortens the string, so this terminates, and in practice settles in one or
+	 * two passes.
+	 *
+	 * @param string $text Plain-text content.
+	 * @return string Content whose encoded length is within MAX_CONTENT_BYTES.
+	 */
+	private static function cap_encoded_size( string $text ): string {
+		$encoded = self::encoded_length( $text );
+
+		while ( '' !== $text && $encoded > self::MAX_CONTENT_BYTES ) {
+			$target = (int) floor( strlen( $text ) * ( self::MAX_CONTENT_BYTES / $encoded ) );
+
+			// Never let a rounding artefact stall the loop.
+			$target = min( $target, strlen( $text ) - 1 );
+			$text   = $target > 0 ? self::cut_bytes( $text, $target ) : '';
+
+			$encoded = self::encoded_length( $text );
 		}
 
 		return $text;
+	}
+
+	/**
+	 * Byte length of a string once JSON-encoded, excluding its quotes.
+	 *
+	 * @param string $text Text to measure.
+	 * @return int Encoded byte length.
+	 */
+	private static function encoded_length( string $text ): int {
+		$json = wp_json_encode( $text );
+
+		// Invalid UTF-8 can't be encoded at all. Assume the worst case so the cap
+		// still errs towards trimming rather than shipping something unbounded.
+		return false === $json ? strlen( $text ) * 6 : strlen( $json ) - 2;
+	}
+
+	/**
+	 * Cut a string to at most $bytes bytes.
+	 *
+	 * mb_strcut trims on a byte boundary without splitting a multibyte character;
+	 * fall back to substr if mbstring is unavailable (byte-exact, may split a
+	 * trailing multibyte char).
+	 *
+	 * @param string $text  Text to cut.
+	 * @param int    $bytes Maximum byte length.
+	 * @return string The cut string.
+	 */
+	private static function cut_bytes( string $text, int $bytes ): string {
+		return function_exists( 'mb_strcut' )
+			? mb_strcut( $text, 0, $bytes, 'UTF-8' )
+			: substr( $text, 0, $bytes );
 	}
 
 	/**
