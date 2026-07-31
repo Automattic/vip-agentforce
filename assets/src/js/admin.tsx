@@ -19,7 +19,7 @@ import { __ } from '@wordpress/i18n';
 
 type ConsentType =
 	| 'CookieYes'
-	| 'CookieBot'
+	| 'Cookiebot'
 	| 'OneTrust'
 	| 'iubenda'
 	| 'Custom';
@@ -62,7 +62,7 @@ interface SettingsSectionProps {
 
 const CONSENT_OPTIONS = [
 	'CookieYes',
-	'CookieBot',
+	'Cookiebot',
 	'OneTrust',
 	'iubenda',
 	'Custom',
@@ -181,12 +181,12 @@ function AgentforceSettingsApp({ settings }: { settings: SettingsData }) {
 	const [alignment, setAlignment] = useState(values.alignment);
 	const shouldShowOneTrust = consentType === 'OneTrust';
 	const shouldShowCookieYes = consentType === 'CookieYes';
-	const shouldShowCookiebot = consentType === 'CookieBot';
+	const shouldShowCookiebot = consentType === 'Cookiebot';
 	const shouldShowIubenda = consentType === 'iubenda';
 	const shouldShowCustom = consentType === 'Custom';
 	const consentOptions = [
 		{ label: __('CookieYes', 'vip-agentforce'), value: 'CookieYes' },
-		{ label: __('CookieBot', 'vip-agentforce'), value: 'CookieBot' },
+		{ label: __('Cookiebot', 'vip-agentforce'), value: 'Cookiebot' },
 		{ label: __('OneTrust', 'vip-agentforce'), value: 'OneTrust' },
 		{ label: __('iubenda', 'vip-agentforce'), value: 'iubenda' },
 		{ label: __('Custom', 'vip-agentforce'), value: 'Custom' },

@@ -102,8 +102,8 @@ test.describe('CMP Settings', () => {
 			);
 		});
 
-		await test.step('Save a CookieBot value and clear inactive OneTrust value', async () => {
-			await cmpSettings.setConsentType('CookieBot');
+		await test.step('Save a Cookiebot value and clear inactive OneTrust value', async () => {
+			await cmpSettings.setConsentType('Cookiebot');
 
 			await expect(cmpSettings.onetrustRow).toBeHidden();
 			await expect(cmpSettings.cookieyesRow).toBeHidden();
@@ -113,7 +113,7 @@ test.describe('CMP Settings', () => {
 			await cmpSettings.cookiebotCategory.selectOption('statistics');
 			await cmpSettings.save();
 
-			await expect(cmpSettings.consentType).toHaveValue('CookieBot');
+			await expect(cmpSettings.consentType).toHaveValue('Cookiebot');
 			await expect(cmpSettings.onetrustRow).toBeHidden();
 			await expect(cmpSettings.cookiebotRow).toBeVisible();
 			await expect(cmpSettings.iubendaRow).toBeHidden();
@@ -127,8 +127,10 @@ test.describe('CMP Settings', () => {
 		});
 
 		await test.step('Ignore draft provider values when saving a different consent type', async () => {
-			await cmpSettings.setConsentType('CookieBot');
-			await cmpSettings.cookiebotCategory.selectOption('preferences');
+			// Draft values must differ from each provider's default, otherwise the
+			// assertions below cannot tell a discarded draft from a saved one.
+			await cmpSettings.setConsentType('Cookiebot');
+			await cmpSettings.cookiebotCategory.selectOption('marketing');
 
 			await cmpSettings.setConsentType('CookieYes');
 			await cmpSettings.cookieyesCategory.selectOption('performance');
@@ -138,14 +140,16 @@ test.describe('CMP Settings', () => {
 
 			await expect(cmpSettings.consentType).toHaveValue('Custom');
 
-			await cmpSettings.setConsentType('CookieBot');
-			await expect(cmpSettings.cookiebotCategory).not.toHaveValue(
+			// Inactive providers render no hidden input, so options.php sanitizes a
+			// null value and each setting resets to its default.
+			await cmpSettings.setConsentType('Cookiebot');
+			await expect(cmpSettings.cookiebotCategory).toHaveValue(
 				'preferences'
 			);
 
 			await cmpSettings.setConsentType('CookieYes');
-			await expect(cmpSettings.cookieyesCategory).not.toHaveValue(
-				'performance'
+			await expect(cmpSettings.cookieyesCategory).toHaveValue(
+				'functional'
 			);
 		});
 	});

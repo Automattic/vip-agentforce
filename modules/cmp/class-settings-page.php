@@ -269,10 +269,17 @@ class Settings_Page {
 
 	/**
 	 * Sanitize consent type.
+	 *
+	 * Renamed values are mapped to their current name first, so sites still storing
+	 * a pre-rename value keep the CMP they configured instead of being downgraded
+	 * to the default. Matching is otherwise exact.
+	 *
 	 * @param string $value The consent type value.
 	 * @return string The sanitized consent type.
 	 */
 	public function sanitize_consent_type( string $value ): string {
+		$value = Constants::LEGACY_CMP_ALIASES[ $value ] ?? $value;
+
 		return in_array( $value, Constants::SUPPORTED_CMPS, true ) ? $value : Constants::DEFAULT_CMP;
 	}
 
@@ -285,7 +292,7 @@ class Settings_Page {
 
 		$settings_data = array(
 			'values' => array(
-				'consentType'       => get_option( 'vip_agentforce_consent_type', Constants::DEFAULT_CMP ),
+				'consentType'       => $this->sanitize_consent_type( (string) get_option( 'vip_agentforce_consent_type', Constants::DEFAULT_CMP ) ),
 				'oneTrustGroupId'   => get_option( 'vip_agentforce_onetrust_group_id', Constants::DEFAULT_ONETRUST_GROUP_ID ),
 				'cookieyesCategory' => $this->validate_cookieyes_category( get_option( 'vip_agentforce_cookieyes_category', Constants::DEFAULT_COOKIEYES_CATEGORY ) ),
 				'cookiebotCategory' => $this->validate_cookiebot_category( get_option( 'vip_agentforce_cookiebot_category', Constants::DEFAULT_COOKIEBOT_CATEGORY ) ),

@@ -4,8 +4,19 @@ namespace Automattic\VIP\Salesforce\Agentforce;
 
 class Constants {
 	const LOG_PLUGIN_NAME = 'vip-agentforce';
-	const SUPPORTED_CMPS  = array( 'CookieYes', 'CookieBot', 'OneTrust', 'iubenda', 'Custom' );
+	const SUPPORTED_CMPS  = array( 'CookieYes', 'Cookiebot', 'OneTrust', 'iubenda', 'Custom' );
 	const DEFAULT_CMP     = 'Custom';
+
+	/**
+	 * Stored consent type values that have since been renamed, mapped to their
+	 * current value.
+	 *
+	 * The consent type is persisted in `vip_agentforce_consent_type`, so renaming a
+	 * value orphans every site already holding the old one. Without this map they
+	 * would fail validation, silently fall back to the default CMP, and lose the
+	 * consent gating they configured.
+	 */
+	const LEGACY_CMP_ALIASES = array( 'CookieBot' => 'Cookiebot' );
 
 	const COOKIEYES_CATEGORIES       = array( 'necessary', 'functional', 'analytics', 'performance', 'advertisement' );
 	const DEFAULT_COOKIEYES_CATEGORY = 'functional';

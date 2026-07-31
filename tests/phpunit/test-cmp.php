@@ -805,7 +805,7 @@ class Cmp_Tests extends WP_UnitTestCase {
 			]
 		);
 
-		update_option( 'vip_agentforce_consent_type', 'CookieBot' );
+		update_option( 'vip_agentforce_consent_type', 'Cookiebot' );
 		delete_option( 'vip_agentforce_cookiebot_category' );
 
 		$this->reset_consent_script( 'vip-af-cookiebot-consent' );
@@ -824,7 +824,7 @@ class Cmp_Tests extends WP_UnitTestCase {
 			]
 		);
 
-		update_option( 'vip_agentforce_consent_type', 'CookieBot' );
+		update_option( 'vip_agentforce_consent_type', 'Cookiebot' );
 		update_option( 'vip_agentforce_cookiebot_category', 'custom-category' );
 
 		$this->reset_consent_script( 'vip-af-cookiebot-consent' );
@@ -973,7 +973,33 @@ class Cmp_Tests extends WP_UnitTestCase {
 	public function test_sanitize_consent_type_returns_value_for_supported_cmp(): void {
 		$settings = Settings_Page::get_instance();
 
-		$this->assertSame( 'CookieBot', $settings->sanitize_consent_type( 'CookieBot' ) );
+		$this->assertSame( 'Cookiebot', $settings->sanitize_consent_type( 'Cookiebot' ) );
+	}
+
+	public function test_sanitize_consent_type_maps_legacy_cookiebot_casing(): void {
+		$settings = Settings_Page::get_instance();
+
+		$this->assertSame( 'Cookiebot', $settings->sanitize_consent_type( 'CookieBot' ) );
+	}
+
+	public function test_legacy_consent_type_still_enqueues_its_consent_script(): void {
+		$this->prime_configs_cache(
+			[
+				'agentforce_js_sdk_activated' => true,
+				'agentforce_embedding_script' => $this->get_embedding_script_fixture(),
+			]
+		);
+
+		update_option( 'vip_agentforce_consent_type', 'CookieBot' );
+		update_option( 'vip_agentforce_cookiebot_category', 'statistics' );
+
+		$this->reset_consent_script( 'vip-af-cookiebot-consent' );
+		Assets::get_instance()->enqueue_consent_scripts();
+
+		$this->assertTrue( wp_script_is( 'vip-af-cookiebot-consent', 'enqueued' ) );
+
+		$localized_data = wp_scripts()->get_data( 'vip-af-cookiebot-consent', 'data' );
+		$this->assertStringContainsString( '"cookiebotCategory":"statistics"', $localized_data );
 	}
 
 	public function test_sanitize_consent_type_falls_back_to_default_for_invalid_value(): void {
