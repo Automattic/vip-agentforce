@@ -277,11 +277,12 @@ class Settings_Page {
 	 * @param string $value The consent type value.
 	 * @return string The sanitized consent type.
 	 */
-	public function sanitize_consent_type( string $value ): string {
-		$value = Constants::LEGACY_CMP_ALIASES[ $value ] ?? $value;
+public function sanitize_consent_type( $value ): string {
+	$value = sanitize_text_field( trim( (string) $value ) );
+	$value = Constants::LEGACY_CMP_ALIASES[ $value ] ?? $value;
 
-		return in_array( $value, Constants::SUPPORTED_CMPS, true ) ? $value : Constants::DEFAULT_CMP;
-	}
+	return in_array( $value, Constants::SUPPORTED_CMPS, true ) ? $value : Constants::DEFAULT_CMP;
+}
 
 	/**
 	 * Render the settings page.
