@@ -674,7 +674,7 @@ class Ingestion_Cron {
 		$fast_fail_code        = null;
 		$retry_backoff_started = false;
 
-		// Consecutive per-post API failures across the whole run. A single blocked
+		// Consecutive per-post auth failures across the whole run. A single blocked
 		// post (e.g. an edge/proxy/WAF 403 on one post's payload) should not kill a
 		// 900-post sync once other posts have already synced, but a long run of
 		// back-to-back failures is a genuine outage and should still fast-fail.
@@ -770,10 +770,13 @@ class Ingestion_Cron {
 						++$batch_results['failed'];
 						Ingestion_Metrics::record_post_result( 'failed', 'bulk' );
 
-						// Only API failures count toward the consecutive-failure streak.
-						// A transform failure isn't an API/auth problem, so it interrupts
-						// the streak rather than pushing it toward the fast-fail threshold.
-						if ( Sync_Result::FAILED_API === $sync_result->status ) {
+						// Only auth failures count toward the streak. It exists solely to
+						// bound the escape hatch below, which fires on an auth-class
+						// failure, so anything else — a transform failure, a record the
+						// API rejects as malformed or too large — interrupts the streak
+						// rather than pushing an unrelated per-post problem toward a
+						// fast-fail that would be reported as an auth error.
+						if ( Sync_Result::FAILED_API === $sync_result->status && 'auth' === $sync_result->error_class ) {
 							++$consecutive_api_failures;
 						} else {
 							$consecutive_api_failures = 0;
