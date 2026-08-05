@@ -1058,9 +1058,10 @@ class Cmp_Tests extends WP_UnitTestCase {
 
 		update_option( 'vip_agentforce_iubenda_category', '3' );
 
+		// Not the selected CMP, so the field was not rendered - keep what is stored.
 		$this->assertSame(
-			Constants::DEFAULT_IUBENDA_PURPOSE_ID,
-			$settings->validate_iubenda_category( '' )
+			'3',
+			$settings->validate_iubenda_category( null )
 		);
 
 		$wp_settings_errors                   = [];
@@ -1111,20 +1112,21 @@ class Cmp_Tests extends WP_UnitTestCase {
 		$settings = Settings_Page::get_instance();
 		global $wp_settings_errors;
 
-		update_option( 'vip_agentforce_onetrust_group_id', 'C0003' );
+		update_option( 'vip_agentforce_onetrust_group_id', 'C0007' );
 		$wp_settings_errors = [];
 
-		// Not the selected CMP, so an empty value just falls back to the default.
+		// Not the selected CMP, so the field was not rendered - keep what is stored.
 		$this->assertSame(
-			Constants::DEFAULT_ONETRUST_GROUP_ID,
+			'C0007',
 			$settings->validate_onetrust_group_id( '' )
 		);
+		$this->assertCount( 0, get_settings_errors( 'vip_agentforce_messages' ) );
 
 		$wp_settings_errors                   = [];
 		$_POST['vip_agentforce_consent_type'] = 'OneTrust'; // phpcs:ignore WordPress.Security.NonceVerification.Missing
 
 		$this->assertSame(
-			'C0003',
+			'C0007',
 			$settings->validate_onetrust_group_id( '' )
 		);
 		$this->assertSame(
@@ -1133,5 +1135,54 @@ class Cmp_Tests extends WP_UnitTestCase {
 		);
 
 		unset( $_POST['vip_agentforce_consent_type'] );
+	}
+
+	public function test_validate_onetrust_group_id_rejects_overlong_ids(): void {
+		$settings = Settings_Page::get_instance();
+		global $wp_settings_errors;
+
+		update_option( 'vip_agentforce_onetrust_group_id', 'C0007' );
+		$wp_settings_errors = [];
+
+		$this->assertSame(
+			'C0007',
+			$settings->validate_onetrust_group_id( str_repeat( 'C', 65 ) )
+		);
+		$this->assertSame(
+			'vip_agentforce_onetrust_group_id_error',
+			get_settings_errors( 'vip_agentforce_messages' )[0]['code']
+		);
+	}
+
+	/**
+	 * options.php writes null for every registered setting in the group whose field was
+	 * not rendered, so saving under one CMP must not reset the others' configuration.
+	 *
+	 * @dataProvider provide_cmp_settings_preserved_across_saves
+	 *
+	 * @param string $option   The option name.
+	 * @param string $callback The registered sanitize callback.
+	 * @param string $stored   A configured value that must survive the save.
+	 */
+	public function test_cmp_settings_survive_a_save_under_a_different_cmp( string $option, string $callback, string $stored ): void {
+		$settings = Settings_Page::get_instance();
+
+		update_option( 'vip_agentforce_consent_type', 'Custom' );
+		update_option( $option, $stored );
+		unset( $_POST['vip_agentforce_consent_type'] );
+
+		$this->assertSame( $stored, $settings->$callback( null ) );
+	}
+
+	/**
+	 * @return array<string, array{string, string, string}>
+	 */
+	public function provide_cmp_settings_preserved_across_saves(): array {
+		return array(
+			'onetrust'  => array( 'vip_agentforce_onetrust_group_id', 'validate_onetrust_group_id', 'C0007' ),
+			'cookiebot' => array( 'vip_agentforce_cookiebot_category', 'validate_cookiebot_category', 'marketing' ),
+			'cookieyes' => array( 'vip_agentforce_cookieyes_category', 'validate_cookieyes_category', 'advertisement' ),
+			'iubenda'   => array( 'vip_agentforce_iubenda_category', 'validate_iubenda_category', '4' ),
+		);
 	}
 }

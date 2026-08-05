@@ -62,7 +62,9 @@ class Settings_Page {
 	 * a group ID at all. A well-formed but wrong ID is caught at runtime by the console
 	 * warning in cmp-onetrust.js.
 	 *
-	 * @param mixed $group_id The Group ID to validate.
+	 * @param mixed $group_id The Group ID to validate. `null` when OneTrust is not the
+	 *                        selected CMP, since options.php writes null for every
+	 *                        registered setting whose field was not rendered.
 	 *
 	 * @return string|mixed The validated Group ID or old value if invalid.
 	 */
@@ -71,6 +73,11 @@ class Settings_Page {
 		$old_value             = sanitize_text_field( (string) get_option( 'vip_agentforce_onetrust_group_id', Constants::DEFAULT_ONETRUST_GROUP_ID ) );
 		$selected_consent_type = $this->get_submitted_consent_type();
 
+		// No value submitted. When OneTrust is selected that is an empty field and an
+		// error; otherwise the field simply was not rendered. Either way keep what is
+		// stored - resetting would silently re-point gating at a group the customer
+		// never chose, and the stock default exists in most OneTrust configs, so the
+		// runtime warning would not fire.
 		if ( '' === $group_id ) {
 			if ( 'OneTrust' === $selected_consent_type ) {
 				add_settings_error(
@@ -79,18 +86,16 @@ class Settings_Page {
 					__( 'OneTrust Group ID cannot be empty.', 'vip-agentforce' ),
 					'error'
 				);
-
-				return $old_value;
 			}
 
-			return Constants::DEFAULT_ONETRUST_GROUP_ID;
+			return $old_value;
 		}
 
-		if ( ! preg_match( '/^[A-Za-z0-9_-]+$/', $group_id ) ) {
+		if ( ! preg_match( '/^[A-Za-z0-9_-]{1,64}$/', $group_id ) ) {
 			add_settings_error(
 				'vip_agentforce_messages',
 				'vip_agentforce_onetrust_group_id_error',
-				__( 'OneTrust Group ID may only contain letters, numbers, hyphens, and underscores.', 'vip-agentforce' ),
+				__( 'OneTrust Group ID must be 64 characters or fewer and may only contain letters, numbers, hyphens, and underscores.', 'vip-agentforce' ),
 				'error'
 			);
 
@@ -123,16 +128,20 @@ class Settings_Page {
 	/**
 	 * Validate iubenda Purpose ID.
 	 *
-	 * @param string $purpose_id The Purpose ID to validate.
+	 * @param mixed $purpose_id The Purpose ID to validate. `null` when iubenda is not
+	 *                          the selected CMP, since options.php writes null for
+	 *                          every registered setting whose field was not rendered.
 	 *
 	 * @return string|mixed The validated Purpose ID or old value if invalid.
 	 */
 	public function validate_iubenda_category( $purpose_id ) {
 		$purpose_id            = trim( (string) $purpose_id );
-		$old_value             = get_option( 'vip_agentforce_iubenda_category' );
+		$old_value             = (string) get_option( 'vip_agentforce_iubenda_category', Constants::DEFAULT_IUBENDA_PURPOSE_ID );
 		$selected_consent_type = $this->get_submitted_consent_type();
 
-		if ( empty( $purpose_id ) ) {
+		// Same as OneTrust above: no submitted value means either an empty field or a
+		// field that was not rendered, and neither is a reason to discard the stored ID.
+		if ( '' === $purpose_id ) {
 			if ( 'iubenda' === $selected_consent_type ) {
 				add_settings_error(
 					'vip_agentforce_messages',
@@ -140,11 +149,9 @@ class Settings_Page {
 					__( 'iubenda Purpose ID cannot be empty.', 'vip-agentforce' ),
 					'error'
 				);
-
-				return $old_value;
 			}
 
-			return Constants::DEFAULT_IUBENDA_PURPOSE_ID;
+			return $old_value;
 		}
 
 		$purpose_id = intval( $purpose_id );
@@ -179,12 +186,19 @@ class Settings_Page {
 	/**
 	 * Validate CookieYes category value.
 	 *
-	 * @param mixed $category The CookieYes category value to validate.
+	 * @param mixed $category The CookieYes category value to validate. `null` when
+	 *                        CookieYes is not the selected CMP.
 	 *
 	 * @return string Validated CookieYes category or default if invalid.
 	 */
 	public function validate_cookieyes_category( $category ): string {
-		$category = is_string( $category ) ? strtolower( trim( $category ) ) : Constants::DEFAULT_COOKIEYES_CATEGORY;
+		// Nothing submitted means the field was not rendered, so keep the stored value
+		// rather than resetting a category the customer deliberately chose.
+		if ( ! is_string( $category ) || '' === trim( $category ) ) {
+			$category = (string) get_option( 'vip_agentforce_cookieyes_category', Constants::DEFAULT_COOKIEYES_CATEGORY );
+		}
+
+		$category = strtolower( trim( $category ) );
 
 		return in_array( $category, Constants::COOKIEYES_CATEGORIES, true ) ? $category : Constants::DEFAULT_COOKIEYES_CATEGORY;
 	}
@@ -192,12 +206,20 @@ class Settings_Page {
 	/**
 	 * Validate Cookiebot category value.
 	 *
-	 * @param mixed $category The Cookiebot category value to validate.
+	 * @param mixed $category The Cookiebot category value to validate. `null` when
+	 *                        Cookiebot is not the selected CMP.
 	 *
 	 * @return string Validated Cookiebot category or default if invalid.
 	 */
 	public function validate_cookiebot_category( $category ): string {
-		$category = is_string( $category ) ? strtolower( trim( $category ) ) : Constants::DEFAULT_COOKIEBOT_CATEGORY;
+		// Nothing submitted means the field was not rendered. This matters more since
+		// the default moved from "marketing" to "preferences": resetting would loosen
+		// the gate on a site that had deliberately picked the stricter category.
+		if ( ! is_string( $category ) || '' === trim( $category ) ) {
+			$category = (string) get_option( 'vip_agentforce_cookiebot_category', Constants::DEFAULT_COOKIEBOT_CATEGORY );
+		}
+
+		$category = strtolower( trim( $category ) );
 
 		return in_array( $category, Constants::COOKIEBOT_CATEGORIES, true ) ? $category : Constants::DEFAULT_COOKIEBOT_CATEGORY;
 	}
@@ -274,7 +296,9 @@ class Settings_Page {
 	 * a pre-rename value keep the CMP they configured instead of being downgraded
 	 * to the default. Matching is otherwise exact.
 	 *
-	 * @param string $value The consent type value.
+	 * @param mixed $value The consent type value. Deliberately untyped: options.php
+	 *                     passes `null` for any registered setting whose field was not
+	 *                     rendered, which a `string` hint would turn into a TypeError.
 	 * @return string The sanitized consent type.
 	 */
 	public function sanitize_consent_type( $value ): string {

@@ -20,14 +20,16 @@ const hasConsent = () => {
 	return false;
 };
 
-let hasLoggedMissingGroupWarning = false;
+// One warning per page load, whichever diagnostic fires first - consent callbacks can
+// run many times per page and a repeating console warning is noise, not signal.
+let hasLoggedWarning = false;
 
 const warn = (message) => {
-	if (hasLoggedMissingGroupWarning) {
+	if (hasLoggedWarning) {
 		return;
 	}
 
-	hasLoggedMissingGroupWarning = true;
+	hasLoggedWarning = true;
 	if (window.console && typeof window.console.warn === 'function') {
 		window.console.warn(message);
 	}
