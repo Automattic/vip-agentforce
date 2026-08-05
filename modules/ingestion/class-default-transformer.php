@@ -111,6 +111,9 @@ class Default_Transformer {
 	 * one newline per block preserves the document's structure for chunking at a
 	 * cost of a single byte per block.
 	 *
+	 * Link targets and image alt text are carried over as text before the tags
+	 * go, so an agent can still cite a source or describe an image.
+	 *
 	 * @param string $raw Raw post_content.
 	 * @return string Plain-text content, capped to MAX_CONTENT_BYTES once encoded.
 	 */
@@ -119,13 +122,26 @@ class Default_Transformer {
 		// self-closing (separators, images, embeds) still separate their neighbours.
 		$text = self::replace_or_keep( '/<!--\s*\/?wp:.*?-->/s', "\n", $raw );
 
+		// Alt text is an image's only readable description, and it runs before
+		// links so a linked image keeps it rather than reducing to nothing.
+		$text = self::replace_images_with_alt_text( $text );
+		$text = self::append_link_targets( $text );
+
 		// Same for block-level HTML, which covers classic content and any markup
-		// authored inside a block.
-		$text = self::replace_or_keep( '#<br\s*/?>|</(?:p|div|li|h[1-6]|tr|td|th|dt|dd|pre|section|article|aside|header|footer|blockquote|figcaption)>#i', "\n", $text );
+		// authored inside a block. Both ends of the tag, so text that abuts an
+		// opening tag — an image's alt text before a paragraph, say — is broken
+		// off too. Runs of line breaks collapse below.
+		$text = self::replace_or_keep( '#<br\s*/?>|</?(?:p|div|li|h[1-6]|tr|td|th|dt|dd|pre|section|article|aside|header|footer|blockquote|figure|figcaption)\b[^>]*>#i', "\n", $text );
 
 		// Removes the remaining tags plus the contents of script/style and any
 		// inline SVG's markup.
 		$text = wp_strip_all_tags( $text );
+
+		// Decoding last, so markup an author escaped to write *about* it survives
+		// as the text a reader sees. Decoding first would hand `&lt;script&gt;x&lt;/script&gt;`
+		// to wp_strip_all_tags, which drops script contents, and the sample would
+		// vanish from the index. The cap runs after either way, so this only
+		// affects what gets indexed, never the request size.
 		$text = html_entity_decode( $text, ENT_QUOTES | ENT_HTML5, 'UTF-8' );
 
 		// Collapse spacing runs, but keep the line breaks added above.
@@ -133,6 +149,76 @@ class Default_Transformer {
 		$text = trim( self::replace_or_keep( '/\s*\n\s*/u', "\n", $text ) );
 
 		return self::cap_encoded_size( $text );
+	}
+
+	/**
+	 * Replace each `<img>` with its alt text.
+	 *
+	 * Stripping the tag outright loses the only readable description of the
+	 * image, and an image that is a block's whole content (a linked thumbnail,
+	 * say) would leave nothing behind at all. Padding with spaces keeps the alt
+	 * text from fusing with the words either side; the later whitespace pass
+	 * collapses the padding.
+	 *
+	 * @param string $html Post content.
+	 * @return string Content with images reduced to their alt text.
+	 */
+	private static function replace_images_with_alt_text( string $html ): string {
+		return self::replace_callback_or_keep(
+			'/<img\b[^>]*>/i',
+			static function ( array $img ): string {
+				$alt = self::get_attribute( $img[0], 'alt' );
+
+				return '' === $alt ? '' : ' ' . $alt . ' ';
+			},
+			$html
+		);
+	}
+
+	/**
+	 * Append each link's target to its text, as `text (url)`.
+	 *
+	 * Link text alone tells an agent that a source exists but not where it is,
+	 * so the target rides along in the text where retrieval can surface it.
+	 *
+	 * @param string $html Post content.
+	 * @return string Content with link targets inlined.
+	 */
+	private static function append_link_targets( string $html ): string {
+		return self::replace_callback_or_keep(
+			'#<a\b([^>]*)>(.*?)</a>#is',
+			static function ( array $link ): string {
+				$href = self::get_attribute( $link[1], 'href' );
+				$text = $link[2];
+
+				// Skip in-page anchors, which point nowhere outside the post, and
+				// links whose text is already the URL, which need no repeat.
+				if ( '' === $href || '#' === $href[0] || trim( wp_strip_all_tags( $text ) ) === $href ) {
+					return $text;
+				}
+
+				return $text . ' (' . $href . ')';
+			},
+			$html
+		);
+	}
+
+	/**
+	 * Read a quoted attribute value out of a tag.
+	 *
+	 * Quoted values only: that is what the block editor, the classic editor and
+	 * kses all emit. $name is a literal from this class, never user input.
+	 *
+	 * @param string $tag  Tag markup, or the attribute section of one.
+	 * @param string $name Attribute name.
+	 * @return string Attribute value, or '' when absent.
+	 */
+	private static function get_attribute( string $tag, string $name ): string {
+		if ( 1 !== preg_match( '/\b' . $name . '\s*=\s*("|\')(.*?)\1/is', $tag, $match ) ) {
+			return '';
+		}
+
+		return trim( $match[2] );
 	}
 
 	/**
@@ -208,6 +294,23 @@ class Default_Transformer {
 	 */
 	private static function replace_or_keep( string $pattern, string $replacement, string $subject ): string {
 		$result = preg_replace( $pattern, $replacement, $subject );
+
+		return is_string( $result ) ? $result : $subject;
+	}
+
+	/**
+	 * Run preg_replace_callback, keeping the subject when the pattern fails.
+	 *
+	 * Same guard as replace_or_keep: a PCRE error returns null, and casting that
+	 * to a string would blank the content.
+	 *
+	 * @param string   $pattern  Pattern to match.
+	 * @param callable $callback Replacement callback.
+	 * @param string   $subject  Subject to search.
+	 * @return string Replaced subject, or the original subject on a PCRE error.
+	 */
+	private static function replace_callback_or_keep( string $pattern, callable $callback, string $subject ): string {
+		$result = preg_replace_callback( $pattern, $callback, $subject );
 
 		return is_string( $result ) ? $result : $subject;
 	}

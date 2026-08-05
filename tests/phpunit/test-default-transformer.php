@@ -268,6 +268,73 @@ class Default_Transformer_Test extends WP_UnitTestCase {
 		$this->assertSame( "Alpha\nBeta", $record->content );
 	}
 
+	public function test_links_keep_their_target_alongside_their_text(): void {
+		$post = $this->factory()->post->create_and_get(
+			[
+				'post_content' => '<p>See <a href="https://example.com/docs">the docs</a> for more.</p>',
+				'post_status'  => 'publish',
+			]
+		);
+
+		$record = Default_Transformer::transform( null, $post );
+
+		$this->assertSame( 'See the docs (https://example.com/docs) for more.', $record->content );
+	}
+
+	public function test_images_keep_their_alt_text(): void {
+		$post = $this->factory()->post->create_and_get(
+			[
+				'post_content' => '<p>Before</p><img src="https://example.com/thumb.jpg" alt="A red bicycle" /><p>After</p>',
+				'post_status'  => 'publish',
+			]
+		);
+
+		$record = Default_Transformer::transform( null, $post );
+
+		$this->assertSame( "Before\nA red bicycle\nAfter", $record->content );
+	}
+
+	public function test_a_linked_image_keeps_both_its_alt_text_and_target(): void {
+		$post = $this->factory()->post->create_and_get(
+			[
+				'post_content' => '<a href="https://example.com/full.jpg"><img src="https://example.com/thumb.jpg" alt="Example image"></a>',
+				'post_status'  => 'publish',
+			]
+		);
+
+		$record = Default_Transformer::transform( null, $post );
+
+		$this->assertSame( 'Example image (https://example.com/full.jpg)', $record->content );
+	}
+
+	public function test_in_page_anchors_and_self_titled_links_are_not_annotated(): void {
+		$post = $this->factory()->post->create_and_get(
+			[
+				'post_content' => '<p><a href="#section-two">Jump to section two</a></p><p><a href="https://example.com">https://example.com</a></p>',
+				'post_status'  => 'publish',
+			]
+		);
+
+		$record = Default_Transformer::transform( null, $post );
+
+		$this->assertSame( "Jump to section two\nhttps://example.com", $record->content );
+	}
+
+	/**
+	 * Entities are decoded after tags are stripped, so markup an author escaped
+	 * in order to write about it stays in the index as the text a reader sees.
+	 * Decoding first would feed the sample back to wp_strip_all_tags, which drops
+	 * script contents, and it would disappear entirely.
+	 */
+	public function test_escaped_markup_survives_as_text(): void {
+		$post               = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
+		$post->post_content = '<p>Example: &lt;script&gt;alert(1)&lt;/script&gt;</p>';
+
+		$record = Default_Transformer::transform( null, $post );
+
+		$this->assertSame( 'Example: <script>alert(1)</script>', $record->content );
+	}
+
 	public function test_script_style_and_svg_markup_are_removed(): void {
 		$post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
 		// Set on the object rather than in the DB: kses strips script/style on save
