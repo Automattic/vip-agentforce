@@ -88,10 +88,11 @@ test.describe('CMP Settings', () => {
 			await expect(cmpSettings.cookieyesRow).toBeVisible();
 			await expect(cmpSettings.cookiebotRow).toBeHidden();
 			await expect(cmpSettings.iubendaRow).toBeHidden();
-			await expect(cmpSettings.cookieyesCategory).toHaveValue(
-				'functional'
-			);
 
+			// Deliberately no assertion on the pristine default here. Settings now
+			// survive saves under another CMP, so this test no longer starts from a
+			// clean slate on a retry or a rerun against a persistent env. Every value
+			// it asserts is one it sets itself. Defaults are covered in PHPUnit.
 			await cmpSettings.cookieyesCategory.selectOption('analytics');
 			await cmpSettings.save();
 
@@ -102,7 +103,7 @@ test.describe('CMP Settings', () => {
 			);
 		});
 
-		await test.step('Save a Cookiebot value and clear inactive OneTrust value', async () => {
+		await test.step('Save a Cookiebot value and keep the inactive OneTrust value', async () => {
 			await cmpSettings.setConsentType('Cookiebot');
 
 			await expect(cmpSettings.onetrustRow).toBeHidden();
@@ -121,14 +122,19 @@ test.describe('CMP Settings', () => {
 				'statistics'
 			);
 
+			// Saving under Cookiebot must not disturb the OneTrust group saved
+			// earlier. Inactive providers render no hidden input, so options.php
+			// hands their sanitize callback a null value; that means "this field
+			// was not on screen", not "reset me".
 			await cmpSettings.setConsentType('OneTrust');
 			await expect(cmpSettings.onetrustRow).toBeVisible();
-			await expect(cmpSettings.onetrustGroupId).not.toHaveValue('C0099');
+			await expect(cmpSettings.onetrustGroupId).toHaveValue('C0099');
 		});
 
 		await test.step('Ignore draft provider values when saving a different consent type', async () => {
-			// Draft values must differ from each provider's default, otherwise the
-			// assertions below cannot tell a discarded draft from a saved one.
+			// Draft values must differ from each provider's last saved value,
+			// otherwise the assertions below cannot tell a discarded draft from a
+			// saved one.
 			await cmpSettings.setConsentType('Cookiebot');
 			await cmpSettings.cookiebotCategory.selectOption('marketing');
 
@@ -140,17 +146,16 @@ test.describe('CMP Settings', () => {
 
 			await expect(cmpSettings.consentType).toHaveValue('Custom');
 
-			// Inactive providers render no hidden input, so options.php sanitizes a
-			// null value and each setting resets to its default.
+			// Neither draft was on screen at save time, so neither was submitted.
+			// Each provider still shows what it was last saved with.
 			await cmpSettings.setConsentType('Cookiebot');
-			await expect(cmpSettings.cookiebotCategory).toHaveValue(
-				'preferences'
-			);
+			await expect(cmpSettings.cookiebotCategory).toHaveValue('statistics');
 
 			await cmpSettings.setConsentType('CookieYes');
-			await expect(cmpSettings.cookieyesCategory).toHaveValue(
-				'functional'
-			);
+			await expect(cmpSettings.cookieyesCategory).toHaveValue('analytics');
+
+			await cmpSettings.setConsentType('OneTrust');
+			await expect(cmpSettings.onetrustGroupId).toHaveValue('C0099');
 		});
 	});
 
