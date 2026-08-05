@@ -33,6 +33,14 @@ class Ingestion_Cron {
 	public const DEFAULT_BATCH_SIZE = 100;
 
 	/**
+	 * Consecutive per-post API failures that fast-fail a bulk sync.
+	 *
+	 * Counted across cron ticks, not per batch, so the threshold means the
+	 * same thing at any batch size (including sizes below the threshold).
+	 */
+	public const MAX_CONSECUTIVE_API_FAILURES = 5;
+
+	/**
 	 * Default cron interval in seconds (1 minute).
 	 */
 	public const DEFAULT_CRON_INTERVAL = 60;
@@ -666,12 +674,17 @@ class Ingestion_Cron {
 		$fast_fail_code        = null;
 		$retry_backoff_started = false;
 
-		// Consecutive per-post API failures in this batch. A single blocked post
-		// (e.g. an edge/proxy/WAF 403 on one post's payload) should not kill a
+		// Consecutive per-post API failures across the whole run. A single blocked
+		// post (e.g. an edge/proxy/WAF 403 on one post's payload) should not kill a
 		// 900-post sync once other posts have already synced, but a long run of
 		// back-to-back failures is a genuine outage and should still fast-fail.
-		$consecutive_api_failures     = 0;
-		$max_consecutive_api_failures = 5;
+		//
+		// The streak is seeded from persisted progress and written back below.
+		// The condition that lets the run continue ($has_prior_success) is
+		// persisted, so the condition that stops it has to be too — otherwise a
+		// batch smaller than the threshold could never reach it and a sustained
+		// outage would run to COMPLETED with every remaining post failed.
+		$consecutive_api_failures = (int) ( $progress['consecutive_api_failures'] ?? 0 );
 
 		$preflight_failure = Ingestion_API_Client::get_request_preflight_failure();
 		if ( null !== $preflight_failure ) {
@@ -782,7 +795,7 @@ class Ingestion_Cron {
 							|| (int) ( $progress['deleted'] ?? 0 ) > 0;
 						$recoverable_post_auth_failure = 'auth' === $sync_result->error_class
 							&& $has_prior_success
-							&& $consecutive_api_failures < $max_consecutive_api_failures;
+							&& $consecutive_api_failures < self::MAX_CONSECUTIVE_API_FAILURES;
 
 						if ( self::is_global_bulk_failure( $sync_result ) && ! $recoverable_post_auth_failure ) {
 							// These classes are not post-specific. Stop the batch
@@ -804,8 +817,9 @@ class Ingestion_Cron {
 			}
 		}
 
-		// Update the cursor and progress counters.
-		Ingestion_Sync_Progress::update( $batch_results, $new_last_post_id, $sync_id );
+		// Update the cursor and progress counters. The failure streak is persisted
+		// with them so the next tick continues counting where this one left off.
+		Ingestion_Sync_Progress::update( $batch_results, $new_last_post_id, $sync_id, $consecutive_api_failures );
 
 		Logger::info(
 			'ingestion-cron',

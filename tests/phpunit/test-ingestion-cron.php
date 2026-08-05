@@ -1546,4 +1546,74 @@ class Ingestion_Cron_Test extends WP_UnitTestCase {
 			'A sustained streak of auth failures should still fast-fail the run.'
 		);
 	}
+
+	public function test_bulk_sync_fast_fails_after_consecutive_auth_403s_across_ticks(): void {
+		$this->setup_ingestion_filters();
+		$this->mock_http_fail_for( 'FAILME' );
+
+		$this->factory()->post->create_and_get( [
+			'post_status'  => 'publish',
+			'post_content' => 'ok',
+		] );
+		for ( $i = 0; $i < 8; $i++ ) {
+			$this->factory()->post->create_and_get( [
+				'post_status'  => 'publish',
+				'post_content' => 'FAILME ' . $i,
+			] );
+		}
+
+		Ingestion_Sync_Progress::start( 9, [ 'post' ] );
+
+		// 9 ticks of 1 post: far more than 5 back-to-back auth failures,
+		// just not within a single invocation. The streak has to survive the
+		// tick boundary or a batch this small can never reach the threshold.
+		for ( $tick = 0; $tick < 9; $tick++ ) {
+			Ingestion_Cron::process_queue( 1 );
+		}
+
+		$this->assertSame(
+			Ingestion_Sync_Progress::STATUS_FAILED,
+			Ingestion_Sync_Progress::get()['status'],
+			'A sustained streak of auth failures should still fast-fail the run.'
+		);
+	}
+
+	public function test_bulk_sync_streak_resets_across_ticks_on_success(): void {
+		$this->setup_ingestion_filters();
+		$this->mock_http_fail_for( 'FAILME' );
+
+		// Alternating good/bad posts: 5 total failures, never back-to-back.
+		// A persisted streak must still reset on success, or scattered
+		// per-post 403s would fast-fail a run that is otherwise healthy.
+		$this->factory()->post->create_and_get( [
+			'post_status'  => 'publish',
+			'post_content' => 'ok start',
+		] );
+		for ( $i = 0; $i < 5; $i++ ) {
+			$this->factory()->post->create_and_get( [
+				'post_status'  => 'publish',
+				'post_content' => 'FAILME ' . $i,
+			] );
+			$this->factory()->post->create_and_get( [
+				'post_status'  => 'publish',
+				'post_content' => 'ok ' . $i,
+			] );
+		}
+
+		Ingestion_Sync_Progress::start( 11, [ 'post' ] );
+
+		// 11 ticks to walk the posts, plus one that finds nothing and completes.
+		for ( $tick = 0; $tick < 12; $tick++ ) {
+			Ingestion_Cron::process_queue( 1 );
+		}
+
+		$progress = Ingestion_Sync_Progress::get();
+		$this->assertSame(
+			Ingestion_Sync_Progress::STATUS_COMPLETED,
+			$progress['status'],
+			'Isolated per-post 403s separated by successes should not fast-fail the run.'
+		);
+		$this->assertSame( 5, $progress['failed'] );
+		$this->assertSame( 6, $progress['synced'] );
+	}
 }
