@@ -19,7 +19,7 @@ import { __ } from '@wordpress/i18n';
 
 type ConsentType =
 	| 'CookieYes'
-	| 'CookieBot'
+	| 'Cookiebot'
 	| 'OneTrust'
 	| 'iubenda'
 	| 'Custom';
@@ -62,7 +62,7 @@ interface SettingsSectionProps {
 
 const CONSENT_OPTIONS = [
 	'CookieYes',
-	'CookieBot',
+	'Cookiebot',
 	'OneTrust',
 	'iubenda',
 	'Custom',
@@ -181,12 +181,12 @@ function AgentforceSettingsApp({ settings }: { settings: SettingsData }) {
 	const [alignment, setAlignment] = useState(values.alignment);
 	const shouldShowOneTrust = consentType === 'OneTrust';
 	const shouldShowCookieYes = consentType === 'CookieYes';
-	const shouldShowCookiebot = consentType === 'CookieBot';
+	const shouldShowCookiebot = consentType === 'Cookiebot';
 	const shouldShowIubenda = consentType === 'iubenda';
 	const shouldShowCustom = consentType === 'Custom';
 	const consentOptions = [
 		{ label: __('CookieYes', 'vip-agentforce'), value: 'CookieYes' },
-		{ label: __('CookieBot', 'vip-agentforce'), value: 'CookieBot' },
+		{ label: __('Cookiebot', 'vip-agentforce'), value: 'Cookiebot' },
 		{ label: __('OneTrust', 'vip-agentforce'), value: 'OneTrust' },
 		{ label: __('iubenda', 'vip-agentforce'), value: 'iubenda' },
 		{ label: __('Custom', 'vip-agentforce'), value: 'Custom' },
@@ -269,6 +269,10 @@ function AgentforceSettingsApp({ settings }: { settings: SettingsData }) {
 								<TextControl
 									__next40pxDefaultSize
 									__nextHasNoMarginBottom
+									help={__(
+										"Enter the OneTrust group that must be granted before Answers Agent loads. Group IDs are specific to your OneTrust configuration - C0003 is Functional Cookies in the stock template, but check your own groups first. Also list the agent's cookies under this group in OneTrust so your cookie notice stays accurate.",
+										'vip-agentforce'
+									)}
 									label={__(
 										'OneTrust Group ID',
 										'vip-agentforce'
@@ -289,7 +293,7 @@ function AgentforceSettingsApp({ settings }: { settings: SettingsData }) {
 									__next40pxDefaultSize
 									__nextHasNoMarginBottom
 									help={__(
-										'Choose the CookieYes category that must be granted before Answers Agent loads.',
+										"Choose the CookieYes category that must be granted before Answers Agent loads. Also list the agent's cookies under this category in CookieYes so your cookie notice stays accurate.",
 										'vip-agentforce'
 									)}
 									label={__(
@@ -313,7 +317,7 @@ function AgentforceSettingsApp({ settings }: { settings: SettingsData }) {
 									__next40pxDefaultSize
 									__nextHasNoMarginBottom
 									help={__(
-										'Choose the Cookiebot category that must be granted before Answers Agent loads.',
+										"Choose the Cookiebot category that must be granted before Answers Agent loads. Also list the agent's cookies under this category in Cookiebot so your cookie notice stays accurate.",
 										'vip-agentforce'
 									)}
 									label={__(
@@ -395,7 +399,7 @@ function AgentforceSettingsApp({ settings }: { settings: SettingsData }) {
 												</li>
 											</ul>
 											{__(
-												'Choose the category where your Answers Agent widget is listed in iubenda.',
+												"Choose the purpose that must be granted before Answers Agent loads. Also list the agent's cookies under this purpose in iubenda so your cookie notice stays accurate.",
 												'vip-agentforce'
 											)}
 											<br />
