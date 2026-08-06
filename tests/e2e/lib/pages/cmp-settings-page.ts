@@ -49,7 +49,7 @@ export class CmpSettingsPage {
 	}
 
 	public async setConsentType(
-		value: 'CookieYes' | 'CookieBot' | 'OneTrust' | 'iubenda' | 'Custom'
+		value: 'CookieYes' | 'Cookiebot' | 'OneTrust' | 'iubenda' | 'Custom'
 	): Promise<void> {
 		await this.consentType.selectOption(value);
 	}

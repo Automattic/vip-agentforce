@@ -20,7 +20,71 @@ const hasConsent = () => {
 	return false;
 };
 
+// One warning per page load, whichever diagnostic fires first - consent callbacks can
+// run many times per page and a repeating console warning is noise, not signal.
+let hasLoggedWarning = false;
+
+const warn = (message) => {
+	if (hasLoggedWarning) {
+		return;
+	}
+
+	hasLoggedWarning = true;
+	if (window.console && typeof window.console.warn === 'function') {
+		window.console.warn(message);
+	}
+};
+
+// Collect every group ID OneTrust knows about, including nested subgroups.
+const collectGroupIds = (groups, collected) => {
+	if (!Array.isArray(groups)) {
+		return collected;
+	}
+
+	groups.forEach((group) => {
+		if (group && group.OptanonGroupId) {
+			collected.add(group.OptanonGroupId);
+		}
+		collectGroupIds(group && group.SubGroups, collected);
+	});
+
+	return collected;
+};
+
+// A group that exists but was declined is simply absent from OnetrustActiveGroups,
+// so consent state alone cannot tell a declined group from a typo. Check the group
+// ID against the full domain data instead, which lists every configured group.
+const warnIfGroupMissing = () => {
+	if (!CONSENT_GROUP_ID) {
+		warn(
+			'Agentforce OneTrust Group ID is not configured. The agent will not load.'
+		);
+		return;
+	}
+
+	try {
+		if (typeof window.OneTrust?.GetDomainData !== 'function') {
+			return;
+		}
+
+		const knownGroupIds = collectGroupIds(
+			window.OneTrust.GetDomainData()?.Groups,
+			new Set()
+		);
+
+		if (knownGroupIds.size > 0 && !knownGroupIds.has(CONSENT_GROUP_ID)) {
+			warn(
+				`Agentforce OneTrust Group ID "${CONSENT_GROUP_ID}" was not found in this site's OneTrust configuration. The agent will not load.`
+			);
+		}
+	} catch (error) {
+		// Silent fail - the warning is diagnostic only.
+	}
+};
+
 const checkOneTrustConsent = () => {
+	warnIfGroupMissing();
+
 	if (hasConsent()) {
 		loadAgentforceSDK();
 	} else {
