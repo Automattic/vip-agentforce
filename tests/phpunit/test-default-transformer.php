@@ -281,7 +281,7 @@ class Default_Transformer_Test extends WP_UnitTestCase {
 		$this->assertSame( 'See the docs (https://example.com/docs) for more.', $record->content );
 	}
 
-	public function test_images_keep_their_alt_text(): void {
+	public function test_images_keep_their_alt_text_and_source(): void {
 		$post = $this->factory()->post->create_and_get(
 			[
 				'post_content' => '<p>Before</p><img src="https://example.com/thumb.jpg" alt="A red bicycle" /><p>After</p>',
@@ -291,10 +291,36 @@ class Default_Transformer_Test extends WP_UnitTestCase {
 
 		$record = Default_Transformer::transform( null, $post );
 
-		$this->assertSame( "Before\nA red bicycle\nAfter", $record->content );
+		$this->assertSame( "Before\nA red bicycle (image: https://example.com/thumb.jpg)\nAfter", $record->content );
 	}
 
-	public function test_a_linked_image_keeps_both_its_alt_text_and_target(): void {
+	public function test_an_image_without_alt_text_still_keeps_its_source(): void {
+		$post = $this->factory()->post->create_and_get(
+			[
+				'post_content' => '<p>Before</p><img src="https://example.com/chart.png" /><p>After</p>',
+				'post_status'  => 'publish',
+			]
+		);
+
+		$record = Default_Transformer::transform( null, $post );
+
+		$this->assertSame( "Before\n(image: https://example.com/chart.png)\nAfter", $record->content );
+	}
+
+	/**
+	 * A base64 image addresses nothing an agent could fetch, and one of them can
+	 * be hundreds of KB — the whole content budget spent on a single image.
+	 */
+	public function test_inline_base64_images_keep_only_their_alt_text(): void {
+		$post               = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
+		$post->post_content = '<p>Before</p><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==" alt="A tiny dot" /><p>After</p>';
+
+		$record = Default_Transformer::transform( null, $post );
+
+		$this->assertSame( "Before\nA tiny dot\nAfter", $record->content );
+	}
+
+	public function test_a_linked_image_keeps_its_alt_text_and_both_urls(): void {
 		$post = $this->factory()->post->create_and_get(
 			[
 				'post_content' => '<a href="https://example.com/full.jpg"><img src="https://example.com/thumb.jpg" alt="Example image"></a>',
@@ -304,7 +330,12 @@ class Default_Transformer_Test extends WP_UnitTestCase {
 
 		$record = Default_Transformer::transform( null, $post );
 
-		$this->assertSame( 'Example image (https://example.com/full.jpg)', $record->content );
+		// The thumbnail is what's shown, the href is where it goes: both are
+		// worth keeping, and a thumbnail is rarely the full-size file.
+		$this->assertSame(
+			'Example image (image: https://example.com/thumb.jpg) (https://example.com/full.jpg)',
+			$record->content
+		);
 	}
 
 	public function test_in_page_anchors_and_self_titled_links_are_not_annotated(): void {

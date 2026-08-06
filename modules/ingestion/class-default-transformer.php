@@ -111,8 +111,9 @@ class Default_Transformer {
 	 * one newline per block preserves the document's structure for chunking at a
 	 * cost of a single byte per block.
 	 *
-	 * Link targets and image alt text are carried over as text before the tags
-	 * go, so an agent can still cite a source or describe an image.
+	 * Link targets, image alt text and image sources are carried over as text
+	 * before the tags go, so an agent can still cite a source, describe an image
+	 * or point at one.
 	 *
 	 * @param string $raw Raw post_content.
 	 * @return string Plain-text content, capped to MAX_CONTENT_BYTES once encoded.
@@ -122,9 +123,9 @@ class Default_Transformer {
 		// self-closing (separators, images, embeds) still separate their neighbours.
 		$text = self::replace_or_keep( '/<!--\s*\/?wp:.*?-->/s', "\n", $raw );
 
-		// Alt text is an image's only readable description, and it runs before
-		// links so a linked image keeps it rather than reducing to nothing.
-		$text = self::replace_images_with_alt_text( $text );
+		// Images run before links so a linked image keeps its own text rather
+		// than reducing to nothing.
+		$text = self::replace_images_with_text( $text );
 		$text = self::append_link_targets( $text );
 
 		// Same for block-level HTML, which covers classic content and any markup
@@ -152,24 +153,37 @@ class Default_Transformer {
 	}
 
 	/**
-	 * Replace each `<img>` with its alt text.
+	 * Replace each `<img>` with its alt text and source, as `alt (image: src)`.
 	 *
 	 * Stripping the tag outright loses the only readable description of the
 	 * image, and an image that is a block's whole content (a linked thumbnail,
-	 * say) would leave nothing behind at all. Padding with spaces keeps the alt
-	 * text from fusing with the words either side; the later whitespace pass
-	 * collapses the padding.
+	 * say) would leave nothing behind at all. The source rides along for the same
+	 * reason link targets do: an image an agent cannot address is an image it can
+	 * never show. Labelled, so it reads as an image rather than a page — the file
+	 * extension isn't a reliable tell on a CDN URL.
+	 *
+	 * Padding with spaces keeps the text from fusing with the words either side;
+	 * the later whitespace pass collapses the padding.
 	 *
 	 * @param string $html Post content.
-	 * @return string Content with images reduced to their alt text.
+	 * @return string Content with images reduced to text.
 	 */
-	private static function replace_images_with_alt_text( string $html ): string {
+	private static function replace_images_with_text( string $html ): string {
 		return self::replace_callback_or_keep(
 			'/<img\b[^>]*>/i',
 			static function ( array $img ): string {
 				$alt = self::get_attribute( $img[0], 'alt' );
+				$src = self::get_attribute( $img[0], 'src' );
 
-				return '' === $alt ? '' : ' ' . $alt . ' ';
+				// Inline base64 images address nothing and would spend the whole
+				// content budget on one image.
+				if ( 0 === stripos( $src, 'data:' ) ) {
+					$src = '';
+				}
+
+				$parts = array_filter( [ $alt, '' === $src ? '' : '(image: ' . $src . ')' ] );
+
+				return [] === $parts ? '' : ' ' . implode( ' ', $parts ) . ' ';
 			},
 			$html
 		);
