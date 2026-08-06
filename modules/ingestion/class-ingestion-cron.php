@@ -749,7 +749,11 @@ class Ingestion_Cron {
 						++$results['skipped'];
 						++$batch_results['skipped'];
 						Ingestion_Metrics::record_post_result( 'skipped', 'bulk' );
-						$consecutive_api_failures = 0;
+						// Deliberately leaves the streak alone. A skip makes no API
+						// call, so it is no evidence auth recovered — resetting here
+						// would let skippable posts (drafts, filtered-out types)
+						// interleaved with publishable ones hide a real outage from
+						// the threshold below.
 						break;
 
 					case Sync_Result::FAILED_TRANSFORM:

@@ -1702,4 +1702,48 @@ class Ingestion_Cron_Test extends WP_UnitTestCase {
 		$this->assertSame( 5, $progress['failed'] );
 		$this->assertSame( 6, $progress['synced'] );
 	}
+
+	public function test_bulk_sync_streak_survives_skipped_posts(): void {
+		$this->setup_ingestion_filters();
+		$this->mock_http_fail_for( 'FAILME' );
+
+		// Posts the filter opts out of are skipped without an API call, so they
+		// say nothing about whether auth works. Interleaving them with failing
+		// posts must not break the streak, or a corpus that mixes skippable
+		// posts (drafts, filtered-out types) with publishable ones would let a
+		// real outage run to completion instead of fast-failing.
+		add_filter(
+			'vip_agentforce_should_ingest_post',
+			function ( $should_ingest, $post ) {
+				return strpos( $post->post_content, 'SKIPME' ) !== false ? false : $should_ingest;
+			},
+			11,
+			2
+		);
+
+		$this->factory()->post->create_and_get( [
+			'post_status'  => 'publish',
+			'post_content' => 'ok start',
+		] );
+		for ( $i = 0; $i < 5; $i++ ) {
+			$this->factory()->post->create_and_get( [
+				'post_status'  => 'publish',
+				'post_content' => 'FAILME ' . $i,
+			] );
+			$this->factory()->post->create_and_get( [
+				'post_status'  => 'publish',
+				'post_content' => 'SKIPME ' . $i,
+			] );
+		}
+
+		Ingestion_Sync_Progress::start( 11, [ 'post' ] );
+		Ingestion_Cron::process_queue( 20 );
+
+		$progress = Ingestion_Sync_Progress::get();
+		$this->assertSame(
+			Ingestion_Sync_Progress::STATUS_FAILED,
+			$progress['status'],
+			'Skipped posts make no API call and must not reset the auth-failure streak.'
+		);
+	}
 }
