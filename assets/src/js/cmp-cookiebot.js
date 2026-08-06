@@ -7,10 +7,12 @@
  */
 import { loadAgentforceSDK, unloadAgentforceSDK } from './cmp-manager';
 
-// Get the configured category from the localized data
+// Get the configured category from the localized data (default to preferences - the
+// functional bucket the agent's chat cookies belong in)
 const CONSENT_CATEGORY =
-	(window.vipAgentforceConsentData && window.vipAgentforceConsentData.cookiebotCategory) ||
-	'marketing';
+	(window.vipAgentforceConsentData &&
+		window.vipAgentforceConsentData.cookiebotCategory) ||
+	'preferences';
 
 // Checks Cookiebot consent and loads/unloads SDK
 const checkCookiebotConsent = () => {

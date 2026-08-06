@@ -805,7 +805,7 @@ class Cmp_Tests extends WP_UnitTestCase {
 			]
 		);
 
-		update_option( 'vip_agentforce_consent_type', 'CookieBot' );
+		update_option( 'vip_agentforce_consent_type', 'Cookiebot' );
 		delete_option( 'vip_agentforce_cookiebot_category' );
 
 		$this->reset_consent_script( 'vip-af-cookiebot-consent' );
@@ -824,7 +824,7 @@ class Cmp_Tests extends WP_UnitTestCase {
 			]
 		);
 
-		update_option( 'vip_agentforce_consent_type', 'CookieBot' );
+		update_option( 'vip_agentforce_consent_type', 'Cookiebot' );
 		update_option( 'vip_agentforce_cookiebot_category', 'custom-category' );
 
 		$this->reset_consent_script( 'vip-af-cookiebot-consent' );
@@ -973,7 +973,33 @@ class Cmp_Tests extends WP_UnitTestCase {
 	public function test_sanitize_consent_type_returns_value_for_supported_cmp(): void {
 		$settings = Settings_Page::get_instance();
 
-		$this->assertSame( 'CookieBot', $settings->sanitize_consent_type( 'CookieBot' ) );
+		$this->assertSame( 'Cookiebot', $settings->sanitize_consent_type( 'Cookiebot' ) );
+	}
+
+	public function test_sanitize_consent_type_maps_legacy_cookiebot_casing(): void {
+		$settings = Settings_Page::get_instance();
+
+		$this->assertSame( 'Cookiebot', $settings->sanitize_consent_type( 'CookieBot' ) );
+	}
+
+	public function test_legacy_consent_type_still_enqueues_its_consent_script(): void {
+		$this->prime_configs_cache(
+			[
+				'agentforce_js_sdk_activated' => true,
+				'agentforce_embedding_script' => $this->get_embedding_script_fixture(),
+			]
+		);
+
+		update_option( 'vip_agentforce_consent_type', 'CookieBot' );
+		update_option( 'vip_agentforce_cookiebot_category', 'statistics' );
+
+		$this->reset_consent_script( 'vip-af-cookiebot-consent' );
+		Assets::get_instance()->enqueue_consent_scripts();
+
+		$this->assertTrue( wp_script_is( 'vip-af-cookiebot-consent', 'enqueued' ) );
+
+		$localized_data = wp_scripts()->get_data( 'vip-af-cookiebot-consent', 'data' );
+		$this->assertStringContainsString( '"cookiebotCategory":"statistics"', $localized_data );
 	}
 
 	public function test_sanitize_consent_type_falls_back_to_default_for_invalid_value(): void {
@@ -1032,9 +1058,10 @@ class Cmp_Tests extends WP_UnitTestCase {
 
 		update_option( 'vip_agentforce_iubenda_category', '3' );
 
+		// Not the selected CMP, so the field was not rendered - keep what is stored.
 		$this->assertSame(
-			Constants::DEFAULT_IUBENDA_PURPOSE_ID,
-			$settings->validate_iubenda_category( '' )
+			'3',
+			$settings->validate_iubenda_category( null )
 		);
 
 		$wp_settings_errors                   = [];
@@ -1052,6 +1079,110 @@ class Cmp_Tests extends WP_UnitTestCase {
 		$this->assertSame(
 			'3',
 			$settings->validate_iubenda_category( '0' )
+		);
+
+		unset( $_POST['vip_agentforce_consent_type'] );
+	}
+
+	public function test_validate_onetrust_group_id_accepts_well_formed_ids(): void {
+		$settings = Settings_Page::get_instance();
+
+		$this->assertSame( 'C0003', $settings->validate_onetrust_group_id( ' C0003 ' ) );
+		$this->assertSame( 'custom_group-1', $settings->validate_onetrust_group_id( 'custom_group-1' ) );
+	}
+
+	public function test_validate_onetrust_group_id_rejects_malformed_ids(): void {
+		$settings = Settings_Page::get_instance();
+		global $wp_settings_errors;
+
+		update_option( 'vip_agentforce_onetrust_group_id', 'C0003' );
+		$wp_settings_errors = [];
+
+		$this->assertSame(
+			'C0003',
+			$settings->validate_onetrust_group_id( 'C0003, C0004' )
+		);
+		$this->assertSame(
+			'vip_agentforce_onetrust_group_id_error',
+			get_settings_errors( 'vip_agentforce_messages' )[0]['code']
+		);
+	}
+
+	public function test_validate_onetrust_group_id_handles_empty_value(): void {
+		$settings = Settings_Page::get_instance();
+		global $wp_settings_errors;
+
+		update_option( 'vip_agentforce_onetrust_group_id', 'C0007' );
+		$wp_settings_errors = [];
+
+		// Not the selected CMP, so the field was not rendered - keep what is stored.
+		$this->assertSame(
+			'C0007',
+			$settings->validate_onetrust_group_id( '' )
+		);
+		$this->assertCount( 0, get_settings_errors( 'vip_agentforce_messages' ) );
+
+		$wp_settings_errors                   = [];
+		$_POST['vip_agentforce_consent_type'] = 'OneTrust'; // phpcs:ignore WordPress.Security.NonceVerification.Missing
+
+		$this->assertSame(
+			'C0007',
+			$settings->validate_onetrust_group_id( '' )
+		);
+		$this->assertSame(
+			'vip_agentforce_onetrust_group_id_error',
+			get_settings_errors( 'vip_agentforce_messages' )[0]['code']
+		);
+
+		unset( $_POST['vip_agentforce_consent_type'] );
+	}
+
+	public function test_validate_onetrust_group_id_rejects_overlong_ids(): void {
+		$settings = Settings_Page::get_instance();
+		global $wp_settings_errors;
+
+		update_option( 'vip_agentforce_onetrust_group_id', 'C0007' );
+		$wp_settings_errors = [];
+
+		$this->assertSame(
+			'C0007',
+			$settings->validate_onetrust_group_id( str_repeat( 'C', 65 ) )
+		);
+		$this->assertSame(
+			'vip_agentforce_onetrust_group_id_error',
+			get_settings_errors( 'vip_agentforce_messages' )[0]['code']
+		);
+	}
+
+	/**
+	 * options.php writes null for every registered setting in the group whose field was
+	 * not rendered, so saving under one CMP must not reset the others' configuration.
+	 *
+	 * @dataProvider provide_cmp_settings_preserved_across_saves
+	 *
+	 * @param string $option   The option name.
+	 * @param string $callback The registered sanitize callback.
+	 * @param string $stored   A configured value that must survive the save.
+	 */
+	public function test_cmp_settings_survive_a_save_under_a_different_cmp( string $option, string $callback, string $stored ): void {
+		$settings = Settings_Page::get_instance();
+
+		update_option( 'vip_agentforce_consent_type', 'Custom' );
+		update_option( $option, $stored );
+		unset( $_POST['vip_agentforce_consent_type'] );
+
+		$this->assertSame( $stored, $settings->$callback( null ) );
+	}
+
+	/**
+	 * @return array<string, array{string, string, string}>
+	 */
+	public function provide_cmp_settings_preserved_across_saves(): array {
+		return array(
+			'onetrust'  => array( 'vip_agentforce_onetrust_group_id', 'validate_onetrust_group_id', 'C0007' ),
+			'cookiebot' => array( 'vip_agentforce_cookiebot_category', 'validate_cookiebot_category', 'marketing' ),
+			'cookieyes' => array( 'vip_agentforce_cookieyes_category', 'validate_cookieyes_category', 'advertisement' ),
+			'iubenda'   => array( 'vip_agentforce_iubenda_category', 'validate_iubenda_category', '4' ),
 		);
 	}
 }
