@@ -214,4 +214,227 @@ class Default_Transformer_Test extends WP_UnitTestCase {
 		$this->assertFalse( $record->published );
 		$this->assertSame( 'draft', $record->post_status );
 	}
+
+	public function test_content_is_stripped_to_plain_text(): void {
+		$post = $this->factory()->post->create_and_get(
+			[
+				'post_content' => "<!-- wp:paragraph -->\n<p>Hello <strong>world</strong> &amp; friends</p>\n<!-- /wp:paragraph -->",
+				'post_status'  => 'publish',
+			]
+		);
+
+		$record = Default_Transformer::transform( null, $post );
+
+		// Gutenberg delimiters and HTML tags removed, entities decoded.
+		$this->assertSame( 'Hello world & friends', $record->content );
+	}
+
+	public function test_adjacent_blocks_do_not_fuse_into_one_word(): void {
+		$post = $this->factory()->post->create_and_get(
+			[
+				'post_content' => '<p>Alpha</p><p>Beta</p><ul><li>one</li><li>two</li></ul>',
+				'post_status'  => 'publish',
+			]
+		);
+
+		$record = Default_Transformer::transform( null, $post );
+
+		$this->assertSame( "Alpha\nBeta\none\ntwo", $record->content );
+	}
+
+	public function test_inline_markup_does_not_split_words(): void {
+		$post = $this->factory()->post->create_and_get(
+			[
+				'post_content' => '<p>Word<em>Press</em> is <strong>great</strong></p>',
+				'post_status'  => 'publish',
+			]
+		);
+
+		$record = Default_Transformer::transform( null, $post );
+
+		$this->assertSame( 'WordPress is great', $record->content );
+	}
+
+	public function test_self_closing_blocks_separate_their_neighbours(): void {
+		$post = $this->factory()->post->create_and_get(
+			[
+				'post_content' => '<!-- wp:heading --><h2>Alpha</h2><!-- /wp:heading --><!-- wp:separator --><hr class="wp-block-separator"/><!-- /wp:separator --><!-- wp:paragraph --><p>Beta</p><!-- /wp:paragraph -->',
+				'post_status'  => 'publish',
+			]
+		);
+
+		$record = Default_Transformer::transform( null, $post );
+
+		$this->assertSame( "Alpha\nBeta", $record->content );
+	}
+
+	public function test_links_keep_their_target_alongside_their_text(): void {
+		$post = $this->factory()->post->create_and_get(
+			[
+				'post_content' => '<p>See <a href="https://example.com/docs">the docs</a> for more.</p>',
+				'post_status'  => 'publish',
+			]
+		);
+
+		$record = Default_Transformer::transform( null, $post );
+
+		$this->assertSame( 'See the docs (https://example.com/docs) for more.', $record->content );
+	}
+
+	public function test_images_keep_their_alt_text_and_source(): void {
+		$post = $this->factory()->post->create_and_get(
+			[
+				'post_content' => '<p>Before</p><img src="https://example.com/thumb.jpg" alt="A red bicycle" /><p>After</p>',
+				'post_status'  => 'publish',
+			]
+		);
+
+		$record = Default_Transformer::transform( null, $post );
+
+		$this->assertSame( "Before\nA red bicycle (image: https://example.com/thumb.jpg)\nAfter", $record->content );
+	}
+
+	public function test_an_image_without_alt_text_still_keeps_its_source(): void {
+		$post = $this->factory()->post->create_and_get(
+			[
+				'post_content' => '<p>Before</p><img src="https://example.com/chart.png" /><p>After</p>',
+				'post_status'  => 'publish',
+			]
+		);
+
+		$record = Default_Transformer::transform( null, $post );
+
+		$this->assertSame( "Before\n(image: https://example.com/chart.png)\nAfter", $record->content );
+	}
+
+	/**
+	 * A base64 image addresses nothing an agent could fetch, and one of them can
+	 * be hundreds of KB — the whole content budget spent on a single image.
+	 */
+	public function test_inline_base64_images_keep_only_their_alt_text(): void {
+		$post               = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
+		$post->post_content = '<p>Before</p><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==" alt="A tiny dot" /><p>After</p>';
+
+		$record = Default_Transformer::transform( null, $post );
+
+		$this->assertSame( "Before\nA tiny dot\nAfter", $record->content );
+	}
+
+	public function test_a_linked_image_keeps_its_alt_text_and_both_urls(): void {
+		$post = $this->factory()->post->create_and_get(
+			[
+				'post_content' => '<a href="https://example.com/full.jpg"><img src="https://example.com/thumb.jpg" alt="Example image"></a>',
+				'post_status'  => 'publish',
+			]
+		);
+
+		$record = Default_Transformer::transform( null, $post );
+
+		// The thumbnail is what's shown, the href is where it goes: both are
+		// worth keeping, and a thumbnail is rarely the full-size file.
+		$this->assertSame(
+			'Example image (image: https://example.com/thumb.jpg) (https://example.com/full.jpg)',
+			$record->content
+		);
+	}
+
+	public function test_in_page_anchors_and_self_titled_links_are_not_annotated(): void {
+		$post = $this->factory()->post->create_and_get(
+			[
+				'post_content' => '<p><a href="#section-two">Jump to section two</a></p><p><a href="https://example.com">https://example.com</a></p>',
+				'post_status'  => 'publish',
+			]
+		);
+
+		$record = Default_Transformer::transform( null, $post );
+
+		$this->assertSame( "Jump to section two\nhttps://example.com", $record->content );
+	}
+
+	/**
+	 * Entities are decoded after tags are stripped, so markup an author escaped
+	 * in order to write about it stays in the index as the text a reader sees.
+	 * Decoding first would feed the sample back to wp_strip_all_tags, which drops
+	 * script contents, and it would disappear entirely.
+	 */
+	public function test_escaped_markup_survives_as_text(): void {
+		$post               = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
+		$post->post_content = '<p>Example: &lt;script&gt;alert(1)&lt;/script&gt;</p>';
+
+		$record = Default_Transformer::transform( null, $post );
+
+		$this->assertSame( 'Example: <script>alert(1)</script>', $record->content );
+	}
+
+	public function test_script_style_and_svg_markup_are_removed(): void {
+		$post = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
+		// Set on the object rather than in the DB: kses strips script/style on save
+		// for users without unfiltered_html, and we want the transformer's own
+		// handling under test.
+		$post->post_content = '<p>Visible</p><script>var hidden = 1;</script><style>.x{color:red}</style><svg viewBox="0 0 10 10"><path d="M0 0 L10 10"/></svg>';
+
+		$record = Default_Transformer::transform( null, $post );
+
+		$this->assertSame( 'Visible', $record->content );
+	}
+
+	public function test_oversized_content_is_capped_under_the_limit(): void {
+		$ref = new ReflectionClass( Default_Transformer::class );
+		$max = (int) $ref->getConstant( 'MAX_CONTENT_BYTES' );
+
+		// ~480 KB of plain text — well over the cap.
+		$post = $this->factory()->post->create_and_get(
+			[
+				'post_content' => str_repeat( 'lorem ipsum ', 40000 ),
+				'post_status'  => 'publish',
+			]
+		);
+
+		$record = Default_Transformer::transform( null, $post );
+
+		$this->assertLessThanOrEqual(
+			$max,
+			strlen( $record->content ),
+			'Content must be capped under the Data Cloud 200 KB request limit.'
+		);
+	}
+
+	/**
+	 * The API sizes the encoded body, where wp_json_encode turns each non-ASCII
+	 * character into a \uXXXX escape. A raw-byte cap passes while the request
+	 * that gets sent is still twice the limit, so assert on the encoded body.
+	 *
+	 * @dataProvider multibyte_content_provider
+	 *
+	 * @param string $unit  Repeated to build the post content.
+	 * @param int    $times Repeat count.
+	 */
+	public function test_multibyte_content_stays_under_the_limit_once_encoded( string $unit, int $times ): void {
+		$post               = $this->factory()->post->create_and_get( [ 'post_status' => 'publish' ] );
+		$post->post_content = str_repeat( $unit, $times );
+
+		$record = Default_Transformer::transform( null, $post );
+		$body   = wp_json_encode( [ 'data' => [ $record->to_array() ] ] );
+
+		$this->assertLessThan(
+			200000,
+			strlen( $body ),
+			'The encoded request body must stay under the Data Cloud 200 KB limit.'
+		);
+		$this->assertNotSame( '', $record->content, 'Content must survive the cap, not be emptied.' );
+	}
+
+	/**
+	 * @return array<string, array{0: string, 1: int}>
+	 */
+	public function multibyte_content_provider(): array {
+		return [
+			// 3 bytes raw, 6 encoded.
+			'japanese' => [ '日本語のテキストです。', 30000 ],
+			// 4 bytes raw, 12 encoded.
+			'emoji'    => [ '🎉', 100000 ],
+			// Mixed, so the inflation ratio isn't uniform across the string.
+			'mixed'    => [ 'Latin text 日本語 🎉 more latin ', 20000 ],
+		];
+	}
 }
