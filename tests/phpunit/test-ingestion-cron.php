@@ -1454,4 +1454,296 @@ class Ingestion_Cron_Test extends WP_UnitTestCase {
 		$this->assertSame( 0, Ingestion_Queue::get_delete_attempts( $first_post->ID ) );
 		$this->assertSame( 0, Ingestion_Queue::get_delete_attempts( $second_post->ID ) );
 	}
+
+	/**
+	 * Mock HTTP: return 403 for requests whose body contains $fail_marker, 202 otherwise.
+	 */
+	private function mock_http_fail_for( string $fail_marker ): void {
+		add_filter(
+			'pre_http_request',
+			function ( $preempt, $args, $url ) use ( $fail_marker ) {
+				if ( strpos( $url, 'test.salesforce.com' ) === false ) {
+					return $preempt;
+				}
+				$body = $args['body'] ?? '';
+				if ( is_string( $body ) && strpos( $body, $fail_marker ) !== false ) {
+					return [
+						'response' => [
+							'code'    => 403,
+							'message' => 'Forbidden',
+						],
+						'body'     => '<html><body>403 Forbidden</body></html>',
+					];
+				}
+				return [
+					'response' => [
+						'code'    => 202,
+						'message' => 'Accepted',
+					],
+					'body'     => '',
+				];
+			},
+			10,
+			3
+		);
+	}
+
+	/**
+	 * Mock HTTP: 400 for requests whose body contains $reject_marker, 403 for
+	 * $fail_marker, 202 otherwise. A 400 is a non-retryable client-class failure,
+	 * the shape of a record the API refuses (malformed, or over its size limit).
+	 */
+	private function mock_http_reject_and_fail_for( string $reject_marker, string $fail_marker ): void {
+		add_filter(
+			'pre_http_request',
+			function ( $preempt, $args, $url ) use ( $reject_marker, $fail_marker ) {
+				if ( strpos( $url, 'test.salesforce.com' ) === false ) {
+					return $preempt;
+				}
+				$body = $args['body'] ?? '';
+				if ( ! is_string( $body ) ) {
+					$body = '';
+				}
+				if ( strpos( $body, $reject_marker ) !== false ) {
+					return [
+						'response' => [
+							'code'    => 400,
+							'message' => 'Bad Request',
+						],
+						'body'     => '{"error":"record rejected"}',
+					];
+				}
+				if ( strpos( $body, $fail_marker ) !== false ) {
+					return [
+						'response' => [
+							'code'    => 403,
+							'message' => 'Forbidden',
+						],
+						'body'     => '<html><body>403 Forbidden</body></html>',
+					];
+				}
+				return [
+					'response' => [
+						'code'    => 202,
+						'message' => 'Accepted',
+					],
+					'body'     => '',
+				];
+			},
+			10,
+			3
+		);
+	}
+
+	public function test_bulk_sync_client_rejections_do_not_arm_the_auth_fast_fail(): void {
+		$this->setup_ingestion_filters();
+		$this->mock_http_reject_and_fail_for( 'REJECTME', 'FAILME' );
+
+		// One success, then enough client-class rejections to cross the threshold
+		// if they counted, then a single per-post 403. Auth worked for every
+		// request but the last, so the run must not stop as a global auth failure.
+		$this->factory()->post->create_and_get( [
+			'post_status'  => 'publish',
+			'post_content' => 'ok',
+		] );
+		for ( $i = 0; $i < 5; $i++ ) {
+			$this->factory()->post->create_and_get( [
+				'post_status'  => 'publish',
+				'post_content' => 'REJECTME ' . $i,
+			] );
+		}
+		$this->factory()->post->create_and_get( [
+			'post_status'  => 'publish',
+			'post_content' => 'FAILME payload',
+		] );
+		$this->factory()->post->create_and_get( [
+			'post_status'  => 'publish',
+			'post_content' => 'ok last',
+		] );
+
+		Ingestion_Sync_Progress::start( 8, [ 'post' ] );
+		$results = Ingestion_Cron::process_queue( 10 );
+
+		$progress = Ingestion_Sync_Progress::get();
+		$this->assertNotSame(
+			Ingestion_Sync_Progress::STATUS_FAILED,
+			$progress['status'],
+			'Client-class rejections are per-post problems and must not fast-fail the run as an auth error.'
+		);
+		$this->assertSame( 2, $results['synced'], 'The post after the 403 should still sync.' );
+		$this->assertSame( 6, $results['failed'] );
+	}
+
+	public function test_bulk_sync_continues_after_single_auth_403_with_prior_success(): void {
+		$this->setup_ingestion_filters();
+		$this->mock_http_fail_for( 'FAILME' );
+
+		// Bulk sync processes by ascending ID: a success, then the failing post,
+		// then another success.
+		$this->factory()->post->create_and_get( [
+			'post_status'  => 'publish',
+			'post_content' => 'ok one',
+		] );
+		$this->factory()->post->create_and_get( [
+			'post_status'  => 'publish',
+			'post_content' => 'FAILME payload',
+		] );
+		$this->factory()->post->create_and_get( [
+			'post_status'  => 'publish',
+			'post_content' => 'ok two',
+		] );
+
+		Ingestion_Sync_Progress::start( 3, [ 'post' ] );
+		$results = Ingestion_Cron::process_queue( 10 );
+
+		// The single 403 did not abort the run: the post after it still synced.
+		$this->assertSame( 2, $results['synced'], 'Posts after the failing one should still sync.' );
+		$this->assertSame( 1, $results['failed'] );
+		$this->assertNotSame(
+			Ingestion_Sync_Progress::STATUS_FAILED,
+			Ingestion_Sync_Progress::get()['status'],
+			'One post 403 should not fast-fail the whole bulk run.'
+		);
+	}
+
+	public function test_bulk_sync_fast_fails_after_consecutive_auth_403s(): void {
+		$this->setup_ingestion_filters();
+		$this->mock_http_fail_for( 'FAILME' );
+
+		// One success first (past the "no prior success" fast-fail), then 5
+		// consecutive failing posts to cross the consecutive-failure threshold.
+		$this->factory()->post->create_and_get( [
+			'post_status'  => 'publish',
+			'post_content' => 'ok',
+		] );
+		for ( $i = 0; $i < 5; $i++ ) {
+			$this->factory()->post->create_and_get( [
+				'post_status'  => 'publish',
+				'post_content' => 'FAILME ' . $i,
+			] );
+		}
+
+		Ingestion_Sync_Progress::start( 6, [ 'post' ] );
+		Ingestion_Cron::process_queue( 10 );
+
+		$this->assertSame(
+			Ingestion_Sync_Progress::STATUS_FAILED,
+			Ingestion_Sync_Progress::get()['status'],
+			'A sustained streak of auth failures should still fast-fail the run.'
+		);
+	}
+
+	public function test_bulk_sync_fast_fails_after_consecutive_auth_403s_across_ticks(): void {
+		$this->setup_ingestion_filters();
+		$this->mock_http_fail_for( 'FAILME' );
+
+		$this->factory()->post->create_and_get( [
+			'post_status'  => 'publish',
+			'post_content' => 'ok',
+		] );
+		for ( $i = 0; $i < 8; $i++ ) {
+			$this->factory()->post->create_and_get( [
+				'post_status'  => 'publish',
+				'post_content' => 'FAILME ' . $i,
+			] );
+		}
+
+		Ingestion_Sync_Progress::start( 9, [ 'post' ] );
+
+		// 9 ticks of 1 post: far more than 5 back-to-back auth failures,
+		// just not within a single invocation. The streak has to survive the
+		// tick boundary or a batch this small can never reach the threshold.
+		for ( $tick = 0; $tick < 9; $tick++ ) {
+			Ingestion_Cron::process_queue( 1 );
+		}
+
+		$this->assertSame(
+			Ingestion_Sync_Progress::STATUS_FAILED,
+			Ingestion_Sync_Progress::get()['status'],
+			'A sustained streak of auth failures should still fast-fail the run.'
+		);
+	}
+
+	public function test_bulk_sync_streak_resets_across_ticks_on_success(): void {
+		$this->setup_ingestion_filters();
+		$this->mock_http_fail_for( 'FAILME' );
+
+		// Alternating good/bad posts: 5 total failures, never back-to-back.
+		// A persisted streak must still reset on success, or scattered
+		// per-post 403s would fast-fail a run that is otherwise healthy.
+		$this->factory()->post->create_and_get( [
+			'post_status'  => 'publish',
+			'post_content' => 'ok start',
+		] );
+		for ( $i = 0; $i < 5; $i++ ) {
+			$this->factory()->post->create_and_get( [
+				'post_status'  => 'publish',
+				'post_content' => 'FAILME ' . $i,
+			] );
+			$this->factory()->post->create_and_get( [
+				'post_status'  => 'publish',
+				'post_content' => 'ok ' . $i,
+			] );
+		}
+
+		Ingestion_Sync_Progress::start( 11, [ 'post' ] );
+
+		// 11 ticks to walk the posts, plus one that finds nothing and completes.
+		for ( $tick = 0; $tick < 12; $tick++ ) {
+			Ingestion_Cron::process_queue( 1 );
+		}
+
+		$progress = Ingestion_Sync_Progress::get();
+		$this->assertSame(
+			Ingestion_Sync_Progress::STATUS_COMPLETED,
+			$progress['status'],
+			'Isolated per-post 403s separated by successes should not fast-fail the run.'
+		);
+		$this->assertSame( 5, $progress['failed'] );
+		$this->assertSame( 6, $progress['synced'] );
+	}
+
+	public function test_bulk_sync_streak_survives_skipped_posts(): void {
+		$this->setup_ingestion_filters();
+		$this->mock_http_fail_for( 'FAILME' );
+
+		// Posts the filter opts out of are skipped without an API call, so they
+		// say nothing about whether auth works. Interleaving them with failing
+		// posts must not break the streak, or a corpus that mixes skippable
+		// posts (drafts, filtered-out types) with publishable ones would let a
+		// real outage run to completion instead of fast-failing.
+		add_filter(
+			'vip_agentforce_should_ingest_post',
+			function ( $should_ingest, $post ) {
+				return strpos( $post->post_content, 'SKIPME' ) !== false ? false : $should_ingest;
+			},
+			11,
+			2
+		);
+
+		$this->factory()->post->create_and_get( [
+			'post_status'  => 'publish',
+			'post_content' => 'ok start',
+		] );
+		for ( $i = 0; $i < 5; $i++ ) {
+			$this->factory()->post->create_and_get( [
+				'post_status'  => 'publish',
+				'post_content' => 'FAILME ' . $i,
+			] );
+			$this->factory()->post->create_and_get( [
+				'post_status'  => 'publish',
+				'post_content' => 'SKIPME ' . $i,
+			] );
+		}
+
+		Ingestion_Sync_Progress::start( 11, [ 'post' ] );
+		Ingestion_Cron::process_queue( 20 );
+
+		$progress = Ingestion_Sync_Progress::get();
+		$this->assertSame(
+			Ingestion_Sync_Progress::STATUS_FAILED,
+			$progress['status'],
+			'Skipped posts make no API call and must not reset the auth-failure streak.'
+		);
+	}
 }
