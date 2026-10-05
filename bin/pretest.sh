@@ -7,4 +7,4 @@ if php -r 'exit((int)(PHP_VERSION_ID < 80100));'; then
 	sed -i "s@define( 'WP_DEBUG', true );@// define( 'WP_DEBUG', true );@" /tmp/wordpress-tests-lib/wp-tests-config.php
 fi
 # Use PHPUnit Polyfills from project vendor directory (avoids GitHub rate limits in Docker).
-export WP_TESTS_PHPUNIT_POLYFILLS_PATH=/home/circleci/project/vendor/yoast/phpunit-polyfills
+export WP_TESTS_PHPUNIT_POLYFILLS_PATH=/home/debian/project/vendor/yoast/phpunit-polyfills
